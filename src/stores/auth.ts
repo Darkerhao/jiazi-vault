@@ -12,10 +12,29 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function checkStatus() {
     try {
-      unlocked.value = await vaultService.isUnlocked()
-      hasVault.value = unlocked.value
+      const status = await vaultService.status()
+      unlocked.value = status.unlocked
+      hasVault.value = status.exists
     } catch {
-      hasVault.value = false
+      error.value = '无法连接桌面服务，请重新启动应用。'
+    }
+  }
+
+  async function create(password: string) {
+    busy.value = true
+    error.value = null
+    try {
+      await vaultService.create(password)
+      unlocked.value = true
+      hasVault.value = true
+      return true
+    } catch (cause) {
+      error.value = cause instanceof Error && cause.message.includes('VAULT_EXISTS')
+        ? '保险库已经创建，请输入主密码解锁。'
+        : '无法创建保险库，请稍后重试。'
+      return false
+    } finally {
+      busy.value = false
     }
   }
 
@@ -28,8 +47,10 @@ export const useAuthStore = defineStore('auth', () => {
       if (!result.unlocked) error.value = '无法解锁保险库，请检查主密码。'
       hasVault.value = true
       return result.unlocked
-    } catch {
-      error.value = '无法解锁保险库，请检查主密码。'
+    } catch (cause) {
+      error.value = cause instanceof Error && cause.message.includes('VAULT_NOT_FOUND')
+        ? '保险库尚未创建，请先设置主密码。'
+        : '无法解锁保险库，请检查主密码。'
       return false
     } finally {
       busy.value = false
@@ -41,5 +62,5 @@ export const useAuthStore = defineStore('auth', () => {
     unlocked.value = false
   }
 
-  return { unlocked, hasVault, busy, error, isReady, checkStatus, unlock, lock }
+  return { unlocked, hasVault, busy, error, isReady, checkStatus, create, unlock, lock }
 })

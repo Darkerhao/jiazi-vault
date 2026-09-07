@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { darkTheme, dateZhCN, GlobalThemeOverrides, NConfigProvider, NMessageProvider, zhCN } from 'naive-ui'
 import { useSettingsStore } from './stores/settings'
-import { useAuthStore } from './stores/auth'
 
 const settings = useSettingsStore()
-const auth = useAuthStore()
 const theme = computed(() => (settings.isDark ? darkTheme : null))
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -16,7 +14,6 @@ const themeOverrides: GlobalThemeOverrides = {
   },
 }
 
-onMounted(() => auth.checkStatus())
 </script>
 
 <template>

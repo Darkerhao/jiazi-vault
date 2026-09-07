@@ -7,7 +7,7 @@
 ## 阶段
 
 - [complete] Phase 1 技术栈迁移：Electron + Vue 3 + TypeScript + Vite + Naive UI + Pinia + Router + Node SQLite + 安全 preload IPC
-- [pending] Phase 2：Vault 创建、Argon2id、AES-256-GCM、SQLite 加密存储、解锁/锁定
+- [complete] Phase 2：Vault 创建、Argon2id、AES-256-GCM、SQLite 加密校验存储、解锁/锁定
 - [pending] Phase 3：Item CRUD、收藏、搜索、七类凭证
 - [pending] Phase 4：Project 与 Environment
 - [pending] Phase 5：密码生成器与强度估算
@@ -27,8 +27,16 @@
 
 - 前端：`pnpm typecheck`、`pnpm build` 通过；Vite 预览页已用浏览器快照验证。
 - Electron：主进程负责 SQLite 和桌面能力，preload 仅暴露白名单 IPC；渲染进程关闭 Node 集成并启用上下文隔离。
-- 运行时：Phase 1 的 `unlock_vault` 是始终返回锁定的安全占位命令，真实密钥派生和 AES 留待 Phase 2。
+- 运行时：Phase 1 先使用安全占位命令建立 IPC 边界，Phase 2 已替换为真实的主密码创建、密钥派生、加密校验和解锁流程。
 - 验证：`pnpm build` 通过，Electron 44.2.0 桌面窗口实际启动成功，窗口标题/句柄有效，`%APPDATA%\jiazi-vault\vault.db` 已创建。
+
+## Phase 2 结果
+
+- 首次启动根据 SQLite 元数据自动进入创建流程，要求输入并确认至少 8 个字符的主密码。
+- Electron 主进程使用 Argon2id（64 MiB、3 次、单线程）派生 32 字节主密钥，再使用 AES-256-GCM 加密固定校验标记；SQLite 仅保存版本、参数、随机盐、随机 nonce、密文和认证标签。
+- 解锁使用数据库中保存的派生参数重新生成密钥，并通过 AES-GCM 认证结果判断密码是否正确；锁定和退出时清零内存密钥。
+- 路由统一检查保险库状态，未解锁时不能进入业务页面。
+- 验证：`pnpm build` 通过；错误密码拒绝、正确密码接受、SQLite 跨连接读取及无明文持久化检查通过；Electron 原生 Argon2 模块加载成功；实际桌面窗口显示首次创建页面。
 
 ## 约束
 

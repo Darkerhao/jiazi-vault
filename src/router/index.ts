@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -11,4 +12,12 @@ export const router = createRouter({
     { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/vault' },
   ],
+})
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  if (!auth.isReady) await auth.checkStatus()
+  if (to.name === 'unlock') return auth.unlocked ? { name: 'vault' } : true
+  if (!auth.unlocked) return { name: 'unlock' }
+  return true
 })

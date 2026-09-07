@@ -5,6 +5,7 @@ import type { VaultItem, VaultItemSummary } from '../types/vault'
 export const vaultService = {
   create: (password: string) => callCommand('create_vault', { password }),
   unlock: (password: string) => callCommand('unlock_vault', { password }),
+  status: () => callCommand('get_vault_status'),
   lock: () => callCommand('lock_vault'),
   isUnlocked: () => callCommand('is_vault_unlocked'),
   listItems: () => callCommand('list_items'),

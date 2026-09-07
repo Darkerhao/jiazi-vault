@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 const allowedCommands = new Set([
   'health_check',
   'database_info',
+  'get_vault_status',
   'create_vault',
   'unlock_vault',
   'lock_vault',

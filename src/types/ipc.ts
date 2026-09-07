@@ -2,6 +2,8 @@ import type { Environment, ItemType, Project, VaultItem, VaultItemSummary } from
 
 export type VaultError =
   | 'INVALID_PASSWORD'
+  | 'PASSWORD_TOO_SHORT'
+  | 'VAULT_EXISTS'
   | 'VAULT_NOT_FOUND'
   | 'VAULT_LOCKED'
   | 'DECRYPT_FAILED'
@@ -11,6 +13,11 @@ export type VaultError =
   | 'PERMISSION_DENIED'
 
 export interface UnlockResult {
+  unlocked: boolean
+}
+
+export interface VaultStatus {
+  exists: boolean
   unlocked: boolean
 }
 
@@ -24,6 +31,7 @@ export interface SearchItemsRequest {
 export interface IpcCommands {
   health_check: { args: undefined; result: string }
   database_info: { args: undefined; result: { initialized: boolean; path: string } }
+  get_vault_status: { args: undefined; result: VaultStatus }
   create_vault: { args: { password: string }; result: void }
   unlock_vault: { args: { password: string }; result: UnlockResult }
   lock_vault: { args: undefined; result: void }
