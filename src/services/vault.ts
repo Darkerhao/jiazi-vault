@@ -8,7 +8,7 @@ export const vaultService = {
   status: () => callCommand('get_vault_status'),
   lock: () => callCommand('lock_vault'),
   isUnlocked: () => callCommand('is_vault_unlocked'),
-  listItems: () => callCommand('list_items'),
+  listItems: (trashed = false) => callCommand('list_items', { trashed }),
   searchItems: (request: SearchItemsRequest) => callCommand('search_items', request),
   getItem: (id: string) => callCommand('get_item', { id }),
   createItem: (item: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'>) => callCommand('create_item', { item }),

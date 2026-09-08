@@ -15,3 +15,11 @@
 - 完成首次创建/确认主密码、解锁、锁定、路由保护及错误提示；移除未实现的 Windows Hello / Touch ID 提示。
 - `pnpm build` 通过；加密模块验证覆盖错误/正确密码、跨 SQLite 连接读取和无主密码明文；Electron 原生 Argon2 加载及首次创建页面实机显示通过。
 - `pnpm electron:build` 已完成构建、原生依赖重建并进入 Windows 解包复制，但该复制阶段长时间无进展后终止，未产出最终安装器。
+
+## 2026-09-08
+
+- 完成 Phase 3：Item CRUD、收藏、搜索与七类凭证。
+- 后端新增 `items` 表与 `item-store.ts`，敏感字段（password/notes/fields）统一用 AES-256-GCM 随机 nonce 加密存入 `secret` 列，SQLite 无明文；非敏感字段明文存储以支撑搜索。
+- 实现 create/get/list(含回收站)/update/toggle_favorite/delete(软删除+彻底删除)/restore 七条 IPC；`vault-crypto.ts` 抽取通用的 `encryptValue`/`decryptValue`。
+- 前端新增 `item-fields.ts` 数据驱动七类凭证表单、`ItemFormModal.vue` 新建/编辑弹窗、`useClipboard`；重写 `VaultView` 与 `AppShell`，加入收藏/回收站/搜索与「新建」入口。
+- `pnpm build` 通过；独立脚本验证密码/字段密文存储与 CRUD/收藏/回收站全链路往返。

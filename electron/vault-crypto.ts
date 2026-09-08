@@ -37,25 +37,54 @@ async function deriveKey(password: string, salt: Buffer, options = KDF_OPTIONS) 
   return hashRaw(password, { ...options, algorithm: Algorithm.Argon2id, salt })
 }
 
-function encryptVerifier(key: Buffer) {
+export interface EncryptedValue {
+  ciphertext: string
+  nonce: string
+  authTag: string
+  algorithm: 'AES-256-GCM'
+  version: 1
+}
+
+interface EncryptedBlob {
+  nonce: string
+  ciphertext: string
+  authTag: string
+}
+
+function encryptBytes(key: Buffer, plaintext: Buffer): EncryptedBlob {
   const nonce = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', key, nonce)
-  const ciphertext = Buffer.concat([cipher.update(VERIFIER), cipher.final()])
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()])
   return {
-    algorithm: 'AES-256-GCM' as const,
     nonce: nonce.toString('base64'),
     ciphertext: ciphertext.toString('base64'),
     authTag: cipher.getAuthTag().toString('base64'),
   }
 }
 
-function decryptVerifier(metadata: VaultMetadata, key: Buffer) {
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(metadata.verifier.nonce, 'base64'))
-  decipher.setAuthTag(Buffer.from(metadata.verifier.authTag, 'base64'))
+function decryptBytes(key: Buffer, blob: EncryptedBlob): Buffer {
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(blob.nonce, 'base64'))
+  decipher.setAuthTag(Buffer.from(blob.authTag, 'base64'))
   return Buffer.concat([
-    decipher.update(Buffer.from(metadata.verifier.ciphertext, 'base64')),
+    decipher.update(Buffer.from(blob.ciphertext, 'base64')),
     decipher.final(),
   ])
+}
+
+export function encryptValue(key: Buffer, plaintext: string): EncryptedValue {
+  return { algorithm: 'AES-256-GCM', version: 1, ...encryptBytes(key, Buffer.from(plaintext, 'utf8')) }
+}
+
+export function decryptValue(key: Buffer, value: EncryptedValue): string {
+  return decryptBytes(key, value).toString('utf8')
+}
+
+function encryptVerifier(key: Buffer) {
+  return { algorithm: 'AES-256-GCM' as const, ...encryptBytes(key, VERIFIER) }
+}
+
+function decryptVerifier(metadata: VaultMetadata, key: Buffer) {
+  return decryptBytes(key, metadata.verifier)
 }
 
 export async function createVaultCredential(password: string): Promise<CreatedVaultCredential> {

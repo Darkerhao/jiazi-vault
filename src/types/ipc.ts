@@ -41,7 +41,7 @@ export interface IpcCommands {
   delete_item: { args: { id: string; permanently?: boolean }; result: void }
   restore_item: { args: { id: string }; result: void }
   get_item: { args: { id: string }; result: VaultItem }
-  list_items: { args: undefined; result: VaultItemSummary[] }
+  list_items: { args: { trashed?: boolean }; result: VaultItemSummary[] }
   search_items: { args: SearchItemsRequest; result: VaultItemSummary[] }
   toggle_favorite: { args: { id: string }; result: VaultItemSummary }
   create_project: { args: { project: Omit<Project, 'id' | 'itemCount'> }; result: Project }

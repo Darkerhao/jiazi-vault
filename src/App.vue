@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { darkTheme, dateZhCN, GlobalThemeOverrides, NConfigProvider, NMessageProvider, zhCN } from 'naive-ui'
+import { darkTheme, dateZhCN, GlobalThemeOverrides, NConfigProvider, NDialogProvider, NMessageProvider, zhCN } from 'naive-ui'
 import { useSettingsStore } from './stores/settings'
 
 const settings = useSettingsStore()
@@ -18,8 +18,10 @@ const themeOverrides: GlobalThemeOverrides = {
 
 <template>
   <n-config-provider :theme="theme" :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
-    <n-message-provider>
-      <router-view />
-    </n-message-provider>
+    <n-dialog-provider>
+      <n-message-provider>
+        <router-view />
+      </n-message-provider>
+    </n-dialog-provider>
   </n-config-provider>
 </template>

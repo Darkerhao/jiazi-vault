@@ -8,7 +8,7 @@
 
 - [complete] Phase 1 技术栈迁移：Electron + Vue 3 + TypeScript + Vite + Naive UI + Pinia + Router + Node SQLite + 安全 preload IPC
 - [complete] Phase 2：Vault 创建、Argon2id、AES-256-GCM、SQLite 加密校验存储、解锁/锁定
-- [pending] Phase 3：Item CRUD、收藏、搜索、七类凭证
+- [complete] Phase 3：Item CRUD、收藏、搜索、七类凭证
 - [pending] Phase 4：Project 与 Environment
 - [pending] Phase 5：密码生成器与强度估算
 - [pending] Phase 6：快捷键、托盘、剪贴板清理、自动锁定
@@ -37,6 +37,13 @@
 - 解锁使用数据库中保存的派生参数重新生成密钥，并通过 AES-GCM 认证结果判断密码是否正确；锁定和退出时清零内存密钥。
 - 路由统一检查保险库状态，未解锁时不能进入业务页面。
 - 验证：`pnpm build` 通过；错误密码拒绝、正确密码接受、SQLite 跨连接读取及无明文持久化检查通过；Electron 原生 Argon2 模块加载成功；实际桌面窗口显示首次创建页面。
+
+## Phase 3 结果
+
+- 新增 `items` 表：`password`、`notes`、`fields` 等敏感字段合并为一份 `secret` 密文（AES-256-GCM，每条随机 nonce），SQLite 不落明文；用户名/URL/主机等非敏感字段明文存储以支持搜索。
+- IPC 实现：`create_item` / `get_item` / `list_items`（含回收站过滤）/ `update_item` / `toggle_favorite` / `delete_item`（软删除→回收站，`permanently` 彻底删除）/ `restore_item`。
+- 前端：七类凭证（login / password / server / database / api-key / ssh / secure-note）通过 `item-fields.ts` 数据驱动渲染动态表单；列表支持收藏切换、删除、回收站恢复/彻底删除、客户端搜索（标题/用户名/URL/主机/环境/类型/标签）。
+- 验证：`pnpm build` 通过；独立脚本验证密码与字段以密文存储（`secret` 列无明文）、CRUD/收藏/回收站全链路往返通过。
 
 ## 约束
 

@@ -2,7 +2,7 @@
 import { h } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { NButton, NIcon, NInput, NLayout, NLayoutHeader, NLayoutSider, NMenu, NText } from 'naive-ui'
-import { ArchiveOutline, FolderOpenOutline, KeyOutline, LockClosedOutline, SettingsOutline, SparklesOutline, StarOutline, TimeOutline, AddOutline } from '@vicons/ionicons5'
+import { ArchiveOutline, FolderOpenOutline, KeyOutline, LockClosedOutline, SettingsOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
 import { useAuthStore } from '../../stores/auth'
 import { useVaultStore } from '../../stores/vault'
 
@@ -10,12 +10,12 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const vault = useVaultStore()
-defineEmits<{ (event: 'new-item'): void }>()
 
 const menuOptions = [
   { label: () => h(RouterLink, { to: '/vault' }, { default: () => '全部条目' }), key: '/vault', icon: () => h(NIcon, null, { default: () => h(ArchiveOutline) }) },
   { label: () => h(RouterLink, { to: '/vault?filter=favorites' }, { default: () => '收藏夹' }), key: '/vault?filter=favorites', icon: () => h(NIcon, null, { default: () => h(StarOutline) }) },
   { label: () => h(RouterLink, { to: '/vault?filter=recent' }, { default: () => '最近使用' }), key: '/vault?filter=recent', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) },
+  { label: () => h(RouterLink, { to: '/vault?filter=trash' }, { default: () => '回收站' }), key: '/vault?filter=trash', icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) },
   { label: () => h(RouterLink, { to: '/projects' }, { default: () => '项目' }), key: '/projects', icon: () => h(NIcon, null, { default: () => h(FolderOpenOutline) }) },
   { label: () => h(RouterLink, { to: '/generator' }, { default: () => '密码生成器' }), key: '/generator', icon: () => h(NIcon, null, { default: () => h(SparklesOutline) }) },
   { label: () => h(RouterLink, { to: '/settings' }, { default: () => '设置' }), key: '/settings', icon: () => h(NIcon, null, { default: () => h(SettingsOutline) }) },
@@ -25,13 +25,17 @@ async function lock() {
   await auth.lock()
   await router.push('/unlock')
 }
+
+function newItem() {
+  void router.push({ name: 'vault', query: { ...route.query, new: '1' } })
+}
 </script>
 
 <template>
   <n-layout class="app-shell" has-sider>
     <n-layout-sider bordered :width="240" :collapsed-width="64" show-trigger collapse-mode="width">
       <div class="brand"><div class="brand-mark">J</div><n-text strong>Jiazi Vault</n-text></div>
-      <n-menu :value="route.path" :options="menuOptions" />
+      <n-menu :value="route.fullPath" :options="menuOptions" />
       <div class="sider-footer"><n-button quaternary block @click="lock"><template #icon><n-icon><lock-closed-outline /></n-icon></template>锁定保险库</n-button></div>
     </n-layout-sider>
     <n-layout>
@@ -39,7 +43,7 @@ async function lock() {
         <n-input v-model:value="vault.query" clearable placeholder="搜索凭证…" class="search-input">
           <template #prefix><n-icon><key-outline /></n-icon></template>
         </n-input>
-        <n-button type="primary" @click="$emit('new-item')"><template #icon><n-icon><add-outline /></n-icon></template>新建</n-button>
+        <n-button type="primary" @click="newItem"><template #icon><n-icon><add-outline /></n-icon></template>新建</n-button>
       </n-layout-header>
       <div class="page-content"><slot /></div>
     </n-layout>

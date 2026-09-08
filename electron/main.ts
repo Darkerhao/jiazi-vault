@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { openDatabase, type DatabaseState } from './database.js'
 import { clearKey, createVaultCredential, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
+import { createItemStore, type ItemInput, type VaultItem } from './item-store.js'
 
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
@@ -33,8 +34,9 @@ function setMasterKey(key: Buffer | null) {
   vaultUnlocked = key !== null
 }
 
-function requireUnlocked() {
+function requireUnlocked(): Buffer {
   if (!vaultUnlocked || !masterKey) throw new Error('VAULT_LOCKED')
+  return masterKey
 }
 
 function createWindow() {
@@ -93,9 +95,35 @@ function registerIpcHandlers() {
     setMasterKey(key)
     return { unlocked: key !== null }
   })
-  ipcMain.handle('list_items', () => {
+  const itemStore = createItemStore(requireDatabase().connection, () => requireUnlocked())
+
+  ipcMain.handle('list_items', (_event, args?: { trashed?: boolean }) => {
     requireUnlocked()
-    return []
+    return itemStore.list(args?.trashed ?? false)
+  })
+  ipcMain.handle('get_item', (_event, args: { id: string }) => {
+    requireUnlocked()
+    return itemStore.get(args?.id)
+  })
+  ipcMain.handle('create_item', (_event, args: { item: ItemInput }) => {
+    requireUnlocked()
+    return itemStore.create(args?.item)
+  })
+  ipcMain.handle('update_item', (_event, args: { item: VaultItem }) => {
+    requireUnlocked()
+    return itemStore.update(args?.item)
+  })
+  ipcMain.handle('toggle_favorite', (_event, args: { id: string }) => {
+    requireUnlocked()
+    return itemStore.toggleFavorite(args?.id)
+  })
+  ipcMain.handle('delete_item', (_event, args: { id: string; permanently?: boolean }) => {
+    requireUnlocked()
+    itemStore.remove(args?.id, args?.permanently)
+  })
+  ipcMain.handle('restore_item', (_event, args: { id: string }) => {
+    requireUnlocked()
+    itemStore.restore(args?.id)
   })
   ipcMain.handle('list_projects', () => {
     requireUnlocked()
