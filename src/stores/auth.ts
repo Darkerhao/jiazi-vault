@@ -7,12 +7,22 @@ export const useAuthStore = defineStore('auth', () => {
   const hasVault = ref<boolean | null>(null)
   const busy = ref(false)
   const error = ref<string | null>(null)
+  const notice = ref<string | null>(null)
+  const sessionRevision = ref(0)
+
+  function markLocked() {
+    sessionRevision.value++
+    unlocked.value = false
+    error.value = null
+  }
 
   const isReady = computed(() => hasVault.value !== null)
 
   async function checkStatus() {
+    const revision = sessionRevision.value
     try {
       const status = await vaultService.status()
+      if (revision !== sessionRevision.value) return
       unlocked.value = status.unlocked
       hasVault.value = status.exists
     } catch {
@@ -21,10 +31,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function create(password: string) {
+    if (busy.value) return false
+    const revision = sessionRevision.value
     busy.value = true
     error.value = null
     try {
       await vaultService.create(password)
+      if (revision !== sessionRevision.value) return false
       unlocked.value = true
       hasVault.value = true
       return true
@@ -39,10 +52,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function unlock(password: string) {
+    if (busy.value) return false
+    const revision = sessionRevision.value
     busy.value = true
     error.value = null
     try {
       const result = await vaultService.unlock(password)
+      if (revision !== sessionRevision.value) return false
       unlocked.value = result.unlocked
       if (!result.unlocked) error.value = '无法解锁保险库，请检查主密码。'
       hasVault.value = true
@@ -59,8 +75,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function lock() {
     await vaultService.lock()
-    unlocked.value = false
+    if (unlocked.value) markLocked()
   }
 
-  return { unlocked, hasVault, busy, error, isReady, checkStatus, create, unlock, lock }
+  return { unlocked, hasVault, busy, error, notice, sessionRevision, isReady, checkStatus, create, unlock, lock, markLocked }
 })

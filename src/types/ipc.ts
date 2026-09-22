@@ -1,4 +1,5 @@
 import type { Environment, ItemType, Project, VaultItem, VaultItemSummary } from './vault'
+import type { AppSettings } from '../../electron/settings'
 
 export type VaultError =
   | 'INVALID_PASSWORD'
@@ -51,11 +52,15 @@ export interface IpcCommands {
   generate_password: { args: { length: number; uppercase: boolean; lowercase: boolean; numbers: boolean; symbols: boolean; excludeAmbiguous: boolean }; result: string }
   export_vault: { args: { format: 'jvault' | 'json' | 'csv' }; result: string }
   import_vault: { args: { path: string }; result: void }
-  create_backup: { args: undefined; result: string }
-  restore_backup: { args: { path: string }; result: void }
+  get_settings: { args: undefined; result: AppSettings }
+  update_settings: { args: { settings: AppSettings }; result: AppSettings }
+  copy_to_clipboard: { args: { text: string }; result: void }
+  create_backup: { args: undefined; result: string | null }
+  restore_backup: { args: { password: string }; result: boolean }
 }
 
 export interface DesktopBridge {
+  onLocked(callback: () => void): () => void
   invoke<K extends keyof IpcCommands>(
     command: K,
     args: IpcCommands[K]['args'],

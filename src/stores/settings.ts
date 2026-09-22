@@ -1,15 +1,29 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-
-export type ThemeMode = 'system' | 'light' | 'dark'
-export type ClipboardTimeout = 'never' | 5 | 10 | 15 | 30 | 60
+import type { AppSettings } from '../../electron/settings'
+import { settingsService } from '../services/settings'
 
 export const useSettingsStore = defineStore('settings', () => {
-  const themeMode = ref<ThemeMode>('system')
-  const clipboardClearTimeout = ref<ClipboardTimeout>(15)
-  const autoLockMinutes = ref<number | null>(15)
+  const preferences = ref<AppSettings | null>(null)
+  const busy = ref(false)
+  const error = ref<string | null>(null)
   const prefersDark = ref(typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  const isDark = computed(() => themeMode.value === 'dark' || (themeMode.value === 'system' && prefersDark.value))
+  const isDark = computed(() => preferences.value?.themeMode === 'dark' || ((preferences.value?.themeMode ?? 'system') === 'system' && prefersDark.value))
+
+  async function load() {
+    error.value = null
+    try { preferences.value = await settingsService.get() }
+    catch { error.value = '读取设置失败，请重试。' }
+  }
+
+  async function update(patch: Partial<AppSettings>) {
+    if (!preferences.value || busy.value) return
+    busy.value = true
+    error.value = null
+    try { preferences.value = await settingsService.save({ ...preferences.value, ...patch }) }
+    catch { error.value = '设置保存失败，已保留原设置。请重试。' }
+    finally { busy.value = false }
+  }
 
   if (typeof window !== 'undefined') {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (event) => {
@@ -17,5 +31,5 @@ export const useSettingsStore = defineStore('settings', () => {
     })
   }
 
-  return { themeMode, clipboardClearTimeout, autoLockMinutes, isDark }
+  return { preferences, busy, error, isDark, load, update }
 })

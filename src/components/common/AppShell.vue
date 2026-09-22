@@ -23,7 +23,6 @@ const menuOptions = [
 
 async function lock() {
   await auth.lock()
-  await router.push('/unlock')
 }
 
 function newItem() {
@@ -51,7 +50,7 @@ function newItem() {
 </template>
 
 <style scoped>
-.app-shell { min-height: 100vh; }
+.app-shell { height: 100vh; }
 .brand { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 20px; font-size: 16px; }
 .brand-mark { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; background: #8ab4f8; color: #172033; font-weight: 800; }
 .sider-footer { position: absolute; bottom: 14px; left: 12px; right: 12px; }

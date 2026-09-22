@@ -1,5 +1,18 @@
 # Findings
 
+## 2026-09-22 当前代码与决策
+
+- 工作树干净。settings 表已存在但无读写接口；设置 Store 仅内存状态；useClipboard 直接使用 navigator.clipboard；备份只有 IPC 声明。
+- 锁定只清主进程 key，缺少主动通知、渲染页卸载和异步请求失效处理，自动锁定需要统一接入这些边界。
+- Electron 44.2.0 的 clipboard.readText/writeText 已为 Promise；已检查该版本官方 docs/api/clipboard.md 与 shell/browser/api/electron_api_clipboard.cc，必须串行处理复制与清理。
+- Electron 44.2.0 官方 power-monitor 文档及源码确认 suspend、lock-screen（Windows/macOS）、getSystemIdleTime；应用输入用 WebContents 的 before-input-event / before-mouse-event 监听。
+- 官方版本参考：https://github.com/electron/electron/tree/v44.2.0/docs/api 。web 工具代理返回 404，改用 PowerShell 读取同版本官方 raw 源文件。
+- 生产构建 dist/index.html 的资源原为 /assets 绝对路径，Electron loadFile 无法加载；将 Vite base 设为 ./，用于本轮真实生产页面验证。
+- 实机点击手动锁定失败：短内容页面 sidebar 内部滚动容器随内容收缩，绝对定位 footer 与设置菜单重叠；AppShell 改为确定的 100vh 高度，使侧栏满高。
+- 备份格式：版本化 .jvault 外层包含 KDF 参数和加密校验标记，payload 使用随机 nonce 的 AES-256-GCM 完整加密所有条目（含回收站）、设置；不持久化明文中间文件。
+- 恢复先核验当前支持的 KDF 参数、主密码、GCM 认证、行结构、条目密文、重复 ID 和设置，再在同一 SQLite 事务中替换；失败回滚。恢复后清 key 并通知前端销毁敏感视图。
+- 真实生产页面验证已通过创建、设置控件、复制按钮、5 秒清理、保留外部复制、备份、错误密码、覆盖取消、恢复、手动/自动锁定、重启与空库恢复。
+
 ## 设计文档要点
 
 - 项目仓库为空，仅有 `Jiazi Vault.md`。

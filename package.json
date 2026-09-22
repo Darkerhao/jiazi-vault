@@ -11,6 +11,7 @@
     "electron:build": "pnpm build && electron-builder",
     "build": "pnpm typecheck && vite build && pnpm electron:compile",
     "typecheck": "vue-tsc --noEmit",
+    "test": "pnpm electron:compile && node --test tests/*.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

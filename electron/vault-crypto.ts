@@ -63,7 +63,8 @@ function encryptBytes(key: Buffer, plaintext: Buffer): EncryptedBlob {
 }
 
 function decryptBytes(key: Buffer, blob: EncryptedBlob): Buffer {
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(blob.nonce, 'base64'))
+  if (!isEncryptedBlob(blob)) throw new Error('INVALID_DATA')
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(blob.nonce, 'base64'), { authTagLength: 16 })
   decipher.setAuthTag(Buffer.from(blob.authTag, 'base64'))
   return Buffer.concat([
     decipher.update(Buffer.from(blob.ciphertext, 'base64')),
@@ -72,11 +73,42 @@ function decryptBytes(key: Buffer, blob: EncryptedBlob): Buffer {
 }
 
 export function encryptValue(key: Buffer, plaintext: string): EncryptedValue {
-  return { algorithm: 'AES-256-GCM', version: 1, ...encryptBytes(key, Buffer.from(plaintext, 'utf8')) }
+  const bytes = Buffer.from(plaintext, 'utf8')
+  try {
+    return { algorithm: 'AES-256-GCM', version: 1, ...encryptBytes(key, bytes) }
+  } finally { bytes.fill(0) }
 }
 
 export function decryptValue(key: Buffer, value: EncryptedValue): string {
-  return decryptBytes(key, value).toString('utf8')
+  if (!value || value.algorithm !== 'AES-256-GCM' || value.version !== 1) throw new Error('INVALID_DATA')
+  const bytes = decryptBytes(key, value)
+  try { return bytes.toString('utf8') } finally { bytes.fill(0) }
+}
+
+function isBase64(value: unknown, bytes?: number): value is string {
+  if (typeof value !== 'string') return false
+  const decoded = Buffer.from(value, 'base64')
+  return decoded.toString('base64') === value && (bytes === undefined || decoded.length === bytes)
+}
+
+function isEncryptedBlob(value: unknown): value is EncryptedBlob {
+  if (!value || typeof value !== 'object') return false
+  const blob = value as EncryptedBlob
+  return isBase64(blob.nonce, 12) && isBase64(blob.authTag, 16) && isBase64(blob.ciphertext)
+}
+
+export function isVaultMetadata(value: unknown): value is VaultMetadata {
+  if (!value || typeof value !== 'object') return false
+  const metadata = value as VaultMetadata
+  return metadata.version === 1
+    && metadata.kdf?.algorithm === 'Argon2id'
+    && metadata.kdf.memoryCost === KDF_OPTIONS.memoryCost
+    && metadata.kdf.timeCost === KDF_OPTIONS.timeCost
+    && metadata.kdf.parallelism === KDF_OPTIONS.parallelism
+    && metadata.kdf.outputLen === KDF_OPTIONS.outputLen
+    && isBase64(metadata.kdf.salt, 16)
+    && metadata.verifier?.algorithm === 'AES-256-GCM'
+    && isEncryptedBlob(metadata.verifier)
 }
 
 function encryptVerifier(key: Buffer) {
@@ -108,11 +140,7 @@ export async function createVaultCredential(password: string): Promise<CreatedVa
 }
 
 export async function unlockVaultCredential(password: string, metadata: VaultMetadata) {
-  if (
-    metadata.version !== 1
-    || metadata.kdf.algorithm !== 'Argon2id'
-    || metadata.verifier.algorithm !== 'AES-256-GCM'
-  ) return null
+  if (!isVaultMetadata(metadata)) throw new Error('INVALID_DATA')
 
   const masterKey = await deriveKey(password, Buffer.from(metadata.kdf.salt, 'base64'), {
     algorithm: Algorithm.Argon2id,

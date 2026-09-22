@@ -25,9 +25,17 @@ const allowedCommands = new Set([
   'import_vault',
   'create_backup',
   'restore_backup',
+  'get_settings',
+  'update_settings',
+  'copy_to_clipboard',
 ])
 
 contextBridge.exposeInMainWorld('jiaziVault', {
+  onLocked(callback: () => void) {
+    const listener = () => callback()
+    ipcRenderer.on('vault_locked', listener)
+    return () => ipcRenderer.removeListener('vault_locked', listener)
+  },
   invoke(command: string, args?: unknown) {
     if (!allowedCommands.has(command)) {
       return Promise.reject(new Error('INVALID_COMMAND'))

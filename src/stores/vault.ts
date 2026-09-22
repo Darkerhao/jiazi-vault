@@ -11,6 +11,16 @@ export const useVaultStore = defineStore('vault', () => {
   const query = ref('')
   const filter = ref<VaultFilter>('all')
   const loading = ref(false)
+  let revision = 0
+
+  function clear() {
+    revision++
+    items.value = []
+    trashed.value = []
+    query.value = ''
+    filter.value = 'all'
+    loading.value = false
+  }
 
   const filteredItems = computed(() => {
     let list = items.value
@@ -24,21 +34,28 @@ export const useVaultStore = defineStore('vault', () => {
   })
 
   async function load() {
+    const requestRevision = revision
     loading.value = true
     try {
-      items.value = await vaultService.listItems(false)
-      trashed.value = await vaultService.listItems(true)
+      const [active, deleted] = await Promise.all([vaultService.listItems(false), vaultService.listItems(true)])
+      if (requestRevision !== revision) return
+      items.value = active
+      trashed.value = deleted
     } catch {
-      items.value = []
-      trashed.value = []
+      if (requestRevision === revision) {
+        items.value = []
+        trashed.value = []
+      }
     } finally {
-      loading.value = false
+      if (requestRevision === revision) loading.value = false
     }
   }
 
   async function get(id: string): Promise<VaultItem | null> {
+    const requestRevision = revision
     try {
-      return await vaultService.getItem(id)
+      const item = await vaultService.getItem(id)
+      return requestRevision === revision ? item : null
     } catch {
       return null
     }
@@ -85,8 +102,10 @@ export const useVaultStore = defineStore('vault', () => {
   }
 
   async function toggleFavorite(id: string) {
+    const requestRevision = revision
     try {
       const updated = await vaultService.toggleFavorite(id)
+      if (requestRevision !== revision) return false
       const index = items.value.findIndex((item) => item.id === id)
       if (index !== -1) items.value[index] = updated
       return true
@@ -95,5 +114,5 @@ export const useVaultStore = defineStore('vault', () => {
     }
   }
 
-  return { items, trashed, query, filter, loading, filteredItems, load, get, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
+  return { items, trashed, query, filter, loading, filteredItems, clear, load, get, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
 })

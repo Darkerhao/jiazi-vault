@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NAlert, NButton, NCard, NForm, NFormItem, NInput, NLayout, NSpin, NText } from 'naive-ui'
 import { useAuthStore } from '../stores/auth'
+import BackupRestore from '../components/common/BackupRestore.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -12,6 +13,8 @@ const localError = ref<string | null>(null)
 const isCreating = computed(() => auth.hasVault === false)
 
 async function submit() {
+  if (auth.busy) return
+  auth.notice = null
   localError.value = null
   if (isCreating.value) {
     if (password.value.length < 8) {
@@ -47,15 +50,17 @@ async function submit() {
       <n-text v-if="isCreating" depth="3" class="intro">凭证只保存在此设备。请设置一个你能记住的主密码。</n-text>
       <n-form class="unlock-form" @submit.prevent="submit">
         <n-form-item :show-label="false">
-          <n-input v-model:value="password" type="password" show-password-on="click" placeholder="主密码" autofocus @keyup.enter="submit" />
+          <n-input v-model:value="password" type="password" show-password-on="click" placeholder="主密码" autofocus />
         </n-form-item>
         <n-form-item v-if="isCreating" :show-label="false">
-          <n-input v-model:value="confirmation" type="password" show-password-on="click" placeholder="确认主密码" @keyup.enter="submit" />
+          <n-input v-model:value="confirmation" type="password" show-password-on="click" placeholder="确认主密码" />
         </n-form-item>
         <n-button type="primary" block :loading="auth.busy" attr-type="submit">{{ isCreating ? '创建保险库' : '解锁' }}</n-button>
       </n-form>
       <n-alert v-if="localError || auth.error" type="error" :show-icon="false" class="unlock-error">{{ localError || auth.error }}</n-alert>
+      <n-alert v-if="auth.notice" type="success" :show-icon="false" class="unlock-error">{{ auth.notice }}</n-alert>
       <n-alert v-if="isCreating" type="warning" :show-icon="false" class="security-note">主密码无法找回。忘记主密码后，保险库将无法解锁。</n-alert>
+      <div class="restore-action"><BackupRestore /></div>
       </template>
     </n-card>
   </n-layout>
@@ -71,4 +76,5 @@ h1 { margin: 8px 0 24px; font-size: 24px; }
 .unlock-form { text-align: left; }
 .unlock-error { margin-top: 16px; text-align: left; }
 .security-note { margin-top: 16px; text-align: left; line-height: 1.6; }
+.restore-action { margin-top: 20px; }
 </style>
