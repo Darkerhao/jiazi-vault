@@ -41,11 +41,11 @@ async function copySelected() {
   if (!item || copying.value) return
   copying.value = true
   try {
-    const full = await vault.get(item.id)
+    const full = await vault.get(item.id, false)
     if (!full || !auth.unlocked) return
     const secret = full.password || full.fields?.apiKey || full.fields?.privateKey
     if (!secret) { message.info('此凭证没有可快捷复制的密码，请打开后选择字段。'); return }
-    await copy(secret)
+    await copy(secret, item.id)
   } finally { copying.value = false }
 }
 

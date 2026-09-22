@@ -30,6 +30,7 @@ export const ENVIRONMENT_OPTIONS: { label: string; value: Environment }[] = [
 
 export interface FieldDef {
   key: string
+  fieldKey?: string
   label: string
   kind: 'text' | 'password' | 'textarea'
   target: 'username' | 'password' | 'url' | 'host' | 'port' | 'notes' | 'field'

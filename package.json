@@ -2,6 +2,7 @@
   "name": "jiazi-vault",
   "private": true,
   "version": "0.1.0",
+  "description": "Local encrypted credential vault for developers",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -9,6 +10,7 @@
     "electron:compile": "tsc -p tsconfig.electron.json",
     "electron:dev": "pnpm electron:compile && concurrently --kill-others-on-fail \"vite\" \"wait-on http://127.0.0.1:1420 && electron .\"",
     "electron:build": "pnpm build && electron-builder",
+    "electron:build:win": "pnpm build && electron-builder --win --x64 --config.electronDist=node_modules/electron/dist",
     "build": "pnpm typecheck && vite build && pnpm electron:compile",
     "typecheck": "vue-tsc --noEmit",
     "test": "pnpm electron:compile && node --test tests/*.test.mjs",
@@ -45,7 +47,12 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis"
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": false
     },
     "mac": {
       "target": "dmg"

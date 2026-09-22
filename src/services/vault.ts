@@ -8,7 +8,7 @@ export const vaultService = {
   lock: () => callCommand('lock_vault'),
   isUnlocked: () => callCommand('is_vault_unlocked'),
   listItems: (trashed = false) => callCommand('list_items', { trashed }),
-  getItem: (id: string) => callCommand('get_item', { id }),
+  getItem: (id: string, recordAccess = true) => callCommand('get_item', { id, recordAccess }),
   createItem: (item: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'>) => callCommand('create_item', { item }),
   updateItem: (item: VaultItem) => callCommand('update_item', { item }),
   deleteItem: (id: string, permanently = false) => callCommand('delete_item', { id, permanently }),

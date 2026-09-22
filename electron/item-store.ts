@@ -2,31 +2,8 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { decryptValue, encryptValue, type EncryptedValue } from './vault-crypto.js'
 
-export type ItemType = 'login' | 'password' | 'server' | 'database' | 'api-key' | 'ssh' | 'secure-note' | 'custom'
-export type Environment = 'development' | 'testing' | 'staging' | 'production' | 'other'
-
-export interface VaultItem {
-  id: string
-  type: ItemType
-  title: string
-  projectId?: string
-  environment?: Environment
-  username?: string
-  password?: string
-  url?: string
-  host?: string
-  port?: number
-  fields?: Record<string, string>
-  notes?: string
-  tags?: string[]
-  favorite: boolean
-  createdAt: number
-  updatedAt: number
-}
-
-export type VaultItemSummary = Omit<VaultItem, 'password' | 'fields' | 'notes'> & { hasSensitiveData?: boolean }
-
-export type ItemInput = Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'>
+import type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from './contracts.js'
+export type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from './contracts.js'
 
 interface ItemRow {
   id: string
@@ -44,12 +21,31 @@ interface ItemRow {
   favorite: number
   created_at: number
   updated_at: number
+  last_accessed_at: number | null
+  deleted_at: number | null
 }
 
 interface SecretPayload {
   password?: string
   notes?: string
   fields?: Record<string, string>
+}
+
+export function validateItemInput(value: unknown): asserts value is ItemInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_DATA')
+  const input = value as ItemInput
+  if (typeof input.title !== 'string' || !input.title.trim()
+    || !['login', 'password', 'server', 'database', 'api-key', 'ssh', 'secure-note', 'custom'].includes(input.type)
+    || (input.favorite !== undefined && typeof input.favorite !== 'boolean')
+    || ['projectId', 'username', 'password', 'url', 'host', 'notes'].some((field) => {
+      const entry = input[field as keyof ItemInput]
+      return entry !== undefined && typeof entry !== 'string'
+    })
+    || (input.environment !== undefined && !['development', 'testing', 'staging', 'production', 'other'].includes(input.environment))
+    || (input.port !== undefined && (!Number.isInteger(input.port) || input.port < 0 || input.port > 65535))
+    || (input.tags !== undefined && (!Array.isArray(input.tags) || input.tags.some((tag) => typeof tag !== 'string')))
+    || (input.fields !== undefined && (!input.fields || typeof input.fields !== 'object' || Array.isArray(input.fields)
+      || Object.values(input.fields).some((field) => typeof field !== 'string')))) throw new Error('INVALID_DATA')
 }
 
 function parseTags(raw: string): string[] | undefined {
@@ -63,7 +59,8 @@ function parseTags(raw: string): string[] | undefined {
 
 export interface ItemStore {
   create(input: ItemInput): VaultItemSummary
-  get(id: string): VaultItem | null
+  get(id: string, recordAccess?: boolean): VaultItem | null
+  markUsed(id: string): number | null
   list(trashed?: boolean): VaultItemSummary[]
   update(item: VaultItem): VaultItemSummary
   toggleFavorite(id: string): VaultItemSummary | null
@@ -84,7 +81,8 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
   const selectActive = db.prepare('SELECT * FROM items WHERE deleted_at IS NULL ORDER BY updated_at DESC')
   const selectTrashed = db.prepare('SELECT * FROM items WHERE deleted_at IS NOT NULL ORDER BY updated_at DESC')
   const toggleFavStmt = db.prepare('UPDATE items SET favorite = CASE favorite WHEN 1 THEN 0 ELSE 1 END, updated_at = ? WHERE id = ?')
-  const softDeleteStmt = db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?')
+  const softDeleteStmt = db.prepare('UPDATE items SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL')
+  const markUsedStmt = db.prepare('UPDATE items SET last_accessed_at = ? WHERE id = ? AND deleted_at IS NULL')
   const hardDeleteStmt = db.prepare('DELETE FROM items WHERE id = ?')
   const restoreStmt = db.prepare('UPDATE items SET deleted_at = NULL WHERE id = ?')
 
@@ -103,6 +101,8 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
       favorite: row.favorite === 1,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      lastAccessedAt: row.last_accessed_at ?? undefined,
+      deletedAt: row.deleted_at ?? undefined,
     }
   }
 
@@ -126,12 +126,17 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
   }
 
   function assertValid(input: ItemInput) {
-    if (!input.title?.trim() || !input.type) throw new Error('INVALID_DATA')
+    validateItemInput(input)
     if (input.projectId && !db.prepare('SELECT 1 FROM projects WHERE id = ?').get(input.projectId)) throw new Error('PROJECT_NOT_FOUND')
-    if (input.environment && !['development', 'testing', 'staging', 'production', 'other'].includes(input.environment)) throw new Error('INVALID_DATA')
+  }
+
+  function markUsed(id: string): number | null {
+    const now = Date.now()
+    return markUsedStmt.run(now, id).changes ? now : null
   }
 
   return {
+    markUsed,
     create(input) {
       assertValid(input)
       const id = randomUUID()
@@ -144,9 +149,12 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
       )
       return rowToSummary(selectById.get(id) as unknown as ItemRow)
     },
-    get(id) {
+    get(id, recordAccess = false) {
       const row = selectById.get(id) as unknown as ItemRow | undefined
-      return row ? rowToItem(row) : null
+      if (!row) return null
+      const item = rowToItem(row)
+      if (recordAccess) item.lastAccessedAt = markUsed(id) ?? item.lastAccessedAt
+      return item
     },
     list(trashed = false) {
       const rows = (trashed ? selectTrashed.all() : selectActive.all()) as unknown as ItemRow[]

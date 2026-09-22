@@ -31,7 +31,7 @@ export const useVaultStore = defineStore('vault', () => {
   const filteredItems = computed(() => {
     let list = items.value
     if (filter.value === 'favorites') list = list.filter((item) => item.favorite)
-    else if (filter.value === 'recent') list = [...list].sort((a, b) => b.updatedAt - a.updatedAt)
+    else if (filter.value === 'recent') list = list.filter((item) => item.lastAccessedAt !== undefined).sort((a, b) => b.lastAccessedAt! - a.lastAccessedAt!)
     else if (filter.value === 'trash') list = trashed.value
 
     const normalized = query.value.trim().toLowerCase()
@@ -61,11 +61,18 @@ export const useVaultStore = defineStore('vault', () => {
     }
   }
 
-  async function get(id: string): Promise<VaultItem | null> {
+  function applyUsage(id: string, lastAccessedAt: number) {
+    const item = items.value.find((entry) => entry.id === id)
+    if (item) item.lastAccessedAt = lastAccessedAt
+  }
+
+  async function get(id: string, recordAccess = true): Promise<VaultItem | null> {
     const requestRevision = revision
     try {
-      const item = await vaultService.getItem(id)
-      return requestRevision === revision ? item : null
+      const item = await vaultService.getItem(id, recordAccess)
+      if (requestRevision !== revision) return null
+      if (item?.lastAccessedAt !== undefined) applyUsage(id, item.lastAccessedAt)
+      return item
     } catch {
       return null
     }
@@ -124,5 +131,5 @@ export const useVaultStore = defineStore('vault', () => {
     }
   }
 
-  return { items, trashed, projects, error, query, filter, loading, filteredItems, clear, load, get, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
+  return { items, trashed, projects, error, query, filter, loading, filteredItems, clear, load, get, applyUsage, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
 })

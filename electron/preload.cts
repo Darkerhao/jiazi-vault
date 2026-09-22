@@ -24,12 +24,19 @@ const allowedCommands = new Set([
   'generate_password',
   'create_backup',
   'restore_backup',
+  'export_plaintext',
+  'import_plaintext',
   'get_settings',
   'update_settings',
   'copy_to_clipboard',
 ])
 
 contextBridge.exposeInMainWorld('jiaziVault', {
+  onItemsChanged(callback: () => void) {
+    const listener = () => callback()
+    ipcRenderer.on('items_changed', listener)
+    return () => ipcRenderer.removeListener('items_changed', listener)
+  },
   onDesktopAction(callback: (action: string) => void) {
     const listener = (_event: Electron.IpcRendererEvent, action: string) => callback(action)
     ipcRenderer.on('desktop_action', listener)

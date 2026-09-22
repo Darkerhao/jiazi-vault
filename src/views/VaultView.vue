@@ -132,6 +132,7 @@ async function restore(item: VaultItemSummary) {
     <section class="page-heading">
       <div><n-text depth="3">保险库</n-text><h1>{{ heading }}</h1></div>
     </section>
+    <n-alert v-if="vault.filter === 'trash'" type="info" class="retention-notice">凭证移入回收站满 30 天后自动永久删除，无法恢复。</n-alert>
 
     <div class="filters">
       <n-select :value="projectId ?? null" :options="vault.projects.map((p) => ({ label: p.name, value: p.id }))" clearable filterable placeholder="全部项目" @update:value="(value) => setFilter('project', value)" />
@@ -150,6 +151,8 @@ async function restore(item: VaultItemSummary) {
             <div class="item-main" @click="openEdit(item)">
               <div class="item-title"><n-text strong>{{ item.title }}</n-text></div>
               <div class="item-sub"><n-text depth="3">{{ subtitle(item) }}</n-text></div>
+              <div v-if="vault.filter === 'recent' && item.lastAccessedAt !== undefined" class="item-sub"><n-text depth="3">最近使用：{{ new Date(item.lastAccessedAt).toLocaleString() }}</n-text></div>
+              <div v-if="vault.filter === 'trash' && item.deletedAt !== undefined" class="item-sub"><n-text depth="3">自动删除：{{ new Date(item.deletedAt + 30 * 24 * 60 * 60 * 1000).toLocaleString() }}</n-text></div>
             </div>
             <div class="item-actions">
               <n-tag v-if="item.projectId" size="small">{{ vault.projects.find((p) => p.id === item.projectId)?.name }}</n-tag>
@@ -176,6 +179,7 @@ async function restore(item: VaultItemSummary) {
 <style scoped>
 .page-heading h1 { margin: 4px 0 24px; font-size: 26px; }
 .filters { display: flex; gap: 12px; max-width: 560px; margin-bottom: 20px; }
+.retention-notice { max-width: 860px; margin-bottom: 20px; }
 .item-list { max-width: 860px; }
 .item-row { display: flex; align-items: center; gap: 14px; width: 100%; }
 .item-main { flex: 1; cursor: pointer; min-width: 0; }

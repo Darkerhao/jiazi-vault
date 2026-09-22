@@ -1,5 +1,19 @@
 # Findings
 
+## 第三批功能审计
+
+- 实现中发现明文导入可携带当前表单模板未列出的字段，旧编辑器会丢字段并将 Custom 转为 login。按导入闭环补齐已有字段编辑与类型保留，不新增 Custom 创建入口。
+- 类型复用必须来自无运行时依赖的 contracts.ts；直接从 item-store 引用会把 Argon2 const enum 带入前端 isolatedModules 检查。
+- 已阅读 Electron v44.2.0 dialog 文档与 lib/browser/api/dialog.ts，明确配置 defaultId/cancelId=0；CSV 按 RFC 4180 处理引号、多行和 CRLF；公式起始符号采用可逆单引号转义。
+- 已查当前 electron-builder 26.15.3 nsisOptions.d.ts 与 https://www.electron.build/nsis.html，采用可选安装目录的当前用户 NSIS 引导安装，完成后不自动启动。
+- 文档来源：https://raw.githubusercontent.com/electron/electron/v44.2.0/docs/api/dialog.md ；https://raw.githubusercontent.com/electron/electron/v44.2.0/lib/browser/api/dialog.ts ；https://www.rfc-editor.org/rfc/rfc4180.txt 。web 工具代理 404，已通过 PowerShell 获取官方原文。
+
+- 本轮开始工作树干净，无磁盘 AGENTS.md；遵守本轮用户提供的 AGENTS 规则。
+- items 仅 created_at/updated_at/deleted_at；最近使用直接按 updatedAt 排序。打开编辑通过 get_item；快捷复制也先 get_item；需区分查看与为复制读取，复制成功再记使用。
+- 自动清理目前无调用；软删除重复执行会刷新 deleted_at，需保留首次删除时间。备份恢复必须清理已过期回收站，避免旧备份重新延长保留期。
+- 明文导入导出无入口；沿用备份的原生文件对话框与会话 revision 检查。数据校验/加密/导入事务留在主进程，UI 不接收导出明文。
+- 项目使用 Electron 44.2.0、Vue、Naive UI 和 Node SQLite；现有 build 为 electron-builder NSIS，之前停在解包复制阶段，尚无最终安装验证。
+
 ## 第二批功能审计
 
 - 本轮开始工作树含上一轮安全功能实现；保留并继续增量修改。

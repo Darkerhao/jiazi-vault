@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { NAlert, NButton, NCard, NForm, NFormItem, NSelect, NSpace, NText, useMessage } from 'naive-ui'
 import AppShell from '../components/common/AppShell.vue'
 import BackupRestore from '../components/common/BackupRestore.vue'
+import PlaintextTransfer from '../components/common/PlaintextTransfer.vue'
 import { useSettingsStore } from '../stores/settings'
 import { backupService } from '../services/backup'
 import { callCommand } from '../services/ipc'
@@ -60,6 +61,7 @@ async function createBackup() {
         <BackupRestore />
       </n-space>
     </n-card>
+    <PlaintextTransfer />
     <n-card title="快捷键与托盘" class="settings-card backup-card" bordered>
       <n-alert v-if="shortcut && !shortcut.shortcutRegistered" type="warning">{{ shortcut.shortcut }} 注册失败，可能已被其他应用占用。可使用托盘菜单或应用内 Ctrl K 打开搜索。</n-alert>
       <n-text v-else-if="shortcut">全局快捷搜索：{{ shortcut.shortcut }}</n-text>

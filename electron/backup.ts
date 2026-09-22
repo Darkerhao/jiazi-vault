@@ -2,15 +2,16 @@ import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 import { clearKey, decryptValue, encryptValue, isVaultMetadata, unlockVaultCredential, type EncryptedValue, type VaultMetadata } from './vault-crypto.js'
 import { readSettings, validateSettings, writeSettings, type AppSettings } from './settings.js'
 import { validateProject } from './project-store.js'
+import { purgeExpiredItems } from './database.js'
 
-const ITEM_COLUMNS = ['id', 'type', 'title', 'project_id', 'environment', 'username', 'url', 'host', 'port', 'tags', 'secret', 'has_secret', 'favorite', 'created_at', 'updated_at', 'deleted_at'] as const
+const ITEM_COLUMNS = ['id', 'type', 'title', 'project_id', 'environment', 'username', 'url', 'host', 'port', 'tags', 'secret', 'has_secret', 'favorite', 'created_at', 'updated_at', 'deleted_at', 'last_accessed_at'] as const
 type ItemRow = Record<typeof ITEM_COLUMNS[number], SQLInputValue>
 const PROJECT_COLUMNS = ['id', 'name', 'icon', 'color', 'description', 'last_accessed_at'] as const
 type ProjectRow = Record<typeof PROJECT_COLUMNS[number], SQLInputValue>
 
 interface BackupEnvelope {
   format: 'jiazi-vault'
-  version: 1 | 2
+  version: 1 | 2 | 3
   metadata: VaultMetadata
   payload: EncryptedValue
 }
@@ -29,15 +30,16 @@ export function createBackup(db: DatabaseSync, metadata: VaultMetadata, key: Buf
     settings: readSettings(db),
   }
   const envelope: BackupEnvelope = {
-    format: 'jiazi-vault', version: 2, metadata,
+    format: 'jiazi-vault', version: 3, metadata,
     payload: encryptValue(key, JSON.stringify(payload)),
   }
   return JSON.stringify(envelope)
 }
 
-function validateItem(value: unknown, key: Buffer): ItemRow {
+function validateItem(value: unknown, key: Buffer, version: number): ItemRow {
   if (!value || typeof value !== 'object') throw new Error('INVALID_BACKUP')
   const row = value as ItemRow
+  if (version < 3 && row.last_accessed_at === undefined) row.last_accessed_at = null
   const strings = ['id', 'type', 'title', 'tags', 'secret'] as const
   const nullableStrings = ['project_id', 'environment', 'username', 'url', 'host'] as const
   if (strings.some((field) => typeof row[field] !== 'string')
@@ -48,7 +50,8 @@ function validateItem(value: unknown, key: Buffer): ItemRow {
     || ![0, 1].includes(Number(row.favorite)) || ![0, 1].includes(Number(row.has_secret))
     || ['favorite', 'has_secret', 'created_at', 'updated_at'].some((field) => !Number.isSafeInteger(row[field as keyof ItemRow]))
     || (row.port !== null && (!Number.isSafeInteger(row.port) || Number(row.port) < 0 || Number(row.port) > 65535))
-    || (row.deleted_at !== null && !Number.isSafeInteger(row.deleted_at))) throw new Error('INVALID_BACKUP')
+    || (row.deleted_at !== null && !Number.isSafeInteger(row.deleted_at))
+    || (row.last_accessed_at !== null && (!Number.isSafeInteger(row.last_accessed_at) || Number(row.last_accessed_at) < 0))) throw new Error('INVALID_BACKUP')
 
   const tags: unknown = JSON.parse(String(row.tags))
   if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== 'string')) throw new Error('INVALID_BACKUP')
@@ -67,13 +70,13 @@ export async function readBackup(contents: string, password: string): Promise<Re
   let key: Buffer | null = null
   try {
     const envelope = JSON.parse(contents) as BackupEnvelope
-    if (envelope?.format !== 'jiazi-vault' || ![1, 2].includes(envelope.version) || !isVaultMetadata(envelope.metadata)) throw new Error('INVALID_BACKUP')
+    if (envelope?.format !== 'jiazi-vault' || ![1, 2, 3].includes(envelope.version) || !isVaultMetadata(envelope.metadata)) throw new Error('INVALID_BACKUP')
     key = await unlockVaultCredential(password, envelope.metadata)
     if (!key) throw new Error('BACKUP_PASSWORD_OR_DATA_INVALID')
     const payload = JSON.parse(decryptValue(key, envelope.payload)) as { items?: unknown; projects?: unknown; settings?: unknown }
     if (!payload || !Array.isArray(payload.items)) throw new Error('INVALID_BACKUP')
     if (envelope.version === 1 && payload.projects !== undefined) throw new Error('INVALID_BACKUP')
-    const items = payload.items.map((item) => validateItem(item, key!))
+    const items = payload.items.map((item) => validateItem(item, key!, envelope.version))
     if (new Set(items.map((item) => item.id)).size !== items.length) throw new Error('INVALID_BACKUP')
     // Version 1 predates projects and has no project table to restore.
     const projects = envelope.version === 1 ? [] : validateProjects(payload.projects)
@@ -115,6 +118,7 @@ export function restoreBackup(db: DatabaseSync, backup: RestoredBackup) {
     const insert = db.prepare(`INSERT INTO items (${ITEM_COLUMNS.join(', ')}) VALUES (${ITEM_COLUMNS.map(() => '?').join(', ')})`)
     for (const row of backup.items) insert.run(...ITEM_COLUMNS.map((field) => row[field]))
     writeSettings(db, backup.settings)
+    purgeExpiredItems(db)
     db.exec('COMMIT')
   } catch {
     db.exec('ROLLBACK')

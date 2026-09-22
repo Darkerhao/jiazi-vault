@@ -3,8 +3,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import { NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, useMessage } from 'naive-ui'
 import { useVaultStore } from '../../stores/vault'
 import { useClipboard } from '../../composables/useClipboard'
-import { ENVIRONMENT_OPTIONS, ITEM_TYPE_OPTIONS, TYPE_FIELDS, type FieldDef, type SupportedType } from '../../utils/item-fields'
-import type { Environment, VaultItem } from '../../types/vault'
+import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, ITEM_TYPE_OPTIONS, TYPE_FIELDS, type FieldDef, type SupportedType } from '../../utils/item-fields'
+import type { Environment, ItemInput, ItemType, VaultItem } from '../../types/vault'
 
 const props = defineProps<{ show: boolean; item: VaultItem | null; draft?: { type?: SupportedType; password?: string; projectId?: string; environment?: Environment } }>()
 const emit = defineEmits<{ (event: 'close'): void }>()
@@ -13,7 +13,7 @@ const vault = useVaultStore()
 const message = useMessage()
 const { copy } = useClipboard()
 
-const type = ref<SupportedType>('login')
+const type = ref<ItemType>('login')
 const title = ref('')
 const environment = ref<Environment | null>(null)
 const projectId = ref<string | null>(null)
@@ -23,7 +23,14 @@ const tags = ref('')
 const values = reactive<Record<string, string | null>>({})
 
 const isEdit = computed(() => props.item !== null)
-const fields = computed(() => TYPE_FIELDS[type.value])
+const typeOptions = computed(() => type.value === 'custom' ? [...ITEM_TYPE_OPTIONS, { label: ITEM_TYPE_LABELS.custom, value: 'custom' }] : ITEM_TYPE_OPTIONS)
+const fields = computed<FieldDef[]>(() => {
+  const standard = TYPE_FIELDS[type.value === 'custom' ? 'password' : type.value]
+  const known = new Set(standard.filter((field) => field.target === 'field').map((field) => field.key))
+  const imported = Object.keys(props.item?.fields ?? {}).filter((key) => !known.has(key))
+    .map((key): FieldDef => ({ key: `field:${key}`, fieldKey: key, label: key, kind: 'password', target: 'field' }))
+  return [...standard, ...imported]
+})
 
 watch(
   () => props.show,
@@ -31,7 +38,7 @@ watch(
     if (!show) return
     const item = props.item
     if (item) {
-      type.value = item.type === 'custom' ? 'login' : item.type
+      type.value = item.type
       title.value = item.title
       environment.value = item.environment ?? null
       projectId.value = item.projectId ?? null
@@ -51,12 +58,12 @@ watch(
 
 function resetValues(item: VaultItem | null) {
   for (const key of Object.keys(values)) delete values[key]
-  for (const field of TYPE_FIELDS[type.value]) values[field.key] = readField(item, field)
+  for (const field of fields.value) values[field.key] = readField(item, field)
 }
 
 function readField(item: VaultItem | null, field: FieldDef): string | null {
   if (!item) return null
-  if (field.target === 'field') return item.fields?.[field.key] ?? null
+  if (field.target === 'field') return item.fields?.[field.fieldKey ?? field.key] ?? null
   if (field.target === 'port') return item.port != null ? String(item.port) : null
   return item[field.target] ?? null
 }
@@ -66,22 +73,25 @@ function onTypeChange(value: unknown) {
   resetValues(null)
 }
 
-function buildItem(): Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'> {
-  const item: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'> = {
+function buildItem(): ItemInput {
+  const item: ItemInput = {
     type: type.value,
     title: title.value.trim(),
     favorite: props.item?.favorite ?? false,
+    username: props.item?.username, password: props.item?.password, url: props.item?.url,
+    host: props.item?.host, port: props.item?.port, notes: props.item?.notes,
   }
   if (environment.value) item.environment = environment.value
   if (projectId.value) item.projectId = projectId.value
   const parsedTags = Array.from(new Set(tags.value.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean)))
   if (parsedTags.length) item.tags = parsedTags
-  for (const field of TYPE_FIELDS[type.value]) {
+  for (const field of fields.value) {
+    if (field.target !== 'field') delete item[field.target]
     const value = values[field.key]
     if (!value) continue
     if (field.target === 'port') { item.port = Number(value); continue }
     if (field.target === 'notes') { item.notes = value; continue }
-    if (field.target === 'field') { item.fields ??= {}; item.fields[field.key] = value; continue }
+    if (field.target === 'field') { item.fields ??= Object.create(null) as Record<string, string>; item.fields[field.fieldKey ?? field.key] = value; continue }
     item[field.target] = value
   }
   return item
@@ -112,7 +122,7 @@ async function save() {
   >
     <n-form label-placement="left" label-width="96">
       <n-form-item label="类型">
-        <n-select :value="type" :options="ITEM_TYPE_OPTIONS" :disabled="isEdit" @update:value="onTypeChange" />
+        <n-select :value="type" :options="typeOptions" :disabled="isEdit" @update:value="onTypeChange" />
       </n-form-item>
       <n-form-item label="名称" required>
         <n-input v-model:value="title" placeholder="凭证名称" />
@@ -133,7 +143,7 @@ async function save() {
           :placeholder="field.label"
         >
           <template #suffix>
-            <n-button text size="tiny" @click="copy(String(values[field.key] ?? ''))">复制</n-button>
+            <n-button text size="tiny" @click="copy(String(values[field.key] ?? ''), item?.id)">复制</n-button>
           </template>
         </n-input>
         <n-input v-else v-model:value="values[field.key]" type="textarea" :autosize="{ minRows: 3 }" :placeholder="field.label" />

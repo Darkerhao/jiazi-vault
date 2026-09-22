@@ -7,6 +7,12 @@ export interface DatabaseState {
   path: string
 }
 
+export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+
+export function purgeExpiredItems(db: DatabaseSync, now = Date.now()): number {
+  return Number(db.prepare('DELETE FROM items WHERE deleted_at <= ?').run(now - TRASH_RETENTION_MS).changes)
+}
+
 export function openDatabase(userDataPath: string): DatabaseState {
   mkdirSync(userDataPath, { recursive: true })
   const path = join(userDataPath, 'vault.db')
@@ -54,6 +60,13 @@ export function openDatabase(userDataPath: string): DatabaseState {
       deleted_at INTEGER
     );
   `)
+
+  const columns = connection.prepare('PRAGMA table_info(items)').all()
+  if (!columns.some((column) => column.name === 'last_accessed_at')) {
+    connection.exec('ALTER TABLE items ADD COLUMN last_accessed_at INTEGER')
+  }
+  connection.exec('CREATE INDEX IF NOT EXISTS items_deleted_at ON items(deleted_at)')
+  purgeExpiredItems(connection)
 
   return { connection, path }
 }

@@ -1,8 +1,8 @@
-import { basename, join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { readFile, stat, writeFile, rename, rm } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, powerMonitor } from 'electron'
-import { openDatabase, type DatabaseState } from './database.js'
+import { openDatabase, purgeExpiredItems, type DatabaseState } from './database.js'
 import { createVaultCredential, isVaultMetadata, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
 import { createItemStore, type ItemInput, type VaultItem } from './item-store.js'
 import { readSettings, writeSettings, type AppSettings } from './settings.js'
@@ -13,6 +13,7 @@ import { UnlockLimiter } from './unlock-limiter.js'
 import { createProjectStore, type ProjectInput } from './project-store.js'
 import { generatePassword, type PasswordOptions } from './password-generator.js'
 import { createDesktopControls } from './desktop.js'
+import { assertTransferFormat, exportPlaintext, importPlaintext, readPlaintext, type TransferFormat } from './transfer.js'
 
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
@@ -22,6 +23,11 @@ let clipboardManager: ClipboardManager
 let backupBusy = false
 let unlockLimiter: UnlockLimiter
 let desktop: ReturnType<typeof createDesktopControls>
+let trashTimer: ReturnType<typeof setInterval> | undefined
+
+function cleanTrash() {
+  if (database && purgeExpiredItems(database.connection)) mainWindow?.webContents.send('items_changed')
+}
 
 function requireDatabase() {
   if (!database) throw new Error('DATABASE_ERROR')
@@ -112,11 +118,14 @@ function registerIpcHandlers() {
     clipboardManager.reschedule()
     return settings
   })
-  ipcMain.handle('copy_to_clipboard', (_event, args: { text: string }) => {
+  const itemStore = createItemStore(requireDatabase().connection, () => requireUnlocked())
+  ipcMain.handle('copy_to_clipboard', async (_event, args: { text: string; itemId?: string }) => {
     requireUnlocked()
     if (typeof args?.text !== 'string' || !args.text) throw new Error('INVALID_DATA')
     const revision = session.revision
-    return clipboardManager.copy(args.text, () => { assertRevision(revision); requireUnlocked() })
+    await clipboardManager.copy(args.text, () => { assertRevision(revision); requireUnlocked() })
+    assertRevision(revision)
+    return args.itemId ? itemStore.markUsed(args.itemId) : null
   })
   ipcMain.handle('generate_password', (_event, args: PasswordOptions) => {
     requireUnlocked()
@@ -147,15 +156,15 @@ function registerIpcHandlers() {
     )
     return { unlocked, retryAt: unlocked ? 0 : unlockLimiter.fail() }
   })
-  const itemStore = createItemStore(requireDatabase().connection, () => requireUnlocked())
-
   ipcMain.handle('list_items', (_event, args?: { trashed?: boolean }) => {
     requireUnlocked()
+    cleanTrash()
     return itemStore.list(args?.trashed ?? false)
   })
-  ipcMain.handle('get_item', (_event, args: { id: string }) => {
+  ipcMain.handle('get_item', (_event, args: { id: string; recordAccess?: boolean }) => {
     requireUnlocked()
-    return itemStore.get(args?.id)
+    cleanTrash()
+    return itemStore.get(args?.id, args?.recordAccess !== false)
   })
   ipcMain.handle('create_item', (_event, args: { item: ItemInput }) => {
     requireUnlocked()
@@ -175,6 +184,8 @@ function registerIpcHandlers() {
   })
   ipcMain.handle('restore_item', (_event, args: { id: string }) => {
     requireUnlocked()
+    cleanTrash()
+    if (!itemStore.get(args?.id)) throw new Error('ITEM_NOT_FOUND')
     itemStore.restore(args?.id)
   })
   const projects = createProjectStore(requireDatabase().connection)
@@ -199,6 +210,81 @@ function registerIpcHandlers() {
     return projects.visit(args?.id)
   })
   registerBackupHandlers()
+  registerTransferHandlers()
+}
+
+async function writeExport(path: string, contents: string, revision: number) {
+  const temporaryPath = `${path}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temporaryPath, contents, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
+    assertRevision(revision)
+    requireUnlocked()
+    await rename(temporaryPath, path)
+  } finally { await rm(temporaryPath, { force: true }).catch(() => {}) }
+}
+
+function registerTransferHandlers() {
+  ipcMain.handle('export_plaintext', async (_event, args: { format: TransferFormat }) => {
+    requireUnlocked()
+    assertTransferFormat(args?.format)
+    if (backupBusy || !mainWindow) throw new Error('VAULT_BUSY')
+    backupBusy = true
+    const revision = session.revision
+    try {
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: 'warning', title: '导出明文凭证', message: '即将以明文导出密码、私钥及其他敏感信息。',
+        detail: '任何获得此文件的人都可以读取其中的凭证。仅导出有效凭证，不包含回收站。请妥善保管并在使用后删除明文文件。',
+        buttons: ['取消', '确认导出明文'], defaultId: 0, cancelId: 0, noLink: true,
+      })
+      if (confirmation.response !== 1) return null
+      assertRevision(revision)
+      requireUnlocked()
+      const format = args.format
+      const choice = await dialog.showSaveDialog(mainWindow, {
+        title: `导出 ${format.toUpperCase()}`,
+        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+        defaultPath: `jiazi-vault-${new Date().toISOString().slice(0, 10)}.${format}`,
+      })
+      if (choice.canceled || !choice.filePath) return null
+      assertRevision(revision)
+      const contents = exportPlaintext(requireDatabase().connection, requireUnlocked(), format)
+      const path = choice.filePath.toLowerCase().endsWith(`.${format}`) ? choice.filePath : `${choice.filePath}.${format}`
+      await writeExport(path, contents, revision)
+      return basename(path)
+    } catch { throw new Error('EXPORT_FAILED') }
+    finally { backupBusy = false }
+  })
+  ipcMain.handle('import_plaintext', async () => {
+    requireUnlocked()
+    if (backupBusy || !mainWindow) throw new Error('VAULT_BUSY')
+    backupBusy = true
+    const revision = session.revision
+    try {
+      const choice = await dialog.showOpenDialog(mainWindow, {
+        title: '导入 JSON / CSV', filters: [{ name: '凭证文件', extensions: ['json', 'csv'] }], properties: ['openFile'],
+      })
+      if (choice.canceled || !choice.filePaths[0]) return null
+      assertRevision(revision)
+      const path = choice.filePaths[0]
+      const format = extname(path).slice(1).toLowerCase()
+      assertTransferFormat(format)
+      if ((await stat(path)).size > 64 * 1024 * 1024) throw new Error('INVALID_IMPORT')
+      const contents = await readFile(path, 'utf8')
+      assertRevision(revision)
+      requireUnlocked()
+      const items = readPlaintext(contents, format)
+      if (!items.length) return 0
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: 'question', title: '追加导入凭证', message: `将新增 ${items.length} 条凭证。`,
+        detail: '现有凭证不会被覆盖；重复导入会生成新条目。项目按名称关联，不存在的项目会自动创建。',
+        buttons: ['取消', '确认导入'], defaultId: 0, cancelId: 0, noLink: true,
+      })
+      if (confirmation.response !== 1) return null
+      assertRevision(revision)
+      return importPlaintext(requireDatabase().connection, requireUnlocked(), items)
+    } catch { throw new Error('IMPORT_FAILED') }
+    finally { backupBusy = false }
+  })
 }
 
 function registerBackupHandlers() {
@@ -208,7 +294,6 @@ function registerBackupHandlers() {
     if (backupBusy || !mainWindow) throw new Error('VAULT_BUSY')
     backupBusy = true
     const revision = session.revision
-    let temporaryPath: string | undefined
     try {
       const choice = await dialog.showSaveDialog(mainWindow, {
         title: '保存加密备份', filters,
@@ -218,14 +303,11 @@ function registerBackupHandlers() {
       assertRevision(revision)
       const contents = createBackup(requireDatabase().connection, readVaultMetadata()!, requireUnlocked())
       const path = choice.filePath.toLowerCase().endsWith('.jvault') ? choice.filePath : `${choice.filePath}.jvault`
-      temporaryPath = `${path}.${randomUUID()}.tmp`
-      await writeFile(temporaryPath, contents, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
-      await rename(temporaryPath, path)
+      await writeExport(path, contents, revision)
       return basename(path)
     } catch {
       throw new Error('BACKUP_WRITE_FAILED')
     } finally {
-      if (temporaryPath) await rm(temporaryPath, { force: true }).catch(() => {})
       backupBusy = false
     }
   })
@@ -275,7 +357,9 @@ else app.whenReady().then(() => {
   })
   powerMonitor.on('lock-screen', () => session.lock())
   powerMonitor.on('suspend', () => session.lock())
-  powerMonitor.on('resume', () => session.checkExpiry())
+  powerMonitor.on('resume', () => { session.checkExpiry(); cleanTrash() })
+  trashTimer = setInterval(cleanTrash, 60_000)
+  trashTimer.unref()
   registerIpcHandlers()
   createWindow()
   desktop = createDesktopControls(() => mainWindow ?? createWindow(), () => session.lock())
@@ -295,6 +379,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   if (quitting) return
   quitting = true
+  clearInterval(trashTimer)
   session.dispose()
   void clipboardManager.clearOnLock().catch(() => {}).finally(() => {
     desktop?.dispose()

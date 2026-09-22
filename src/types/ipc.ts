@@ -2,6 +2,7 @@ import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault
 import type { AppSettings } from '../../electron/settings'
 import type { GeneratedPassword, PasswordOptions } from '../../electron/password-generator'
 import type { DesktopAction } from '../../electron/desktop'
+import type { TransferFormat } from '../../electron/contracts'
 
 export type VaultError =
   | 'INVALID_PASSWORD'
@@ -39,7 +40,7 @@ export interface IpcCommands {
   update_item: { args: { item: VaultItem }; result: VaultItemSummary }
   delete_item: { args: { id: string; permanently?: boolean }; result: void }
   restore_item: { args: { id: string }; result: void }
-  get_item: { args: { id: string }; result: VaultItem }
+  get_item: { args: { id: string; recordAccess?: boolean }; result: VaultItem | null }
   list_items: { args: { trashed?: boolean }; result: VaultItemSummary[] }
   toggle_favorite: { args: { id: string }; result: VaultItemSummary }
   create_project: { args: { project: ProjectInput }; result: Project }
@@ -50,12 +51,15 @@ export interface IpcCommands {
   generate_password: { args: PasswordOptions; result: GeneratedPassword }
   get_settings: { args: undefined; result: AppSettings }
   update_settings: { args: { settings: AppSettings }; result: AppSettings }
-  copy_to_clipboard: { args: { text: string }; result: void }
+  copy_to_clipboard: { args: { text: string; itemId?: string }; result: number | null }
   create_backup: { args: undefined; result: string | null }
   restore_backup: { args: { password: string }; result: boolean }
+  export_plaintext: { args: { format: TransferFormat }; result: string | null }
+  import_plaintext: { args: undefined; result: number | null }
 }
 
 export interface DesktopBridge {
+  onItemsChanged(callback: () => void): () => void
   onDesktopAction(callback: (action: DesktopAction) => void): () => void
   onLocked(callback: () => void): () => void
   invoke<K extends keyof IpcCommands>(
