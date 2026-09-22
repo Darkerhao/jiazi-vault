@@ -127,6 +127,8 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
 
   function assertValid(input: ItemInput) {
     if (!input.title?.trim() || !input.type) throw new Error('INVALID_DATA')
+    if (input.projectId && !db.prepare('SELECT 1 FROM projects WHERE id = ?').get(input.projectId)) throw new Error('PROJECT_NOT_FOUND')
+    if (input.environment && !['development', 'testing', 'staging', 'production', 'other'].includes(input.environment)) throw new Error('INVALID_DATA')
   }
 
   return {

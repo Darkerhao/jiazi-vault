@@ -2,9 +2,29 @@
 
 ## 目标
 
-基于 `Jiazi Vault.md` 实现本地离线优先的开发者凭证保险库。当前按用户最新优先级完成自动锁定、剪贴板清理、设置持久化与加密备份恢复。
+基于 `Jiazi Vault.md` 实现本地离线优先的开发者凭证保险库。当前按用户最新优先级完成解锁失败限速、项目管理、完整密码生成器、快捷搜索与托盘。
 
-## 2026-09-22 当前任务
+## 本轮任务：第二批功能
+
+- [complete] 解锁失败限速：主进程校验、持久化失败次数和截止时间；5 次失败冷却 30 秒，后续翻倍至 15 分钟，成功清零；UI 倒计时。
+- [complete] 项目管理：名称/图标/颜色/描述 CRUD、数量/最近访问、凭证归属与环境筛选、删除解除归属；备份包含项目并读取既有备份。
+- [complete] 完整密码生成器：主进程安全随机、8–128 位、字符开关/排除易混淆、覆盖所有已选字符类型、实际生成规则熵估算、复制/保存。
+- [complete] 快捷搜索与托盘：全局 Ctrl+Shift+P、键盘选择/复制/打开、锁定时先解锁、关闭隐藏且锁定、托盘打开/搜索/生成/锁定/退出。
+- [complete] 最终验证：18 项测试、生产构建和 10 项 Electron 桌面流程通过，包含凭证编辑切换修复。
+
+边界：沿用当前 Electron/Vue/Naive UI 与上一轮未提交改动，不新增依赖，不提交或暂存。项目删除保留凭证并解除项目归属；快捷搜索复用主窗口内弹层，避免第二套敏感数据生命周期。
+
+### 本轮验收
+
+- `pnpm build`：Vue TypeScript、Vite 生产构建、Electron TypeScript 全部通过。
+- `pnpm test`：18/18 通过，包含原有安全功能回归、限速持久化、项目 CRUD/删除回滚、项目备份往返/旧版恢复/拒绝降级篡改、生成字符类型覆盖和熵值。
+- 实际 Electron 44.2.0 Windows 生产页面：10/10 桌面流程通过，无 renderer error。报告：`output/playwright/batch2-smoke-report.json`；复测脚本：`output/playwright/batch2-smoke.mjs`。
+- 实测 30 秒解锁冷却与应用重启持久化，确认冷却期不能通过直接 IPC 解锁；复制与保存使用真实主进程和 SQLite。
+- 全局快捷键实际注册成功；托盘菜单与快捷键行为通过真实 Electron 回调调用验证，未发送操作系统物理快捷键，也未实测快捷键冲突分支。
+- 使用独立测试数据库，退出后恢复原剪贴板文本。未运行跨平台安装器构建；项目无 ESLint 配置。
+- `git diff --check` 通过；本轮无新增依赖、暂存或提交操作。
+
+## 2026-09-22 上一轮已完成任务
 
 - [complete] 阅读实际调用链、规格与 Electron 44.2.0 API/source。
 - [complete] 主进程实现持久化设置、统一锁定生命周期、剪贴板清理与备份恢复。
@@ -17,20 +37,20 @@
 - 剪贴板由主进程串行处理，默认 15 秒清理；只清理仍为本应用最后复制的内容，锁定/退出也触发清理。
 - 设置存入现有 SQLite settings 表；成功落盘后更新 UI，重启恢复。
 - .jvault 使用现有 Argon2id/AES-256-GCM，完整加密条目与设置；备份包含回收站。恢复先校验再事务替换，覆盖已有库需明确确认，成功后锁定。
-- 不扩展项目管理、托盘、全局快捷键或明文导入导出；不暂存或提交。
+- 上一轮未扩展项目管理、托盘、全局快捷键或明文导入导出；本轮按新请求实现前三项。
 
 ## 阶段
 
 - [complete] Phase 1 技术栈迁移：Electron + Vue 3 + TypeScript + Vite + Naive UI + Pinia + Router + Node SQLite + 安全 preload IPC
 - [complete] Phase 2：Vault 创建、Argon2id、AES-256-GCM、SQLite 加密校验存储、解锁/锁定
 - [complete] Phase 3：Item CRUD、收藏、搜索、七类凭证
-- [pending] Phase 4：Project 与 Environment
-- [pending] Phase 5：密码生成器与强度估算
-- [partial] Phase 6：剪贴板清理、自动锁定已完成；快捷键、托盘待实现
+- [complete] Phase 4：Project 与 Environment
+- [complete] Phase 5：密码生成器与强度估算
+- [complete] Phase 6：剪贴板清理、自动锁定、快捷搜索、快捷键与托盘
 - [partial] Phase 7：加密备份、恢复已完成；其他导入导出待实现
-- [pending] Phase 8：单元/集成/E2E/安全/性能测试与跨平台构建检查
+- [partial] Phase 8：当前功能安全/数据测试与 Windows Electron 桌面验证完成；性能测试和跨平台安装器检查待实现
 
-## 当前验收
+## 上一轮验收
 
 - `pnpm build`：Vue TypeScript、Vite 生产构建、Electron TypeScript 均通过。
 - `pnpm test`：12 项 Node 测试通过，覆盖设置跨连接持久化、自动锁定/密钥清零/异步认证失效、剪贴板竞态、加密备份往返、损坏拒绝、事务回滚。

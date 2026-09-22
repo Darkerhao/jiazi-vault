@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { NAlert, NButton, NCard, NForm, NFormItem, NSelect, NSpace, NText, useMessage } from 'naive-ui'
 import AppShell from '../components/common/AppShell.vue'
 import BackupRestore from '../components/common/BackupRestore.vue'
 import { useSettingsStore } from '../stores/settings'
 import { backupService } from '../services/backup'
+import { callCommand } from '../services/ipc'
 import type { AppSettings } from '../../electron/settings'
 
 const settings = useSettingsStore()
 const message = useMessage()
 const backingUp = ref(false)
+const shortcut = ref<{ shortcut: string; shortcutRegistered: boolean } | null>(null)
+onMounted(async () => { shortcut.value = await callCommand('get_desktop_status') })
 const themeOptions = [
   { label: '跟随系统', value: 'system' },
   { label: '浅色', value: 'light' },
@@ -51,11 +54,17 @@ async function createBackup() {
       <n-text depth="3">设置自动保存。无操作或切换应用后按所选时间锁定；系统锁屏、休眠时立即锁定。锁定和退出时也会清理本应用复制的内容。</n-text>
     </n-card>
     <n-card title="加密备份与恢复" class="settings-card backup-card" bordered>
-      <n-text depth="3">备份包含全部凭证、回收站和设置，使用当前主密码加密。恢复时需要备份创建时的主密码。</n-text>
+      <n-text depth="3">备份包含全部凭证、项目、回收站和设置，使用当前主密码加密。恢复时需要备份创建时的主密码。</n-text>
       <n-space class="backup-actions">
         <n-button type="primary" :loading="backingUp" @click="createBackup">创建加密备份</n-button>
         <BackupRestore />
       </n-space>
+    </n-card>
+    <n-card title="快捷键与托盘" class="settings-card backup-card" bordered>
+      <n-alert v-if="shortcut && !shortcut.shortcutRegistered" type="warning">{{ shortcut.shortcut }} 注册失败，可能已被其他应用占用。可使用托盘菜单或应用内 Ctrl K 打开搜索。</n-alert>
+      <n-text v-else-if="shortcut">全局快捷搜索：{{ shortcut.shortcut }}</n-text>
+      <p>应用内：Ctrl K 搜索 · Ctrl N 新建凭证 · Ctrl Shift N 新建项目 · Ctrl G 生成密码 · Ctrl Shift L 锁定（macOS 使用 ⌘）。</p>
+      <n-text depth="3">关闭窗口会锁定并留在系统托盘。双击托盘图标可重新打开；使用托盘菜单“退出”结束应用。</n-text>
     </n-card>
   </AppShell>
 </template>

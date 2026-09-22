@@ -1,13 +1,17 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { vaultService } from '../services/vault'
-import type { VaultItem, VaultItemSummary } from '../types/vault'
+import { projectService } from '../services/project'
+import { matchesItem } from '../utils/search'
+import type { Project, VaultItem, VaultItemSummary } from '../types/vault'
 
 export type VaultFilter = 'all' | 'favorites' | 'recent' | 'trash'
 
 export const useVaultStore = defineStore('vault', () => {
   const items = ref<VaultItemSummary[]>([])
   const trashed = ref<VaultItemSummary[]>([])
+  const projects = ref<Project[]>([])
+  const error = ref('')
   const query = ref('')
   const filter = ref<VaultFilter>('all')
   const loading = ref(false)
@@ -17,6 +21,8 @@ export const useVaultStore = defineStore('vault', () => {
     revision++
     items.value = []
     trashed.value = []
+    projects.value = []
+    error.value = ''
     query.value = ''
     filter.value = 'all'
     loading.value = false
@@ -30,21 +36,25 @@ export const useVaultStore = defineStore('vault', () => {
 
     const normalized = query.value.trim().toLowerCase()
     if (!normalized) return list
-    return list.filter((item) => [item.title, item.username, item.url, item.host, item.environment, item.type, item.tags?.join(' ')].some((value) => value?.toLowerCase().includes(normalized)))
+    return list.filter((item) => matchesItem(item, normalized, projects.value))
   })
 
   async function load() {
     const requestRevision = revision
     loading.value = true
+    error.value = ''
     try {
-      const [active, deleted] = await Promise.all([vaultService.listItems(false), vaultService.listItems(true)])
+      const [active, deleted, groups] = await Promise.all([vaultService.listItems(false), vaultService.listItems(true), projectService.list()])
       if (requestRevision !== revision) return
       items.value = active
       trashed.value = deleted
+      projects.value = groups
     } catch {
       if (requestRevision === revision) {
         items.value = []
         trashed.value = []
+        projects.value = []
+        error.value = '加载失败，请重试。'
       }
     } finally {
       if (requestRevision === revision) loading.value = false
@@ -114,5 +124,5 @@ export const useVaultStore = defineStore('vault', () => {
     }
   }
 
-  return { items, trashed, query, filter, loading, filteredItems, clear, load, get, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
+  return { items, trashed, projects, error, query, filter, loading, filteredItems, clear, load, get, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
 })

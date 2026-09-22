@@ -10,6 +10,7 @@ import { readSettings, writeSettings } from '../dist-electron/settings.js'
 import { createBackup, readBackup, restoreBackup } from '../dist-electron/backup.js'
 import { VaultSession } from '../dist-electron/vault-session.js'
 import { ClipboardManager } from '../dist-electron/clipboard-manager.js'
+import { createProjectStore } from '../dist-electron/project-store.js'
 
 const password = 'fixture-master-password'
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve() }
@@ -184,14 +185,17 @@ test('encrypted backup restores secrets, metadata, favorites, trash and settings
   t.after(() => clearKey(credential.masterKey))
   source.connection.prepare('INSERT INTO vault_metadata VALUES (?, ?)').run('vault', JSON.stringify(credential.metadata))
   const sourceItems = createItemStore(source.connection, () => credential.masterKey)
-  const item = sourceItems.create({ type: 'login', title: 'private-test-title', username: 'test-user', password: 'private-test-secret', notes: 'private-test-note', fields: { token: 'private-test-token' }, tags: ['tag'], favorite: true })
+  const projects = createProjectStore(source.connection)
+  const project = projects.create({ name: 'private-project', icon: '📁', color: '#8ab4f8', description: 'project-description' })
+  projects.visit(project.id)
+  const item = sourceItems.create({ type: 'login', title: 'private-test-title', projectId: project.id, environment: 'production', username: 'test-user', password: 'private-test-secret', notes: 'private-test-note', fields: { token: 'private-test-token' }, tags: ['tag'], favorite: true })
   const trash = sourceItems.create({ type: 'ssh', title: 'trash-item', fields: { privateKey: 'private-ssh-key' }, favorite: false })
   sourceItems.remove(trash.id)
   const settings = { themeMode: 'light', clipboardClearTimeout: 10, autoLockMinutes: 30 }
   writeSettings(source.connection, settings)
   const contents = createBackup(source.connection, credential.metadata, credential.masterKey)
   assert.notEqual(contents, createBackup(source.connection, credential.metadata, credential.masterKey))
-  for (const secret of ['private-test-title', 'test-user', 'private-test-secret', 'private-test-note', 'private-test-token', 'private-ssh-key', password]) {
+  for (const secret of ['private-project', 'project-description', 'private-test-title', 'test-user', 'private-test-secret', 'private-test-note', 'private-test-token', 'private-ssh-key', password]) {
     assert.equal(contents.includes(secret), false)
   }
   assert.equal(readFileSync(source.path).includes(Buffer.from('private-test-secret')), false)
@@ -210,6 +214,7 @@ test('encrypted backup restores secrets, metadata, favorites, trash and settings
   assert.deepEqual(restored.list(), sourceItems.list())
   assert.deepEqual(restored.list(true), sourceItems.list(true))
   assert.deepEqual(readSettings(destination.connection), settings)
+  assert.deepEqual(createProjectStore(destination.connection).list(), projects.list())
 })
 
 test('wrong password, tampering, unsupported versions and invalid payloads leave the current database intact', async (t) => {
@@ -224,6 +229,7 @@ test('wrong password, tampering, unsupported versions and invalid payloads leave
   await assert.rejects(restore(backup, 'wrong-password'), /BACKUP_PASSWORD_OR_DATA_INVALID/)
   for (const mutate of [
     (v) => { v.version = 99 },
+    (v) => { v.version = 1 },
     (v) => { v.metadata.kdf.memoryCost = 2 ** 32 },
     (v) => { v.payload.ciphertext = 'AAAA' },
     (v) => { v.payload.authTag = 'AA==' },

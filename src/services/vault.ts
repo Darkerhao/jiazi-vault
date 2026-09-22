@@ -1,5 +1,4 @@
 import { callCommand } from './ipc'
-import type { SearchItemsRequest } from '../types/ipc'
 import type { VaultItem, VaultItemSummary } from '../types/vault'
 
 export const vaultService = {
@@ -9,7 +8,6 @@ export const vaultService = {
   lock: () => callCommand('lock_vault'),
   isUnlocked: () => callCommand('is_vault_unlocked'),
   listItems: (trashed = false) => callCommand('list_items', { trashed }),
-  searchItems: (request: SearchItemsRequest) => callCommand('search_items', request),
   getItem: (id: string) => callCommand('get_item', { id }),
   createItem: (item: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'>) => callCommand('create_item', { item }),
   updateItem: (item: VaultItem) => callCommand('update_item', { item }),

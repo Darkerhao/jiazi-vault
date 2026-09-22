@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NAlert, NButton, NCard, NForm, NFormItem, NInput, NLayout, NSpin, NText } from 'naive-ui'
 import { useAuthStore } from '../stores/auth'
@@ -11,9 +11,14 @@ const password = ref('')
 const confirmation = ref('')
 const localError = ref<string | null>(null)
 const isCreating = computed(() => auth.hasVault === false)
+const now = ref(Date.now())
+const remaining = computed(() => Math.max(0, Math.ceil((auth.retryAt - now.value) / 1000)))
+const clock = setInterval(() => { now.value = Date.now() }, 250)
+onMounted(() => auth.checkStatus())
+onUnmounted(() => clearInterval(clock))
 
 async function submit() {
-  if (auth.busy) return
+  if (auth.busy || remaining.value) return
   auth.notice = null
   localError.value = null
   if (isCreating.value) {
@@ -55,8 +60,9 @@ async function submit() {
         <n-form-item v-if="isCreating" :show-label="false">
           <n-input v-model:value="confirmation" type="password" show-password-on="click" placeholder="确认主密码" />
         </n-form-item>
-        <n-button type="primary" block :loading="auth.busy" attr-type="submit">{{ isCreating ? '创建保险库' : '解锁' }}</n-button>
+        <n-button type="primary" block :loading="auth.busy" :disabled="remaining > 0" attr-type="submit">{{ remaining ? `${remaining} 秒后重试` : isCreating ? '创建保险库' : '解锁' }}</n-button>
       </n-form>
+      <n-alert v-if="remaining" type="warning" :show-icon="false" class="unlock-error" role="status">尝试次数过多，请在 {{ remaining }} 秒后重试。</n-alert>
       <n-alert v-if="localError || auth.error" type="error" :show-icon="false" class="unlock-error">{{ localError || auth.error }}</n-alert>
       <n-alert v-if="auth.notice" type="success" :show-icon="false" class="unlock-error">{{ auth.notice }}</n-alert>
       <n-alert v-if="isCreating" type="warning" :show-icon="false" class="security-note">主密码无法找回。忘记主密码后，保险库将无法解锁。</n-alert>

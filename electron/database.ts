@@ -14,6 +14,11 @@ export function openDatabase(userDataPath: string): DatabaseState {
 
   connection.exec(`
     PRAGMA foreign_keys = ON;
+    CREATE TABLE IF NOT EXISTS unlock_attempts (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      failures INTEGER NOT NULL,
+      retry_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS vault_metadata (
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
@@ -21,6 +26,14 @@ export function openDatabase(userDataPath: string): DatabaseState {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      icon TEXT,
+      color TEXT,
+      description TEXT,
+      last_accessed_at INTEGER
     );
     CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY NOT NULL,

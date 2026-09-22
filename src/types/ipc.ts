@@ -1,5 +1,7 @@
-import type { Environment, ItemType, Project, VaultItem, VaultItemSummary } from './vault'
+import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
 import type { AppSettings } from '../../electron/settings'
+import type { GeneratedPassword, PasswordOptions } from '../../electron/password-generator'
+import type { DesktopAction } from '../../electron/desktop'
 
 export type VaultError =
   | 'INVALID_PASSWORD'
@@ -15,22 +17,18 @@ export type VaultError =
 
 export interface UnlockResult {
   unlocked: boolean
+  retryAt: number
 }
 
 export interface VaultStatus {
   exists: boolean
   unlocked: boolean
-}
-
-export interface SearchItemsRequest {
-  query: string
-  type?: ItemType
-  environment?: Environment
-  projectId?: string
+  retryAt: number
 }
 
 export interface IpcCommands {
   health_check: { args: undefined; result: string }
+  get_desktop_status: { args: undefined; result: { shortcut: string; shortcutRegistered: boolean } }
   database_info: { args: undefined; result: { initialized: boolean; path: string } }
   get_vault_status: { args: undefined; result: VaultStatus }
   create_vault: { args: { password: string }; result: void }
@@ -43,15 +41,13 @@ export interface IpcCommands {
   restore_item: { args: { id: string }; result: void }
   get_item: { args: { id: string }; result: VaultItem }
   list_items: { args: { trashed?: boolean }; result: VaultItemSummary[] }
-  search_items: { args: SearchItemsRequest; result: VaultItemSummary[] }
   toggle_favorite: { args: { id: string }; result: VaultItemSummary }
-  create_project: { args: { project: Omit<Project, 'id' | 'itemCount'> }; result: Project }
-  update_project: { args: { project: Project }; result: Project }
+  create_project: { args: { project: ProjectInput }; result: Project }
+  update_project: { args: { project: ProjectInput & { id: string } }; result: Project }
+  visit_project: { args: { id: string }; result: Project }
   delete_project: { args: { id: string }; result: void }
   list_projects: { args: undefined; result: Project[] }
-  generate_password: { args: { length: number; uppercase: boolean; lowercase: boolean; numbers: boolean; symbols: boolean; excludeAmbiguous: boolean }; result: string }
-  export_vault: { args: { format: 'jvault' | 'json' | 'csv' }; result: string }
-  import_vault: { args: { path: string }; result: void }
+  generate_password: { args: PasswordOptions; result: GeneratedPassword }
   get_settings: { args: undefined; result: AppSettings }
   update_settings: { args: { settings: AppSettings }; result: AppSettings }
   copy_to_clipboard: { args: { text: string }; result: void }
@@ -60,6 +56,7 @@ export interface IpcCommands {
 }
 
 export interface DesktopBridge {
+  onDesktopAction(callback: (action: DesktopAction) => void): () => void
   onLocked(callback: () => void): () => void
   invoke<K extends keyof IpcCommands>(
     command: K,

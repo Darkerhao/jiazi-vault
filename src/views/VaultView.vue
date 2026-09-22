@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NEmpty, NIcon, NList, NListItem, NSpin, NTag, NText, useDialog, useMessage } from 'naive-ui'
+import { NAlert, NButton, NEmpty, NIcon, NList, NListItem, NSelect, NSpin, NTag, NText, useDialog, useMessage } from 'naive-ui'
 import { KeyOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
 import AppShell from '../components/common/AppShell.vue'
 import ItemFormModal from '../components/item/ItemFormModal.vue'
 import { useVaultStore } from '../stores/vault'
-import { ITEM_TYPE_LABELS } from '../utils/item-fields'
-import type { VaultItem, VaultItemSummary } from '../types/vault'
+import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS } from '../utils/item-fields'
+import { projectService } from '../services/project'
+import type { Environment, VaultItem, VaultItemSummary } from '../types/vault'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,8 +18,22 @@ const message = useMessage()
 
 const modalShow = ref(false)
 const editing = ref<VaultItem | null>(null)
+const projectId = computed(() => typeof route.query.project === 'string' ? route.query.project : undefined)
+const environment = computed(() => ENVIRONMENT_OPTIONS.some((o) => o.value === route.query.environment) ? route.query.environment as Environment : undefined)
+const currentProject = computed(() => vault.projects.find((p) => p.id === projectId.value))
+const displayedItems = computed(() => vault.filteredItems.filter((item) => (!projectId.value || item.projectId === projectId.value) && (!environment.value || item.environment === environment.value)))
+
+function setFilter(key: 'project' | 'environment', value: string | null) {
+  void router.push({ name: 'vault', query: { ...route.query, [key]: value || undefined } })
+}
+watch(projectId, async (id) => {
+  if (!id) return
+  try { await projectService.visit(id) }
+  catch { message.error('项目不存在或无法访问') }
+}, { immediate: true })
 
 const heading = computed(() => {
+  if (currentProject.value) return currentProject.value.name
   switch (vault.filter) {
     case 'favorites': return '收藏夹'
     case 'recent': return '最近使用'
@@ -55,7 +70,18 @@ watch(
   { immediate: true },
 )
 
+watch(() => route.query.item, async (id) => {
+  if (typeof id !== 'string') return
+  const full = await vault.get(id)
+  if (full) { editing.value = full; modalShow.value = true }
+  else message.error('无法打开凭证')
+  const query = { ...route.query }
+  delete query.item
+  void router.replace({ name: 'vault', query })
+}, { immediate: true })
 onMounted(() => vault.load())
+
+function closeEditor() { modalShow.value = false; editing.value = null }
 
 function subtitle(item: VaultItemSummary) {
   return item.username || item.url || item.host || ITEM_TYPE_LABELS[item.type]
@@ -107,19 +133,26 @@ async function restore(item: VaultItemSummary) {
       <div><n-text depth="3">保险库</n-text><h1>{{ heading }}</h1></div>
     </section>
 
+    <div class="filters">
+      <n-select :value="projectId ?? null" :options="vault.projects.map((p) => ({ label: p.name, value: p.id }))" clearable filterable placeholder="全部项目" @update:value="(value) => setFilter('project', value)" />
+      <n-select :value="environment ?? null" :options="ENVIRONMENT_OPTIONS" clearable placeholder="全部环境" @update:value="(value) => setFilter('environment', value)" />
+    </div>
+    <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text @click="vault.load">重试</n-button></n-alert>
+
     <n-spin :show="vault.loading">
-      <n-empty v-if="!vault.loading && vault.filteredItems.length === 0" :description="emptyDescription" class="empty">
+      <n-empty v-if="!vault.loading && displayedItems.length === 0" :description="vault.query || projectId || environment ? '没有匹配的凭证' : emptyDescription" class="empty">
         <template #icon><n-icon><key-outline /></n-icon></template>
       </n-empty>
 
       <n-list v-else bordered class="item-list">
-        <n-list-item v-for="item in vault.filteredItems" :key="item.id">
+        <n-list-item v-for="item in displayedItems" :key="item.id">
           <div class="item-row">
             <div class="item-main" @click="openEdit(item)">
               <div class="item-title"><n-text strong>{{ item.title }}</n-text></div>
               <div class="item-sub"><n-text depth="3">{{ subtitle(item) }}</n-text></div>
             </div>
             <div class="item-actions">
+              <n-tag v-if="item.projectId" size="small">{{ vault.projects.find((p) => p.id === item.projectId)?.name }}</n-tag>
               <n-tag v-if="item.environment" size="small" :type="item.environment === 'production' ? 'error' : 'default'">{{ item.environment }}</n-tag>
               <n-tag size="small" :bordered="false">{{ ITEM_TYPE_LABELS[item.type] }}</n-tag>
               <template v-if="vault.filter === 'trash'">
@@ -136,12 +169,13 @@ async function restore(item: VaultItemSummary) {
       </n-list>
     </n-spin>
 
-    <ItemFormModal :show="modalShow" :item="editing" @close="modalShow = false" />
+    <ItemFormModal v-if="modalShow" :key="editing?.id ?? 'new'" :show="modalShow" :item="editing" :draft="{ projectId, environment }" @close="closeEditor" />
   </AppShell>
 </template>
 
 <style scoped>
 .page-heading h1 { margin: 4px 0 24px; font-size: 26px; }
+.filters { display: flex; gap: 12px; max-width: 560px; margin-bottom: 20px; }
 .item-list { max-width: 860px; }
 .item-row { display: flex; align-items: center; gap: 14px; width: 100%; }
 .item-main { flex: 1; cursor: pointer; min-width: 0; }

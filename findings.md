@@ -1,5 +1,21 @@
 # Findings
 
+## 第二批功能审计
+
+- 本轮开始工作树含上一轮安全功能实现；保留并继续增量修改。
+- 项目目前只有类型和 service 声明，list_projects 返回空数组，数据库无 projects 表；items 已有 project_id/environment。
+- 生成器在 Vue 使用随机数取模，长度范围不一致，强度仅按选项长度推断，缺少复制/保存/熵值与易混淆开关。
+- VaultSession 已拒绝并发认证，可接入持久化限速而无需增加认证队列；限速状态不进入可恢复的备份设置。
+- 规格要求项目包含最近访问、图标与颜色；快捷搜索需键盘操作，关闭窗口应进入托盘。采用主窗口弹层复用认证与剪贴板生命周期。
+- 已核对 Electron v44.2.0 global-shortcut/tray 官方文档、global shortcut C++ 实现和本地 electron.d.ts；注册失败返回 false，需显示可见提示。官方源：https://github.com/electron/electron/tree/v44.2.0/docs/api 。
+- 已核对 Node randomInt 官方实现的拒绝采样逻辑；生成器采用 randomInt 加全串拒绝采样，确保全部选中字符集出现且有效密码等概率，熵用包含排除公式计算。
+- 本地 Naive UI 2.45.3 Modal.mjs 和类型确认默认关闭销毁、Esc、焦点锁；通过条件挂载销毁凭证表单与快捷搜索。
+- 凭证编辑原先用旧对象合并稀疏 input，清空字段后旧值会复活。改为新 input 加必要元数据，项目/环境/敏感字段可正确清空。
+- Naive UI 当前版本文档已确认：https://github.com/tusen-ai/naive-ui/blob/v2.45.3/src/modal/demos/enUS/index.demo-entry.md ，与本地实现核对 auto-focus、close-on-esc、display-directive 默认值。
+- 快捷搜索从已有编辑弹窗打开另一条凭证时，show 不变化，旧表单内容可能继续保留。VaultView 按凭证 ID 为 ItemFormModal 设置 key，实际桌面复测确认切换到正确密码。
+- 清理未实现且无调用方的 search_items/export_vault/import_vault IPC 占位。搜索只保留共享 metadata 匹配函数，避免两个实现入口。
+- 桌面验证使用独立测试库与真实 Electron API。全局快捷键实际注册成功；托盘点击和快捷键触发使用捕获的真实回调，未发送系统物理快捷键。剪贴板在测试结束恢复原文本。
+
 ## 2026-09-22 当前代码与决策
 
 - 工作树干净。settings 表已存在但无读写接口；设置 Store 仅内存状态；useClipboard 直接使用 navigator.clipboard；备份只有 IPC 声明。

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { darkTheme, dateZhCN, GlobalThemeOverrides, NConfigProvider, NDialogProvider, NMessageProvider, zhCN } from 'naive-ui'
 import { useSettingsStore } from './stores/settings'
 import { useAuthStore } from './stores/auth'
+import DesktopActions from './components/common/DesktopActions.vue'
 
 const settings = useSettingsStore()
 const auth = useAuthStore()
@@ -22,6 +23,7 @@ const themeOverrides: GlobalThemeOverrides = {
   <n-config-provider :theme="theme" :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
     <n-dialog-provider :key="auth.sessionRevision">
       <n-message-provider>
+        <DesktopActions />
         <router-view v-slot="{ Component, route }">
           <component :is="Component" v-if="auth.unlocked || route.name === 'unlock'" />
         </router-view>

@@ -9,6 +9,7 @@ export const useAuthStore = defineStore('auth', () => {
   const error = ref<string | null>(null)
   const notice = ref<string | null>(null)
   const sessionRevision = ref(0)
+  const retryAt = ref(0)
 
   function markLocked() {
     sessionRevision.value++
@@ -25,6 +26,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (revision !== sessionRevision.value) return
       unlocked.value = status.unlocked
       hasVault.value = status.exists
+      retryAt.value = status.retryAt
     } catch {
       error.value = '无法连接桌面服务，请重新启动应用。'
     }
@@ -60,6 +62,7 @@ export const useAuthStore = defineStore('auth', () => {
       const result = await vaultService.unlock(password)
       if (revision !== sessionRevision.value) return false
       unlocked.value = result.unlocked
+      retryAt.value = result.retryAt
       if (!result.unlocked) error.value = '无法解锁保险库，请检查主密码。'
       hasVault.value = true
       return result.unlocked
@@ -78,5 +81,5 @@ export const useAuthStore = defineStore('auth', () => {
     if (unlocked.value) markLocked()
   }
 
-  return { unlocked, hasVault, busy, error, notice, sessionRevision, isReady, checkStatus, create, unlock, lock, markLocked }
+  return { unlocked, hasVault, busy, error, notice, sessionRevision, retryAt, isReady, checkStatus, create, unlock, lock, markLocked }
 })

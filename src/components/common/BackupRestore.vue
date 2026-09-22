@@ -47,7 +47,7 @@ onBeforeUnmount(() => { password.value = '' })
 <template>
   <n-button :disabled="auth.busy" @click="show = true">从加密备份恢复</n-button>
   <n-modal :show="show" preset="card" title="恢复加密备份" style="width: 440px" :closable="!busy" :mask-closable="!busy" :close-on-esc="!busy" @update:show="(value) => !value && close()">
-    <n-alert type="warning" :show-icon="false" style="margin-bottom: 20px">恢复将整体替换当前凭证、回收站和设置。请先备份当前保险库。</n-alert>
+    <n-alert type="warning" :show-icon="false" style="margin-bottom: 20px">恢复将整体替换当前凭证、项目、回收站和设置。请先备份当前保险库。</n-alert>
     <n-form @submit.prevent="restore">
       <n-form-item label="备份主密码">
         <n-input v-model:value="password" type="password" placeholder="备份创建时使用的主密码" :disabled="busy" autofocus />

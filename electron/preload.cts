@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 const allowedCommands = new Set([
   'health_check',
+  'get_desktop_status',
   'database_info',
   'get_vault_status',
   'create_vault',
@@ -14,15 +15,13 @@ const allowedCommands = new Set([
   'restore_item',
   'get_item',
   'list_items',
-  'search_items',
   'toggle_favorite',
   'create_project',
   'update_project',
   'delete_project',
   'list_projects',
+  'visit_project',
   'generate_password',
-  'export_vault',
-  'import_vault',
   'create_backup',
   'restore_backup',
   'get_settings',
@@ -31,6 +30,11 @@ const allowedCommands = new Set([
 ])
 
 contextBridge.exposeInMainWorld('jiaziVault', {
+  onDesktopAction(callback: (action: string) => void) {
+    const listener = (_event: Electron.IpcRendererEvent, action: string) => callback(action)
+    ipcRenderer.on('desktop_action', listener)
+    return () => ipcRenderer.removeListener('desktop_action', listener)
+  },
   onLocked(callback: () => void) {
     const listener = () => callback()
     ipcRenderer.on('vault_locked', listener)

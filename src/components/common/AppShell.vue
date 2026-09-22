@@ -5,11 +5,13 @@ import { NButton, NIcon, NInput, NLayout, NLayoutHeader, NLayoutSider, NMenu, NT
 import { ArchiveOutline, FolderOpenOutline, KeyOutline, LockClosedOutline, SettingsOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
 import { useAuthStore } from '../../stores/auth'
 import { useVaultStore } from '../../stores/vault'
+import { useDesktopStore } from '../../stores/desktop'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const vault = useVaultStore()
+const desktop = useDesktopStore()
 
 const menuOptions = [
   { label: () => h(RouterLink, { to: '/vault' }, { default: () => '全部条目' }), key: '/vault', icon: () => h(NIcon, null, { default: () => h(ArchiveOutline) }) },
@@ -42,6 +44,7 @@ function newItem() {
         <n-input v-model:value="vault.query" clearable placeholder="搜索凭证…" class="search-input">
           <template #prefix><n-icon><key-outline /></n-icon></template>
         </n-input>
+        <n-button quaternary @click="desktop.request('quick-search')">快捷搜索 <span class="shortcut">Ctrl K</span></n-button>
         <n-button type="primary" @click="newItem"><template #icon><n-icon><add-outline /></n-icon></template>新建</n-button>
       </n-layout-header>
       <div class="page-content"><slot /></div>
@@ -56,5 +59,6 @@ function newItem() {
 .sider-footer { position: absolute; bottom: 14px; left: 12px; right: 12px; }
 .topbar { display: flex; align-items: center; gap: 14px; padding: 0 24px; height: 64px; }
 .search-input { max-width: 560px; flex: 1; }
+.shortcut { margin-left: 8px; font-size: 11px; opacity: .65; }
 .page-content { padding: 28px 32px; max-width: 1200px; }
 </style>

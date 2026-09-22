@@ -9,6 +9,10 @@ import { readSettings, writeSettings, type AppSettings } from './settings.js'
 import { VaultSession } from './vault-session.js'
 import { ClipboardManager } from './clipboard-manager.js'
 import { createBackup, readBackup, restoreBackup } from './backup.js'
+import { UnlockLimiter } from './unlock-limiter.js'
+import { createProjectStore, type ProjectInput } from './project-store.js'
+import { generatePassword, type PasswordOptions } from './password-generator.js'
+import { createDesktopControls } from './desktop.js'
 
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
@@ -16,6 +20,8 @@ let settings: AppSettings
 let session: VaultSession
 let clipboardManager: ClipboardManager
 let backupBusy = false
+let unlockLimiter: UnlockLimiter
+let desktop: ReturnType<typeof createDesktopControls>
 
 function requireDatabase() {
   if (!database) throw new Error('DATABASE_ERROR')
@@ -73,7 +79,10 @@ function createWindow() {
   mainWindow.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) session.lock()
   })
-  mainWindow.on('close', () => session.lock())
+  mainWindow.on('close', (event) => {
+    session.lock()
+    if (!quitting) { event.preventDefault(); mainWindow?.hide() }
+  })
   mainWindow.on('closed', () => { mainWindow = null })
 
   if (app.isPackaged) {
@@ -81,16 +90,18 @@ function createWindow() {
   } else {
     void mainWindow.loadURL('http://127.0.0.1:1420')
   }
+  return mainWindow
 }
 
 function registerIpcHandlers() {
   ipcMain.handle('health_check', () => 'ok')
+  ipcMain.handle('get_desktop_status', () => desktop.status)
   ipcMain.handle('database_info', () => {
     const currentDatabase = requireDatabase()
     currentDatabase.connection.prepare('SELECT 1').get()
     return { initialized: true, path: currentDatabase.path }
   })
-  ipcMain.handle('get_vault_status', () => ({ exists: hasVault(), unlocked: session.unlocked }))
+  ipcMain.handle('get_vault_status', () => ({ exists: hasVault(), unlocked: session.unlocked, retryAt: unlockLimiter.retryAt }))
   ipcMain.handle('is_vault_unlocked', () => session.unlocked)
   ipcMain.handle('lock_vault', () => session.lock())
   ipcMain.handle('get_settings', () => settings)
@@ -107,6 +118,10 @@ function registerIpcHandlers() {
     const revision = session.revision
     return clipboardManager.copy(args.text, () => { assertRevision(revision); requireUnlocked() })
   })
+  ipcMain.handle('generate_password', (_event, args: PasswordOptions) => {
+    requireUnlocked()
+    return generatePassword(args)
+  })
   ipcMain.handle('create_vault', async (_event, args: { password: string }) => {
     if (backupBusy) throw new Error('VAULT_BUSY')
     assertPassword(args?.password)
@@ -122,10 +137,15 @@ function registerIpcHandlers() {
   })
   ipcMain.handle('unlock_vault', async (_event, args: { password: string }) => {
     if (backupBusy) throw new Error('VAULT_BUSY')
-    assertPassword(args?.password)
+    if (unlockLimiter.retryAt) return { unlocked: false, retryAt: unlockLimiter.retryAt }
+    if (typeof args?.password !== 'string') throw new Error('INVALID_DATA')
     const metadata = readVaultMetadata()
     if (!metadata) throw new Error('VAULT_NOT_FOUND')
-    return { unlocked: await session.authenticate(() => unlockVaultCredential(args.password, metadata)) }
+    const unlocked = await session.authenticate(
+      () => args.password.length < 8 ? Promise.resolve(null) : unlockVaultCredential(args.password, metadata),
+      () => unlockLimiter.reset(),
+    )
+    return { unlocked, retryAt: unlocked ? 0 : unlockLimiter.fail() }
   })
   const itemStore = createItemStore(requireDatabase().connection, () => requireUnlocked())
 
@@ -157,9 +177,26 @@ function registerIpcHandlers() {
     requireUnlocked()
     itemStore.restore(args?.id)
   })
+  const projects = createProjectStore(requireDatabase().connection)
   ipcMain.handle('list_projects', () => {
     requireUnlocked()
-    return []
+    return projects.list()
+  })
+  ipcMain.handle('create_project', (_event, args: { project: ProjectInput }) => {
+    requireUnlocked()
+    return projects.create(args?.project)
+  })
+  ipcMain.handle('update_project', (_event, args: { project: ProjectInput & { id: string } }) => {
+    requireUnlocked()
+    return projects.update(args?.project)
+  })
+  ipcMain.handle('delete_project', (_event, args: { id: string }) => {
+    requireUnlocked()
+    projects.remove(args?.id)
+  })
+  ipcMain.handle('visit_project', (_event, args: { id: string }) => {
+    requireUnlocked()
+    return projects.visit(args?.id)
   })
   registerBackupHandlers()
 }
@@ -207,7 +244,7 @@ function registerBackupHandlers() {
       if (hasVault()) {
         const confirmation = await dialog.showMessageBox(mainWindow, {
           type: 'warning', title: '替换当前保险库',
-          message: '恢复将替换当前全部凭证、回收站和设置。',
+          message: '恢复将替换当前全部凭证、项目、回收站和设置。',
           detail: '此操作无法撤销。请确认已保存当前保险库的备份。恢复后使用备份的主密码解锁。',
           buttons: ['取消', '替换并恢复'], defaultId: 0, cancelId: 0, noLink: true,
         })
@@ -215,6 +252,7 @@ function registerBackupHandlers() {
       }
       assertRevision(revision)
       restoreBackup(requireDatabase().connection, backup)
+      unlockLimiter.reset()
       settings = backup.settings
       session.lock()
       return true
@@ -224,8 +262,11 @@ function registerBackupHandlers() {
   })
 }
 
-app.whenReady().then(() => {
+const primaryInstance = app.requestSingleInstanceLock()
+if (!primaryInstance) app.quit()
+else app.whenReady().then(() => {
   database = openDatabase(app.getPath('userData'))
+  unlockLimiter = new UnlockLimiter(database.connection)
   settings = readSettings(database.connection)
   clipboardManager = new ClipboardManager(clipboard, () => settings.clipboardClearTimeout)
   session = new VaultSession(() => settings.autoLockMinutes, () => {
@@ -237,15 +278,15 @@ app.whenReady().then(() => {
   powerMonitor.on('resume', () => session.checkExpiry())
   registerIpcHandlers()
   createWindow()
+  desktop = createDesktopControls(() => mainWindow ?? createWindow(), () => session.lock())
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    desktop.show()
   })
 })
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+app.on('second-instance', () => { void app.whenReady().then(() => desktop.show()) })
+app.on('window-all-closed', () => { /* The tray owns the application lifetime. */ })
 
 let quitReady = false
 let quitting = false
@@ -256,6 +297,7 @@ app.on('before-quit', (event) => {
   quitting = true
   session.dispose()
   void clipboardManager.clearOnLock().catch(() => {}).finally(() => {
+    desktop?.dispose()
     database?.connection.close()
     database = null
     quitReady = true

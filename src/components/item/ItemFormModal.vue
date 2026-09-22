@@ -6,7 +6,7 @@ import { useClipboard } from '../../composables/useClipboard'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_OPTIONS, TYPE_FIELDS, type FieldDef, type SupportedType } from '../../utils/item-fields'
 import type { Environment, VaultItem } from '../../types/vault'
 
-const props = defineProps<{ show: boolean; item: VaultItem | null }>()
+const props = defineProps<{ show: boolean; item: VaultItem | null; draft?: { type?: SupportedType; password?: string; projectId?: string; environment?: Environment } }>()
 const emit = defineEmits<{ (event: 'close'): void }>()
 
 const vault = useVaultStore()
@@ -16,6 +16,9 @@ const { copy } = useClipboard()
 const type = ref<SupportedType>('login')
 const title = ref('')
 const environment = ref<Environment | null>(null)
+const projectId = ref<string | null>(null)
+const saving = ref(false)
+const projectOptions = computed(() => vault.projects.map((p) => ({ label: p.name, value: p.id })))
 const tags = ref('')
 const values = reactive<Record<string, string | null>>({})
 
@@ -31,15 +34,19 @@ watch(
       type.value = item.type === 'custom' ? 'login' : item.type
       title.value = item.title
       environment.value = item.environment ?? null
+      projectId.value = item.projectId ?? null
       tags.value = item.tags?.join(', ') ?? ''
     } else {
-      type.value = 'login'
+      type.value = props.draft?.type ?? 'login'
       title.value = ''
-      environment.value = null
+      environment.value = props.draft?.environment ?? null
+      projectId.value = props.draft?.projectId ?? null
       tags.value = ''
     }
     resetValues(item)
+    if (!item && props.draft?.password) values.password = props.draft.password
   },
+  { immediate: true },
 )
 
 function resetValues(item: VaultItem | null) {
@@ -66,6 +73,7 @@ function buildItem(): Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'> {
     favorite: props.item?.favorite ?? false,
   }
   if (environment.value) item.environment = environment.value
+  if (projectId.value) item.projectId = projectId.value
   const parsedTags = Array.from(new Set(tags.value.split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean)))
   if (parsedTags.length) item.tags = parsedTags
   for (const field of TYPE_FIELDS[type.value]) {
@@ -80,9 +88,11 @@ function buildItem(): Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'> {
 }
 
 async function save() {
-  if (!title.value.trim()) return
+  if (!title.value.trim() || saving.value) return
+  saving.value = true
   const input = buildItem()
-  const ok = props.item ? await vault.updateItem({ ...props.item, ...input }) : await vault.createItem(input)
+  const ok = props.item ? await vault.updateItem({ ...input, id: props.item.id, createdAt: props.item.createdAt, updatedAt: props.item.updatedAt }) : await vault.createItem(input)
+  saving.value = false
   if (!ok) {
     message.error('保存失败，请重试')
     return
@@ -104,8 +114,11 @@ async function save() {
       <n-form-item label="类型">
         <n-select :value="type" :options="ITEM_TYPE_OPTIONS" :disabled="isEdit" @update:value="onTypeChange" />
       </n-form-item>
-      <n-form-item label="名称">
+      <n-form-item label="名称" required>
         <n-input v-model:value="title" placeholder="凭证名称" />
+      </n-form-item>
+      <n-form-item label="项目">
+        <n-select v-model:value="projectId" :options="projectOptions" clearable filterable placeholder="选择项目（可选）" />
       </n-form-item>
       <n-form-item label="环境">
         <n-select v-model:value="environment" :options="ENVIRONMENT_OPTIONS" clearable placeholder="选择环境" />
@@ -132,7 +145,7 @@ async function save() {
     <template #footer>
       <n-space justify="end">
         <n-button @click="emit('close')">取消</n-button>
-        <n-button type="primary" :disabled="!title.trim()" @click="save">保存</n-button>
+        <n-button type="primary" :loading="saving" :disabled="!title.trim()" @click="save">保存</n-button>
       </n-space>
     </template>
   </n-modal>

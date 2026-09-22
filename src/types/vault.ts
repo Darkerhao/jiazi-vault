@@ -33,12 +33,4 @@ export interface VaultItemSummary extends Omit<VaultItem, 'password' | 'fields' 
   hasSensitiveData?: boolean
 }
 
-export interface Project {
-  id: string
-  name: string
-  icon?: string
-  color?: string
-  description?: string
-  itemCount: number
-  lastAccessedAt?: number
-}
+export type { Project, ProjectInput } from '../../electron/project-store'
