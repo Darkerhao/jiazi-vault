@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NAlert, NButton, NEmpty, NInput, NModal, NSpin, NText, useMessage, type InputInst } from 'naive-ui'
+import { NAlert, NButton, NEmpty, NIcon, NInput, NModal, NSpin, NText, useMessage, type InputInst } from 'naive-ui'
 import { useVaultStore } from '../../stores/vault'
 import { useAuthStore } from '../../stores/auth'
 import { useClipboard } from '../../composables/useClipboard'
-import { matchesItem } from '../../utils/search'
 import { ITEM_TYPE_LABELS } from '../../utils/item-fields'
+import { ITEM_TYPE_ICONS } from '../../utils/item-icons'
 import type { VaultItemSummary } from '../../types/vault'
 
 const emit = defineEmits<{ (event: 'close'): void }>()
@@ -20,7 +20,7 @@ const selected = ref(0)
 const input = ref<InputInst | null>(null)
 const resultsElement = ref<HTMLElement | null>(null)
 const copying = ref(false)
-const results = computed(() => vault.items.filter((item) => matchesItem(item, query.value, vault.projects)).slice(0, 50))
+const results = computed(() => vault.search(vault.items, query.value, 50))
 const active = computed(() => results.value[selected.value])
 
 watch(results, () => { selected.value = 0 })
@@ -58,7 +58,7 @@ function keydown(event: KeyboardEvent) {
 }
 
 function subtitle(item: VaultItemSummary) {
-  return [vault.projects.find((p) => p.id === item.projectId)?.name, item.environment, item.username || item.host || item.url || ITEM_TYPE_LABELS[item.type]].filter(Boolean).join(' / ')
+  return [vault.projects.find((p) => p.id === item.projectId)?.name, item.environment, item.username || item.host || item.url].filter(Boolean).join(' / ')
 }
 </script>
 
@@ -70,7 +70,9 @@ function subtitle(item: VaultItemSummary) {
       <n-spin :show="vault.loading">
         <div id="quick-search-results" ref="resultsElement" class="results" role="listbox" aria-label="搜索结果">
           <div v-for="(item, index) in results" :id="`quick-result-${item.id}`" :key="item.id" role="option" :aria-selected="selected === index" class="result" @mousemove="selected = index" @click="open(item)">
-            <n-text strong>{{ item.title }}</n-text><n-text depth="3" class="subtitle">{{ subtitle(item) }}</n-text>
+            <n-icon :size="24" aria-hidden="true"><component :is="ITEM_TYPE_ICONS[item.type]" /></n-icon>
+            <div class="result-content"><n-text strong>{{ item.title }}</n-text><n-text depth="3" class="subtitle">{{ subtitle(item) }}</n-text></div>
+            <n-text depth="3" class="result-type">{{ ITEM_TYPE_LABELS[item.type] }}</n-text>
           </div>
           <n-empty v-if="!vault.loading && !results.length" class="search-state" description="没有匹配的凭证" />
         </div>
@@ -82,7 +84,9 @@ function subtitle(item: VaultItemSummary) {
 
 <style scoped>
 .results { max-height: 360px; min-height: 100px; overflow-y: auto; margin: 12px 0; }
-.result { padding: 12px; border-radius: 6px; cursor: pointer; }
+.result { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 6px; cursor: pointer; }
+.result-content { flex: 1; min-width: 0; }
+.result-type { flex-shrink: 0; font-size: 12px; }
 .result[aria-selected=true] { background: rgba(138, 180, 248, .16); }
 .subtitle { display: block; margin-top: 4px; font-size: 12px; overflow-wrap: anywhere; }
 .search-state { margin: 20px 0; }

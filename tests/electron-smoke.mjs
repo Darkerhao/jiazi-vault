@@ -146,6 +146,7 @@ try {
   await call('import_plaintext')
   await section('全部条目')
   await page.getByText('Imported Custom', { exact: true }).click()
+  await page.getByRole('button', { name: '显示token', exact: true }).click()
   await page.getByPlaceholder('token', { exact: true }).fill('updated-token')
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await page.getByPlaceholder('凭证名称').waitFor({ state: 'hidden' })

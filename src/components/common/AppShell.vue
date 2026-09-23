@@ -1,20 +1,36 @@
 <script setup lang="ts">
-import { h } from 'vue'
+import { computed, h } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { NButton, NIcon, NInput, NLayout, NLayoutHeader, NLayoutSider, NMenu, NText } from 'naive-ui'
-import { ArchiveOutline, FolderOpenOutline, KeyOutline, LockClosedOutline, SettingsOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
+import { ArchiveOutline, FolderOpenOutline, GridOutline, KeyOutline, LockClosedOutline, SettingsOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
 import { useAuthStore } from '../../stores/auth'
 import { useVaultStore } from '../../stores/vault'
 import { useDesktopStore } from '../../stores/desktop'
+import { ITEM_TYPE_OPTIONS } from '../../utils/item-fields'
+import { ITEM_TYPE_ICONS } from '../../utils/item-icons'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const vault = useVaultStore()
 const desktop = useDesktopStore()
+const selectedMenu = computed(() => {
+  if (route.name !== 'vault') return route.path
+  const filter = route.query.filter
+  if (!['categories', 'favorites', 'recent', 'trash'].includes(String(filter))) return '/vault'
+  const base = `/vault?filter=${filter}`
+  return filter === 'categories' && ITEM_TYPE_OPTIONS.some((option) => option.value === route.query.type) ? `${base}&type=${route.query.type}` : base
+})
 
 const menuOptions = [
   { label: () => h(RouterLink, { to: '/vault' }, { default: () => '全部条目' }), key: '/vault', icon: () => h(NIcon, null, { default: () => h(ArchiveOutline) }) },
+  {
+    label: () => h(RouterLink, { to: '/vault?filter=categories' }, { default: () => '分类' }), key: '/vault?filter=categories', icon: () => h(NIcon, null, { default: () => h(GridOutline) }),
+    children: ITEM_TYPE_OPTIONS.map(({ label, value }) => ({
+      label: () => h(RouterLink, { to: `/vault?filter=categories&type=${value}` }, { default: () => label }),
+      key: `/vault?filter=categories&type=${value}`, icon: () => h(NIcon, null, { default: () => h(ITEM_TYPE_ICONS[value]) }),
+    })),
+  },
   { label: () => h(RouterLink, { to: '/vault?filter=favorites' }, { default: () => '收藏夹' }), key: '/vault?filter=favorites', icon: () => h(NIcon, null, { default: () => h(StarOutline) }) },
   { label: () => h(RouterLink, { to: '/vault?filter=recent' }, { default: () => '最近使用' }), key: '/vault?filter=recent', icon: () => h(NIcon, null, { default: () => h(TimeOutline) }) },
   { label: () => h(RouterLink, { to: '/vault?filter=trash' }, { default: () => '回收站' }), key: '/vault?filter=trash', icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) },
@@ -34,9 +50,9 @@ function newItem() {
 
 <template>
   <n-layout class="app-shell" has-sider>
-    <n-layout-sider bordered :width="240" :collapsed-width="64" show-trigger collapse-mode="width">
+    <n-layout-sider bordered :width="240" :collapsed-width="64" show-trigger collapse-mode="width" content-style="display: flex; flex-direction: column; min-height: 100%">
       <div class="brand"><div class="brand-mark">J</div><n-text strong>Jiazi Vault</n-text></div>
-      <n-menu :value="route.fullPath" :options="menuOptions" />
+      <n-menu :value="selectedMenu" :options="menuOptions" />
       <div class="sider-footer"><n-button quaternary block @click="lock"><template #icon><n-icon><lock-closed-outline /></n-icon></template>锁定保险库</n-button></div>
     </n-layout-sider>
     <n-layout>
@@ -56,7 +72,7 @@ function newItem() {
 .app-shell { height: 100vh; }
 .brand { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 20px; font-size: 16px; }
 .brand-mark { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; background: #8ab4f8; color: #172033; font-weight: 800; }
-.sider-footer { position: absolute; bottom: 14px; left: 12px; right: 12px; }
+.sider-footer { margin-top: auto; padding: 14px 12px; }
 .topbar { display: flex; align-items: center; gap: 14px; padding: 0 24px; height: 64px; }
 .search-input { max-width: 560px; flex: 1; }
 .shortcut { margin-left: 8px; font-size: 11px; opacity: .65; }

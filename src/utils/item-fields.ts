@@ -11,11 +11,7 @@ export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   custom: '自定义',
 }
 
-export type SupportedType = Exclude<ItemType, 'custom'>
-
-const SUPPORTED_TYPES: SupportedType[] = ['login', 'password', 'server', 'database', 'api-key', 'ssh', 'secure-note']
-
-export const ITEM_TYPE_OPTIONS: { label: string; value: SupportedType }[] = SUPPORTED_TYPES.map((type) => ({
+export const ITEM_TYPE_OPTIONS = (Object.keys(ITEM_TYPE_LABELS) as ItemType[]).map((type) => ({
   label: ITEM_TYPE_LABELS[type],
   value: type,
 }))
@@ -30,13 +26,12 @@ export const ENVIRONMENT_OPTIONS: { label: string; value: Environment }[] = [
 
 export interface FieldDef {
   key: string
-  fieldKey?: string
   label: string
   kind: 'text' | 'password' | 'textarea'
   target: 'username' | 'password' | 'url' | 'host' | 'port' | 'notes' | 'field'
 }
 
-export const TYPE_FIELDS: Record<SupportedType, FieldDef[]> = {
+export const TYPE_FIELDS: Record<ItemType, FieldDef[]> = {
   login: [
     { key: 'username', label: '用户名', kind: 'text', target: 'username' },
     { key: 'password', label: '密码', kind: 'password', target: 'password' },
@@ -86,4 +81,5 @@ export const TYPE_FIELDS: Record<SupportedType, FieldDef[]> = {
   'secure-note': [
     { key: 'content', label: '内容', kind: 'textarea', target: 'notes' },
   ],
+  custom: [],
 }

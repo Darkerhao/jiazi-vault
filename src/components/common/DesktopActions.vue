@@ -19,7 +19,7 @@ watch([() => auth.unlocked, () => route.name, () => desktop.pendingAction], () =
   if (action === 'quick-search') { desktop.quickSearchOpen = true; return }
   desktop.quickSearchOpen = false
   if (action === 'generator') void router.push('/generator')
-  else if (action === 'new-item') void router.push({ name: 'vault', query: { project: route.query.project, environment: route.query.environment, new: '1' } })
+  else if (action === 'new-item') void router.push({ name: 'vault', query: { ...route.query, new: '1' } })
   else if (action === 'new-project') void router.push('/projects?new=1')
 }, { immediate: true })
 

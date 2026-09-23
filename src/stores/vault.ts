@@ -1,21 +1,27 @@
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import { vaultService } from '../services/vault'
 import { projectService } from '../services/project'
-import { matchesItem } from '../utils/search'
+import { createSearchIndex, searchItems } from '../utils/search'
 import type { Project, VaultItem, VaultItemSummary } from '../types/vault'
 
-export type VaultFilter = 'all' | 'favorites' | 'recent' | 'trash'
+export type VaultFilter = 'all' | 'categories' | 'favorites' | 'recent' | 'trash'
 
 export const useVaultStore = defineStore('vault', () => {
-  const items = ref<VaultItemSummary[]>([])
-  const trashed = ref<VaultItemSummary[]>([])
-  const projects = ref<Project[]>([])
+  const items = shallowRef<VaultItemSummary[]>([])
+  const trashed = shallowRef<VaultItemSummary[]>([])
+  const projects = shallowRef<Project[]>([])
   const error = ref('')
   const query = ref('')
   const filter = ref<VaultFilter>('all')
   const loading = ref(false)
   let revision = 0
+  const searchIndex = computed(() => createSearchIndex([...items.value, ...trashed.value], projects.value))
+
+  function search(list: VaultItemSummary[], text: string, limit = Infinity) {
+    if (!text.trim()) return list.slice(0, limit)
+    return searchItems(list, text, searchIndex.value, limit)
+  }
 
   function clear() {
     revision++
@@ -34,9 +40,7 @@ export const useVaultStore = defineStore('vault', () => {
     else if (filter.value === 'recent') list = list.filter((item) => item.lastAccessedAt !== undefined).sort((a, b) => b.lastAccessedAt! - a.lastAccessedAt!)
     else if (filter.value === 'trash') list = trashed.value
 
-    const normalized = query.value.trim().toLowerCase()
-    if (!normalized) return list
-    return list.filter((item) => matchesItem(item, normalized, projects.value))
+    return search(list, query.value)
   })
 
   async function load() {
@@ -62,8 +66,7 @@ export const useVaultStore = defineStore('vault', () => {
   }
 
   function applyUsage(id: string, lastAccessedAt: number) {
-    const item = items.value.find((entry) => entry.id === id)
-    if (item) item.lastAccessedAt = lastAccessedAt
+    items.value = items.value.map((item) => item.id === id ? { ...item, lastAccessedAt } : item)
   }
 
   async function get(id: string, recordAccess = true): Promise<VaultItem | null> {
@@ -123,13 +126,12 @@ export const useVaultStore = defineStore('vault', () => {
     try {
       const updated = await vaultService.toggleFavorite(id)
       if (requestRevision !== revision) return false
-      const index = items.value.findIndex((item) => item.id === id)
-      if (index !== -1) items.value[index] = updated
+      items.value = items.value.map((item) => item.id === id ? updated : item)
       return true
     } catch {
       return false
     }
   }
 
-  return { items, trashed, projects, error, query, filter, loading, filteredItems, clear, load, get, applyUsage, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
+  return { items, trashed, projects, error, query, filter, loading, filteredItems, search, clear, load, get, applyUsage, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
 })

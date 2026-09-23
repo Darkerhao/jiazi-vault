@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NAlert, NButton, NEmpty, NIcon, NList, NListItem, NSelect, NSpin, NTag, NText, useDialog, useMessage } from 'naive-ui'
+import { NAlert, NButton, NEmpty, NIcon, NList, NListItem, NPagination, NSelect, NSpin, NTag, NText, useDialog, useMessage } from 'naive-ui'
 import { KeyOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
 import AppShell from '../components/common/AppShell.vue'
 import ItemFormModal from '../components/item/ItemFormModal.vue'
 import { useVaultStore } from '../stores/vault'
-import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS } from '../utils/item-fields'
+import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, ITEM_TYPE_OPTIONS } from '../utils/item-fields'
+import { ITEM_TYPE_ICONS } from '../utils/item-icons'
 import { projectService } from '../services/project'
-import type { Environment, VaultItem, VaultItemSummary } from '../types/vault'
+import type { Environment, ItemType, VaultItem, VaultItemSummary } from '../types/vault'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,9 +22,15 @@ const editing = ref<VaultItem | null>(null)
 const projectId = computed(() => typeof route.query.project === 'string' ? route.query.project : undefined)
 const environment = computed(() => ENVIRONMENT_OPTIONS.some((o) => o.value === route.query.environment) ? route.query.environment as Environment : undefined)
 const currentProject = computed(() => vault.projects.find((p) => p.id === projectId.value))
-const displayedItems = computed(() => vault.filteredItems.filter((item) => (!projectId.value || item.projectId === projectId.value) && (!environment.value || item.environment === environment.value)))
+const itemType = computed(() => ITEM_TYPE_OPTIONS.some((option) => option.value === route.query.type) ? route.query.type as ItemType : undefined)
+const displayedItems = computed(() => vault.filteredItems.filter((item) => (!projectId.value || item.projectId === projectId.value) && (!environment.value || item.environment === environment.value) && (!itemType.value || item.type === itemType.value)))
+const page = ref(1)
+const pageSize = 25
+const pageItems = computed(() => displayedItems.value.slice((page.value - 1) * pageSize, page.value * pageSize))
+watch([() => vault.query, () => vault.filter, projectId, environment, itemType], () => { page.value = 1 })
+watch(() => displayedItems.value.length, (count) => { page.value = Math.min(page.value, Math.max(1, Math.ceil(count / pageSize))) })
 
-function setFilter(key: 'project' | 'environment', value: string | null) {
+function setFilter(key: 'project' | 'environment' | 'type', value: string | null) {
   void router.push({ name: 'vault', query: { ...route.query, [key]: value || undefined } })
 }
 watch(projectId, async (id) => {
@@ -35,6 +42,7 @@ watch(projectId, async (id) => {
 const heading = computed(() => {
   if (currentProject.value) return currentProject.value.name
   switch (vault.filter) {
+    case 'categories': return itemType.value ? ITEM_TYPE_LABELS[itemType.value] : '分类'
     case 'favorites': return '收藏夹'
     case 'recent': return '最近使用'
     case 'trash': return '回收站'
@@ -53,7 +61,7 @@ const emptyDescription = computed(() => {
 
 function syncFilter() {
   const value = route.query.filter
-  vault.filter = value === 'favorites' || value === 'recent' || value === 'trash' ? value : 'all'
+  vault.filter = value === 'categories' || value === 'favorites' || value === 'recent' || value === 'trash' ? value : 'all'
 }
 
 watch(() => route.query.filter, syncFilter, { immediate: true })
@@ -135,19 +143,21 @@ async function restore(item: VaultItemSummary) {
     <n-alert v-if="vault.filter === 'trash'" type="info" class="retention-notice">凭证移入回收站满 30 天后自动永久删除，无法恢复。</n-alert>
 
     <div class="filters">
+      <n-select :value="itemType ?? null" :options="ITEM_TYPE_OPTIONS" clearable placeholder="全部类型" aria-label="凭证类型筛选" @update:value="(value) => setFilter('type', value)" />
       <n-select :value="projectId ?? null" :options="vault.projects.map((p) => ({ label: p.name, value: p.id }))" clearable filterable placeholder="全部项目" @update:value="(value) => setFilter('project', value)" />
       <n-select :value="environment ?? null" :options="ENVIRONMENT_OPTIONS" clearable placeholder="全部环境" @update:value="(value) => setFilter('environment', value)" />
     </div>
     <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text @click="vault.load">重试</n-button></n-alert>
 
     <n-spin :show="vault.loading">
-      <n-empty v-if="!vault.loading && displayedItems.length === 0" :description="vault.query || projectId || environment ? '没有匹配的凭证' : emptyDescription" class="empty">
+      <n-empty v-if="!vault.loading && displayedItems.length === 0" :description="vault.query || projectId || environment || itemType ? '没有匹配的凭证' : emptyDescription" class="empty">
         <template #icon><n-icon><key-outline /></n-icon></template>
       </n-empty>
 
       <n-list v-else bordered class="item-list">
-        <n-list-item v-for="item in displayedItems" :key="item.id">
+        <n-list-item v-for="item in pageItems" :key="item.id">
           <div class="item-row">
+            <n-icon :size="24" aria-hidden="true"><component :is="ITEM_TYPE_ICONS[item.type]" /></n-icon>
             <div class="item-main" @click="openEdit(item)">
               <div class="item-title"><n-text strong>{{ item.title }}</n-text></div>
               <div class="item-sub"><n-text depth="3">{{ subtitle(item) }}</n-text></div>
@@ -170,17 +180,22 @@ async function restore(item: VaultItemSummary) {
           </div>
         </n-list-item>
       </n-list>
+      <div v-if="displayedItems.length" class="pagination">
+        <n-text depth="3">共 {{ displayedItems.length }} 条</n-text>
+        <n-pagination v-model:page="page" :page-size="pageSize" :item-count="displayedItems.length" :page-slot="5" show-quick-jumper />
+      </div>
     </n-spin>
 
-    <ItemFormModal v-if="modalShow" :key="editing?.id ?? 'new'" :show="modalShow" :item="editing" :draft="{ projectId, environment }" @close="closeEditor" />
+    <ItemFormModal v-if="modalShow" :key="editing?.id ?? 'new'" :show="modalShow" :item="editing" :draft="{ type: itemType, projectId, environment }" @close="closeEditor" />
   </AppShell>
 </template>
 
 <style scoped>
 .page-heading h1 { margin: 4px 0 24px; font-size: 26px; }
-.filters { display: flex; gap: 12px; max-width: 560px; margin-bottom: 20px; }
+.filters { display: flex; gap: 12px; max-width: 860px; margin-bottom: 20px; }
 .retention-notice { max-width: 860px; margin-bottom: 20px; }
 .item-list { max-width: 860px; }
+.pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; max-width: 860px; margin-top: 16px; }
 .item-row { display: flex; align-items: center; gap: 14px; width: 100%; }
 .item-main { flex: 1; cursor: pointer; min-width: 0; }
 .item-title { margin-bottom: 2px; }

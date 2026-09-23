@@ -1,5 +1,18 @@
 # Findings
 
+## 第四批功能与性能审计
+
+- 工作树干净，无磁盘 AGENTS.md，遵循用户本轮提供的规则；已恢复仓库三份规划文件。
+- `contracts.ts` / `item-store.ts` 已接受 custom 和字符串字段字典；缺口是 `SupportedType` 排除 custom、表单只按原对象计算字段。沿用数据格式，编辑器用可增删的字段行，保存时一次构造字典。
+- 分类复用 `/vault` 查询参数和现有筛选，不建另一份列表或 Store；快捷搜索当前把类型作为账号缺失时的兜底，需独立展示图标和类型。
+- 模板三类输入只有 password 含复制入口；可将按钮统一置于输入旁，复用 `useClipboard`，涵盖 textarea 原始换行。
+- 规格目标：10,000+ 条保持可用，普通搜索 <100ms，Cold Start <1.5s。现有列表全量渲染、每条搜索重新归一化关键词及查项目；先测再优化。
+- 基线实测：10,000 条、100 项目，解锁到列表 18852.6ms；production 命中 5000 条首次搜索 9200.8ms，清空查询重新绘制 10000 条 22738.2ms。即使无结果，重复查项目/拼检索字符串也需要约 143–168ms。基线快捷搜索环节超时，未声称获得该数据。
+- 以 25 条分页限制 DOM；共享元数据检索索引，项目查找改 Map，关键词只归一化一次，快捷搜索满 50 条停止。列表采用 shallowRef 不可变快照，使用记录/收藏通过替换快照更新。
+- Naive UI 2.45.3 的 Input/Select/Pagination 与 LayoutSider 当前源码已核对；官方同版本 raw 文档验证 input-props/autosize、value 更新事件与分页 API。web 代理 404，改读 GitHub raw 官方版本文档。
+- 官方资料：[Naive Input](https://github.com/tusen-ai/naive-ui/blob/v2.45.3/src/input/demos/enUS/index.demo-entry.md)、[Select](https://github.com/tusen-ai/naive-ui/blob/v2.45.3/src/select/demos/enUS/index.demo-entry.md)、[Pagination](https://github.com/tusen-ai/naive-ui/blob/v2.45.3/src/pagination/demos/enUS/index.demo-entry.md)、[Vue 大规模不可变数据性能](https://vuejs.org/guide/best-practices/performance.html#reduce-reactivity-overhead-for-large-immutable-structures)、[Playwright Electron](https://playwright.dev/docs/api/class-electron)。同时核对本地 Vue 3.5.42 RefImpl 与当前 Playwright Electron launch 源码。
+- 最终生产构建性能：普通搜索 16.4–39.1ms，快捷搜索 28.7–34.0ms；5 次新进程启动 477.2–551.0ms，解锁到列表 632.6ms，第 400 页可达。系统缓存保留，未测安装产物/硬冷启动。
+
 ## 第三批功能审计
 
 - 实现中发现明文导入可携带当前表单模板未列出的字段，旧编辑器会丢字段并将 Custom 转为 login。按导入闭环补齐已有字段编辑与类型保留，不新增 Custom 创建入口。
