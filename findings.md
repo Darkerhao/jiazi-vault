@@ -1,5 +1,23 @@
 # Findings
 
+## V1.2 实施决策
+
+- 本轮核实已有品牌相关未提交改动，保留原修改；无磁盘 AGENTS.md，遵守用户提供的规则。
+- 实测 Electron 44.2.0 内置 Node 24.20.0，已补核对同版本官方源码。环境变量编辑页截图确认值默认隐藏；变量数较多时将表单区限制为内部滚动，保留标题和保存按钮。
+- 独立 Electron 进程真实占用 Ctrl+Shift+P，主应用报告冲突且 Ctrl K 可用；占用进程退出后重启主应用注册成功。Windows powercfg /a 显示支持 S0 待机和休眠，不支持 S3。
+- 环境变量集使用新增 `env` 条目类型，变量名和值存入已有加密 fields；复用项目/环境筛选、回收站、备份和主密码修改，不增加表或依赖。
+- 按 Node.js 官方 DotEnv 文档实现严格预览：无效声明、未闭合引号、引号后非注释内容和重复键均报行号并阻止导入，不默默跳过或覆盖。
+- 核对 Node v24.15.0 `src/node_dotenv.cc`：双引号中的字面量反斜杠 n 转换为换行，单双引号不支持通用反斜杠转义。无法无损表示的值可以加密保存，但必须阻止 .env 导出并指出变量名。导出采用 UTF-8/LF，保持变量值，不保留原注释和排版。
+- 官方依据：https://nodejs.org/api/environment_variables.html#dotenv 、https://github.com/nodejs/node/blob/v24.15.0/src/node_dotenv.cc 。web 工具代理 404，使用 PowerShell 读取官方 raw 文档和源码。已核对 Naive UI 2.45.3 Input 源码/API 与 Electron 44.2.0 dialog 文档及本地类型。
+
+## V1.2 环境变量集
+
+- 当前工作树干净；未找到额外本地 AGENTS.md，采用用户提供的规范。
+- 增加 env 条目类型，fields 保存名称和值，复用 secret 加密、项目、环境、回收站及主密码重加密；列表不返回 fields。
+- Node.js 官方 DotEnv 文档已读取：名称为字母/下划线开头；未引号值去除首尾空白，# 为注释；单双引号保留内部空白及多行；支持 export 前缀。来源：https://nodejs.org/api/environment_variables.html#dotenv 。
+- 采用严格导入诊断：无效行和重复名称均提示行号并阻止应用；不回显无效行中的秘密。导出保证值一致，无法无损表示时明确阻止，不静默转义或丢值。
+- main.ts 已有 revision 校验、明文确认及临时文件写入，可沿用；新文件选择/复制/导出要覆盖锁定等待竞态。
+
 ## 第五批 V1 缺口核对
 
 - 最终发布包已验证真实原生模块、设置入口、新密码持久化、主密码与 Windows Hello 解锁、禁用登记。补测取消时 OS 返回成功，UI 相应解锁，测试正确报预期不符；没有取消实机通过证据。

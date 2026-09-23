@@ -61,6 +61,8 @@ export interface IpcCommands {
   restore_backup: { args: { password: string }; result: boolean }
   export_plaintext: { args: { format: TransferFormat }; result: string | null }
   import_plaintext: { args: undefined; result: number | null }
+  read_env_file: { args: undefined; result: { name: string; contents: string } | null }
+  export_env: { args: { fields: Record<string, string>; destination: 'clipboard' | 'file'; itemId?: string }; result: { name: string; usedAt: number | null } | null }
 }
 
 export interface DesktopBridge {

@@ -74,7 +74,7 @@ async function submit() {
 <template>
   <n-layout class="unlock-page">
     <n-card class="unlock-card" bordered>
-      <div class="unlock-icon">J</div>
+      <img class="unlock-icon" src="/brand/icon.svg" alt="" width="64" height="64">
       <n-text depth="1">Jiazi Vault</n-text>
       <n-spin v-if="!auth.isReady" class="loading" />
       <template v-else>
@@ -110,7 +110,7 @@ async function submit() {
 <style scoped>
 .unlock-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .unlock-card { width: min(420px, 100%); text-align: center; }
-.unlock-icon { margin: 10px auto 14px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 14px; background: #8ab4f8; color: #172033; font-weight: 800; font-size: 26px; }
+.unlock-icon { display: block; margin: 10px auto 14px; width: 64px; height: 64px; }
 h1 { margin: 8px 0 24px; font-size: 24px; }
 .loading { margin: 28px 0 18px; }
 .intro { display: block; margin: -12px 0 20px; line-height: 1.7; }

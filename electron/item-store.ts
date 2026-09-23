@@ -3,6 +3,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import { decryptValue, encryptValue, type EncryptedValue } from './vault-crypto.js'
 
 import type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from './contracts.js'
+import { ITEM_TYPES } from './contracts.js'
+import { validateEnvFields } from './env.js'
 export type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from './contracts.js'
 
 interface ItemRow {
@@ -35,7 +37,7 @@ export function validateItemInput(value: unknown): asserts value is ItemInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_DATA')
   const input = value as ItemInput
   if (typeof input.title !== 'string' || !input.title.trim()
-    || !['login', 'password', 'server', 'database', 'api-key', 'ssh', 'secure-note', 'custom'].includes(input.type)
+    || !ITEM_TYPES.includes(input.type)
     || (input.favorite !== undefined && typeof input.favorite !== 'boolean')
     || ['projectId', 'username', 'password', 'url', 'host', 'notes'].some((field) => {
       const entry = input[field as keyof ItemInput]
@@ -46,6 +48,10 @@ export function validateItemInput(value: unknown): asserts value is ItemInput {
     || (input.tags !== undefined && (!Array.isArray(input.tags) || input.tags.some((tag) => typeof tag !== 'string')))
     || (input.fields !== undefined && (!input.fields || typeof input.fields !== 'object' || Array.isArray(input.fields)
       || Object.values(input.fields).some((field) => typeof field !== 'string')))) throw new Error('INVALID_DATA')
+  if (input.type === 'env') {
+    if (!input.environment) throw new Error('INVALID_DATA')
+    validateEnvFields(input.fields)
+  }
 }
 
 function parseTags(raw: string): string[] | undefined {

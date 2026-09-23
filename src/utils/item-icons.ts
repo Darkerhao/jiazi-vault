@@ -11,4 +11,5 @@ export const ITEM_TYPE_ICONS: Record<ItemType, Component> = {
   ssh: TerminalOutline,
   'secure-note': DocumentTextOutline,
   custom: OptionsOutline,
+  env: CodeSlashOutline,
 }

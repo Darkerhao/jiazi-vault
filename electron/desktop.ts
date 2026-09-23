@@ -4,9 +4,9 @@ import { app, globalShortcut, Menu, nativeImage, Tray, type BrowserWindow } from
 export type DesktopAction = 'open' | 'quick-search' | 'generator' | 'new-item' | 'new-project'
 
 export function createDesktopControls(getWindow: () => BrowserWindow, lock: () => void) {
-  const icon = nativeImage.createFromPath(join(app.getAppPath(), app.isPackaged ? 'dist' : 'public', 'tray.png'))
-  if (process.platform === 'darwin') icon.setTemplateImage(true)
-  const tray = new Tray(icon.resize({ width: 20, height: 20 }))
+  const iconName = process.platform === 'darwin' ? 'trayTemplate.png' : 'tray.png'
+  const icon = nativeImage.createFromPath(join(app.getAppPath(), app.isPackaged ? 'dist' : 'public', 'brand', iconName))
+  const tray = new Tray(icon)
   tray.setToolTip('Jiazi Vault')
 
   function show(action: DesktopAction = 'open') {

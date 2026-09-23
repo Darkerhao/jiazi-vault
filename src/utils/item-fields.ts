@@ -9,6 +9,7 @@ export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   ssh: 'SSH',
   'secure-note': '安全笔记',
   custom: '自定义',
+  env: '环境变量集',
 }
 
 export const ITEM_TYPE_OPTIONS = (Object.keys(ITEM_TYPE_LABELS) as ItemType[]).map((type) => ({
@@ -82,4 +83,5 @@ export const TYPE_FIELDS: Record<ItemType, FieldDef[]> = {
     { key: 'content', label: '内容', kind: 'textarea', target: 'notes' },
   ],
   custom: [],
+  env: [],
 }

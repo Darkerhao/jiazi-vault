@@ -3,6 +3,8 @@ import { clearKey, decryptValue, encryptValue, isVaultMetadata, unlockVaultCrede
 import { readSettings, validateSettings, writeSettings, type AppSettings } from './settings.js'
 import { validateProject } from './project-store.js'
 import { purgeExpiredItems } from './database.js'
+import { ITEM_TYPES, type ItemType } from './contracts.js'
+import { validateEnvFields } from './env.js'
 
 const ITEM_COLUMNS = ['id', 'type', 'title', 'project_id', 'environment', 'username', 'url', 'host', 'port', 'tags', 'secret', 'has_secret', 'favorite', 'created_at', 'updated_at', 'deleted_at', 'last_accessed_at'] as const
 type ItemRow = Record<typeof ITEM_COLUMNS[number], SQLInputValue>
@@ -45,7 +47,7 @@ function validateItem(value: unknown, key: Buffer, version: number): ItemRow {
   if (strings.some((field) => typeof row[field] !== 'string')
     || !row.id || !row.title
     || nullableStrings.some((field) => row[field] !== null && typeof row[field] !== 'string')
-    || !['login', 'password', 'server', 'database', 'api-key', 'ssh', 'secure-note', 'custom'].includes(String(row.type))
+    || !ITEM_TYPES.includes(row.type as ItemType)
     || (row.environment !== null && !['development', 'testing', 'staging', 'production', 'other'].includes(String(row.environment)))
     || ![0, 1].includes(Number(row.favorite)) || ![0, 1].includes(Number(row.has_secret))
     || ['favorite', 'has_secret', 'created_at', 'updated_at'].some((field) => !Number.isSafeInteger(row[field as keyof ItemRow]))
@@ -62,6 +64,10 @@ function validateItem(value: unknown, key: Buffer, version: number): ItemRow {
     || (fields.notes !== undefined && typeof fields.notes !== 'string')
     || (fields.fields !== undefined && (!fields.fields || typeof fields.fields !== 'object' || Array.isArray(fields.fields)
       || Object.values(fields.fields).some((entry) => typeof entry !== 'string')))) throw new Error('INVALID_BACKUP')
+  if (row.type === 'env') {
+    if (!row.environment) throw new Error('INVALID_BACKUP')
+    validateEnvFields(fields.fields)
+  }
   return row
 }
 

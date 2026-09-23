@@ -1,4 +1,5 @@
-export type ItemType = 'login' | 'password' | 'server' | 'database' | 'api-key' | 'ssh' | 'secure-note' | 'custom'
+export const ITEM_TYPES = ['login', 'password', 'server', 'database', 'api-key', 'ssh', 'secure-note', 'custom', 'env'] as const
+export type ItemType = typeof ITEM_TYPES[number]
 export type Environment = 'development' | 'testing' | 'staging' | 'production' | 'other'
 export type TransferFormat = 'json' | 'csv'
 

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 64"><g color="#172b4d" fill="none"><g stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="14" y="11" width="36" height="36" rx="9"/>
+    <path d="M14 29h36M32 11v43"/>
+  </g></g>
+    <text x="80" y="43" fill="#172b4d" font-family="Segoe UI, Inter, sans-serif" font-size="36" font-weight="600" letter-spacing="-1">Jiazi Vault</text></svg>

@@ -8,7 +8,6 @@ export function useClipboard() {
   const vault = useVaultStore()
   const auth = useAuthStore()
   async function copy(text: string, itemId?: string) {
-    if (!text) return
     const revision = auth.sessionRevision
     try {
       const usedAt = await clipboardService.copy(text, itemId)

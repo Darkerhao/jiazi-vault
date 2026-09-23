@@ -1,11 +1,12 @@
 {
   "name": "jiazi-vault",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local encrypted credential vault for developers",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
+    "brand:generate": "electron scripts/generate-brand.cjs",
     "dev": "vite",
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:dev": "pnpm electron:compile && pnpm native:build && concurrently --kill-others-on-fail \"vite\" \"wait-on http://127.0.0.1:1420 && electron .\"",
@@ -48,6 +49,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "extraResources": [{ "from": "output/windows-hello", "to": "windows-hello", "filter": ["**/*"] }],
       "target": [{ "target": "nsis", "arch": ["x64"] }]
     },
@@ -57,9 +59,11 @@
       "runAfterFinish": false
     },
     "mac": {
+      "icon": "build/icon.icns",
       "target": "dmg"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": "AppImage"
     }
   }

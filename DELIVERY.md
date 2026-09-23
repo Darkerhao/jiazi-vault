@@ -1,6 +1,24 @@
 # 交付与验收
 
-## 当前 Windows 安装包（0.1.1，2026-09-23）
+## V1.2 环境变量集（0.1.2，2026-09-23）
+
+入口：新建条目选择「环境变量集」，或从「分类 → 环境变量集」进入。可按项目和环境筛选；环境必选，项目可选，删除项目后变量集保留并解除归属。
+
+- 变量名和值复用 `items.secret` 中的加密 fields；列表和搜索索引不包含变量名和值，不增加数据库表或依赖。
+- 支持变量增删改、默认隐藏、逐项显示/复制（含空值），从文件或粘贴内容导入。导入先预览，加入编辑后仍须保存；导入采用追加语义，重复键或与现有变量同名时阻止加入，不静默覆盖。
+- 文件采用 UTF-8（支持 BOM），上限 1 MiB。解析遵循 [Node.js DotEnv 文档](https://nodejs.org/api/environment_variables.html#dotenv)，并核对当前 Electron 内置 [Node 24.20.0 实现](https://github.com/nodejs/node/blob/v24.20.0/src/node_dotenv.cc)：名称为字母/下划线开头，后续可含数字；支持空值、空白、注释、单双引号、多行和 `export` 前缀；双引号内字面量 `\n` 转换为换行，单引号保留字面量。CRLF 转为 LF，不做变量展开、命令执行或系统环境变量修改。
+- 导入更严格：无效行、未闭合引号、引号后多余内容、反引号和重复键显示行号并阻止导入。Node 原生解析器可能静默跳过或覆盖，此处主动要求用户修正。
+- 完整复制和导出 `.env` 都由主进程显示明文确认，默认取消，输出当前编辑值。导出保持值和空值，不保留原注释、引号样式或排版；采用 UTF-8/LF，可命名为 `.env.production` 等文件，不自动改写项目文件。
+- Node 不支持通用引号转义：对无法无损表示的值（例如同时含单双引号与换行，或含 CR/NUL）明确提示变量名并禁用 `.env` 导出；仍可加密保存和通过加密备份保留，不静默截断/改值。
+- 锁定销毁编辑器和导入内容，使等待中的文件选择和导出确认失效，并清理本应用剪贴板。变量集复用回收站、自动清理、加密备份/恢复、主密码修改和 JSON/CSV 导入导出。含 env 类型的备份须使用本版或更新版本恢复。
+
+本轮自动验证：41 项 Node 数据测试通过，生产构建通过；`tests/env-smoke.mjs` 的 7 组真实 Electron 流程通过，包括导入→编辑→复制/导出值一致、默认隐藏、无效/重名阻止、重启、回收站、备份恢复、修改主密码和锁定竞态。文件选择与确认返回值由脚本注入，数据、加密、IPC、剪贴板及文件写入为真实实现，均使用隔离保险库。报告：`output/playwright/env-smoke-report.json`。
+
+Windows 本轮已实测：独立进程占用全局快捷键时有可见提示且 Ctrl K 可用，释放占用后重启注册成功；用户操作 Windows Hello 真实取消后保持锁定，主密码仍可解锁；实际 Win+L/登录事件使保险库锁定、编辑器销毁、剪贴板清空，解锁后变量完整。分别见 `windows-conflict-v12-report.json`、`windows-cancel-v12-report.json`、`windows-lock-v12-report.json`（均在 `output/playwright`）。休眠/唤醒和新安装产物验收进行中，最终记录见下文。
+
+安装包：`release/Jiazi Vault Setup 0.1.2.exe`（Windows x64 NSIS）。签名和硬冷启动单独验收；macOS/Linux 构建、Touch ID 实机测试仍需对应设备。SSH 连接、浏览器扩展、同步、移动端和团队能力未扩展。
+
+## 历史 Windows 安装包（0.1.1，2026-09-23）
 
 包含第四批自定义字段、分类、复制与性能改动，以及本轮首次引导、修改主密码和系统快捷解锁。
 
@@ -126,4 +144,4 @@ Windows 11（10.0.22631），i9-13900H，20 逻辑核，约 31.7 GiB 内存。�
 
 复现：先执行 `pnpm build`，设置 `JIAZI_PLAYWRIGHT_MODULE` 为现有 `playwright-core/index.mjs` 绝对路径，再运行 `node tests/credentials-smoke.mjs`、`node tests/electron-smoke.mjs`、`node tests/performance.mjs`（桌面脚本顺序执行，避免争用剪贴板或窗口焦点）。性能默认启动 5 次，可用 `JIAZI_PERF_RUNS` 调整；报告和隔离测试库写入 `output/playwright`。
 
-仍待完成：macOS/Linux 构建与运行及 Touch ID 实机认证、Windows Hello 真实取消、清空系统缓存的硬冷启动、全局快捷键物理按键与冲突、真实系统锁屏和休眠、Windows 代码签名。V1.2 / V1.3 / V2 的环境变量、SSH 连接、浏览器自动填充、同步、移动端、团队保险库等后续能力不在本轮范围。
+历史 0.1.1 的待验收项由本文开头的 0.1.2 记录更新。仍独立保留 macOS/Linux 构建与运行、Touch ID 实机认证、硬冷启动及 Windows 代码签名；SSH 连接、浏览器扩展、同步、移动端与团队保险库属于后续迭代。

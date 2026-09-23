@@ -17,6 +17,7 @@ import { assertTransferFormat, exportPlaintext, importPlaintext, readPlaintext, 
 import { replaceVaultPassword } from './vault-password.js'
 import { BiometricVault } from './biometric-vault.js'
 import { createBiometricProvider } from './biometric-provider.js'
+import { ENV_MAX_BYTES, serializeEnv, validateEnvFields } from './env.js'
 
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
@@ -79,6 +80,7 @@ function assertRevision(revision: number) {
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: 'Jiazi Vault',
+    icon: join(app.getAppPath(), app.isPackaged ? 'dist' : 'public', 'brand', 'icon.png'),
     width: 1200,
     height: 760,
     minWidth: 900,
@@ -134,7 +136,7 @@ function registerIpcHandlers() {
   const itemStore = createItemStore(requireDatabase().connection, () => requireUnlocked())
   ipcMain.handle('copy_to_clipboard', async (_event, args: { text: string; itemId?: string }) => {
     requireUnlocked()
-    if (typeof args?.text !== 'string' || !args.text) throw new Error('INVALID_DATA')
+    if (typeof args?.text !== 'string') throw new Error('INVALID_DATA')
     const revision = session.revision
     await clipboardManager.copy(args.text, () => { assertRevision(revision); requireUnlocked() })
     assertRevision(revision)
@@ -271,6 +273,65 @@ function registerIpcHandlers() {
   })
   registerBackupHandlers()
   registerTransferHandlers()
+  registerEnvHandlers(itemStore)
+}
+
+function registerEnvHandlers(itemStore: ReturnType<typeof createItemStore>) {
+  ipcMain.handle('read_env_file', async () => {
+    requireUnlocked()
+    if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
+    vaultOperationBusy = true
+    const revision = session.revision
+    try {
+      const choice = await dialog.showOpenDialog(mainWindow, {
+        title: '导入 .env 文件', properties: ['openFile', 'showHiddenFiles'],
+        filters: [{ name: '.env / 环境配置文件', extensions: ['*'] }],
+      })
+      assertRevision(revision)
+      if (choice.canceled || !choice.filePaths[0]) return null
+      const path = choice.filePaths[0]
+      if ((await stat(path)).size > ENV_MAX_BYTES) throw new Error('ENV_FILE_TOO_LARGE')
+      const bytes = await readFile(path)
+      assertRevision(revision)
+      requireUnlocked()
+      if (bytes.length > ENV_MAX_BYTES) throw new Error('ENV_FILE_TOO_LARGE')
+      return { name: basename(path), contents: new TextDecoder('utf-8', { fatal: true }).decode(bytes) }
+    } catch { throw new Error('ENV_IMPORT_FAILED') }
+    finally { vaultOperationBusy = false }
+  })
+  ipcMain.handle('export_env', async (_event, args: { fields: Record<string, string>; destination: 'clipboard' | 'file'; itemId?: string }) => {
+    requireUnlocked()
+    validateEnvFields(args?.fields)
+    if (!['clipboard', 'file'].includes(args?.destination)) throw new Error('INVALID_DATA')
+    if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
+    const contents = serializeEnv(args.fields)
+    const revision = session.revision
+    vaultOperationBusy = true
+    try {
+      const toFile = args.destination === 'file'
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: 'warning', title: toFile ? '导出明文 .env' : '复制完整 .env',
+        message: `即将将全部变量值以明文${toFile ? '写入文件' : '复制到系统剪贴板'}。`,
+        detail: toFile ? '文件不受保险库加密保护。请妥善保管，避免提交到版本库。' : '其他应用可能读取剪贴板。复制后按当前剪贴板清理设置处理，锁定时也会清理。',
+        buttons: ['取消', toFile ? '确认导出明文' : '确认复制明文'], defaultId: 0, cancelId: 0, noLink: true,
+      })
+      assertRevision(revision)
+      requireUnlocked()
+      if (confirmation.response !== 1) return null
+      if (!toFile) {
+        await clipboardManager.copy(contents, () => { assertRevision(revision); requireUnlocked() })
+        assertRevision(revision)
+        return { name: '.env', usedAt: args.itemId ? itemStore.markUsed(args.itemId) : null }
+      }
+      const choice = await dialog.showSaveDialog(mainWindow, { title: '导出 .env', defaultPath: '.env', filters: [{ name: '环境配置文件', extensions: ['*'] }] })
+      assertRevision(revision)
+      requireUnlocked()
+      if (choice.canceled || !choice.filePath) return null
+      await writeExport(choice.filePath, contents, revision)
+      return { name: basename(choice.filePath), usedAt: args.itemId ? itemStore.markUsed(args.itemId) : null }
+    } catch { throw new Error('ENV_EXPORT_FAILED') }
+    finally { vaultOperationBusy = false }
+  })
 }
 
 async function writeExport(path: string, contents: string, revision: number) {

@@ -31,6 +31,8 @@ const allowedCommands = new Set([
   'restore_backup',
   'export_plaintext',
   'import_plaintext',
+  'read_env_file',
+  'export_env',
   'get_settings',
   'update_settings',
   'copy_to_clipboard',
