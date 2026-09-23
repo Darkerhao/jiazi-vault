@@ -10,16 +10,18 @@ import { createVaultCredential, clearKey } from '../dist-electron/vault-crypto.j
 
 const { _electron } = await import(pathToFileURL(process.env.JIAZI_PLAYWRIGHT_MODULE).href)
 const root = process.cwd(), output = resolve(root, 'output/playwright')
+const installed = process.env.JIAZI_INSTALLED_EXE
 const label = process.env.JIAZI_PERF_LABEL || 'current'
 const data = resolve(output, `performance-${label}-${Date.now()}`)
 const password = 'performance-test-master-password'
 const count = 10_000, runs = Number(process.env.JIAZI_PERF_RUNS || 5)
 const report = {
-  label, count, runs, data, timestamp: new Date().toISOString(),
+  label, count, runs, data, installed, timestamp: new Date().toISOString(),
   machine: { platform: platform(), release: release(), cpu: cpus()[0].model, logicalCpus: cpus().length, memoryGiB: totalmem() / 1024 ** 3 },
   startupMs: [], search: [], errors: [],
   boundaries: 'Production renderer and real Electron/SQLite/crypto; fresh processes on this machine with OS disk cache retained; startup measures process creation to unlock form paint, excludes typing/password derivation. Search includes input dispatch, filtering, DOM update and two animation frames. Test launcher and Playwright instrumentation are present; no claim of installed-binary or OS-cache-cold timing.',
 }
+if (installed) report.boundaries = 'Actual installed executable with an isolated 10,000-item vault; startup measures parent launch request through unlock form and two paint frames, including Playwright launch overhead. OS disk cache retained; not an OS-cache-cold measurement. Search includes input, filtering, DOM update and two paint frames.'
 await mkdir(data, { recursive: true })
 const state = openDatabase(data)
 const credential = await createVaultCredential(password)
@@ -49,12 +51,17 @@ let application, page
 const call = (command, args) => page.evaluate(({ command, args }) => window.jiaziVault.invoke(command, args), { command, args })
 try {
   for (let run = 0; run < runs; run++) {
-    application = await _electron.launch({ executablePath: resolve(root, 'node_modules/electron/dist/electron.exe'), args: [resolve(root, 'tests/performance-launch.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data } })
+    const launchStarted = performance.now()
+    application = await _electron.launch({ executablePath: installed || resolve(root, 'node_modules/electron/dist/electron.exe'), args: installed ? [`--user-data-dir=${data}`] : [resolve(root, 'tests/performance-launch.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data } })
     page = await application.firstWindow()
     page.setDefaultTimeout(30_000)
     page.on('pageerror', (error) => report.errors.push(error.message))
     await page.getByRole('heading', { name: '解锁保险库' }).waitFor()
-    report.startupMs.push(await application.evaluate(() => globalThis.jiaziStartup))
+    if (installed) {
+      await page.getByPlaceholder('主密码', { exact: true }).waitFor()
+      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
+    }
+    report.startupMs.push(installed ? performance.now() - launchStarted : await application.evaluate(() => globalThis.jiaziStartup))
     console.log(`Startup ${run + 1}: ${report.startupMs.at(-1).toFixed(1)} ms`)
     if (run === 0) {
       await page.getByPlaceholder('主密码', { exact: true }).fill(password)
@@ -109,6 +116,18 @@ try {
         if (surface === 'quick') await page.keyboard.press('Escape')
       }
       await page.screenshot({ path: resolve(output, `performance-${label}.png`) })
+      const beforeChange = await call('get_item', { id: item.id, recordAccess: false })
+      const changeStarted = performance.now()
+      await call('change_master_password', { currentPassword: password, newPassword: `${password}-updated` })
+      report.passwordChangeMs = performance.now() - changeStarted
+      await page.getByRole('heading', { name: '解锁保险库' }).waitFor()
+      assert.equal((await call('unlock_vault', { password })).unlocked, false)
+      await page.getByPlaceholder('主密码', { exact: true }).fill(`${password}-updated`)
+      await page.getByRole('button', { name: '解锁', exact: true }).click()
+      await page.locator('.item-title').first().waitFor()
+      assert.equal((await call('list_items', {})).length, count)
+      assert.deepEqual(await call('get_item', { id: item.id, recordAccess: false }), beforeChange)
+      report.passwordChangeAtCapacity = true
     }
     await application.close()
     application = undefined

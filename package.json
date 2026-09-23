@@ -1,17 +1,18 @@
 {
   "name": "jiazi-vault",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local encrypted credential vault for developers",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "electron:compile": "tsc -p tsconfig.electron.json",
-    "electron:dev": "pnpm electron:compile && concurrently --kill-others-on-fail \"vite\" \"wait-on http://127.0.0.1:1420 && electron .\"",
+    "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:dev": "pnpm electron:compile && pnpm native:build && concurrently --kill-others-on-fail \"vite\" \"wait-on http://127.0.0.1:1420 && electron .\"",
     "electron:build": "pnpm build && electron-builder",
     "electron:build:win": "pnpm build && electron-builder --win --x64 --config.electronDist=node_modules/electron/dist",
-    "build": "pnpm typecheck && vite build && pnpm electron:compile",
+    "native:build": "node scripts/build-native.mjs",
+    "build": "pnpm typecheck && vite build && pnpm electron:compile && pnpm native:build",
     "typecheck": "vue-tsc --noEmit",
     "test": "pnpm electron:compile && node --test tests/*.test.mjs",
     "preview": "vite preview"
@@ -47,6 +48,7 @@
       "package.json"
     ],
     "win": {
+      "extraResources": [{ "from": "output/windows-hello", "to": "windows-hello", "filter": ["**/*"] }],
       "target": [{ "target": "nsis", "arch": ["x64"] }]
     },
     "nsis": {

@@ -81,5 +81,22 @@ export const useAuthStore = defineStore('auth', () => {
     if (unlocked.value) markLocked()
   }
 
-  return { unlocked, hasVault, busy, error, notice, sessionRevision, retryAt, isReady, checkStatus, create, unlock, lock, markLocked }
+  async function unlockBiometric() {
+    if (busy.value) return false
+    const revision = sessionRevision.value
+    busy.value = true
+    error.value = null
+    try {
+      await vaultService.unlockBiometric()
+      if (revision !== sessionRevision.value) return false
+      unlocked.value = true
+      retryAt.value = 0
+      return true
+    } catch {
+      if (revision === sessionRevision.value) error.value = '系统认证已取消或失败，可重试或使用主密码解锁。'
+      return false
+    } finally { busy.value = false }
+  }
+
+  return { unlocked, hasVault, busy, error, notice, sessionRevision, retryAt, isReady, checkStatus, create, unlock, unlockBiometric, lock, markLocked }
 })

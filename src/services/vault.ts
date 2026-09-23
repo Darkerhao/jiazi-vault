@@ -4,6 +4,11 @@ import type { VaultItem, VaultItemSummary } from '../types/vault'
 export const vaultService = {
   create: (password: string) => callCommand('create_vault', { password }),
   unlock: (password: string) => callCommand('unlock_vault', { password }),
+  biometricStatus: () => callCommand('get_biometric_status'),
+  enableBiometric: (password: string) => callCommand('enable_biometric', { password }),
+  disableBiometric: () => callCommand('disable_biometric'),
+  unlockBiometric: () => callCommand('unlock_biometric'),
+  changePassword: (currentPassword: string, newPassword: string) => callCommand('change_master_password', { currentPassword, newPassword }),
   status: () => callCommand('get_vault_status'),
   lock: () => callCommand('lock_vault'),
   isUnlocked: () => callCommand('is_vault_unlocked'),

@@ -25,3 +25,8 @@ export interface VaultItem {
 
 export type VaultItemSummary = Omit<VaultItem, 'password' | 'fields' | 'notes'> & { hasSensitiveData?: boolean }
 export type ItemInput = Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt' | 'lastAccessedAt' | 'deletedAt'>
+export interface BiometricStatus {
+  label: 'Windows Hello' | 'Touch ID' | '生物识别'
+  available: boolean
+  enabled: boolean
+}

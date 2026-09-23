@@ -2,7 +2,7 @@ import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault
 import type { AppSettings } from '../../electron/settings'
 import type { GeneratedPassword, PasswordOptions } from '../../electron/password-generator'
 import type { DesktopAction } from '../../electron/desktop'
-import type { TransferFormat } from '../../electron/contracts'
+import type { TransferFormat, BiometricStatus } from '../../electron/contracts'
 
 export type VaultError =
   | 'INVALID_PASSWORD'
@@ -34,6 +34,11 @@ export interface IpcCommands {
   get_vault_status: { args: undefined; result: VaultStatus }
   create_vault: { args: { password: string }; result: void }
   unlock_vault: { args: { password: string }; result: UnlockResult }
+  get_biometric_status: { args: undefined; result: BiometricStatus }
+  enable_biometric: { args: { password: string }; result: void }
+  disable_biometric: { args: undefined; result: void }
+  unlock_biometric: { args: undefined; result: void }
+  change_master_password: { args: { currentPassword: string; newPassword: string }; result: void }
   lock_vault: { args: undefined; result: void }
   is_vault_unlocked: { args: undefined; result: boolean }
   create_item: { args: { item: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'> }; result: VaultItemSummary }

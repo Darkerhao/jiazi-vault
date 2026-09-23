@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { createVaultThroughUI } from './onboarding.mjs'
 
 const { _electron } = await import(pathToFileURL(process.env.JIAZI_PLAYWRIGHT_MODULE).href)
 const root = process.cwd(), output = resolve(root, 'output/playwright')
@@ -23,11 +24,7 @@ async function launch() {
 }
 try {
   await launch()
-  await page.getByRole('heading', { name: '创建保险库' }).waitFor()
-  await page.getByPlaceholder('主密码', { exact: true }).fill(password)
-  await page.getByPlaceholder('确认主密码').fill(password)
-  await page.getByRole('button', { name: '创建保险库', exact: true }).click()
-  await page.getByRole('heading', { name: '全部条目' }).waitFor()
+  await createVaultThroughUI(page, password)
   const item = await call('create_item', { item: { type: 'password', title: 'Installed Credential', password: 'installed-secret', favorite: false } })
   assert.equal((await call('get_item', { id: item.id })).password, 'installed-secret')
   pass('installed executable loads packaged UI, native Argon2, SQLite and encrypted credential CRUD')

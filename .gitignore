@@ -11,6 +11,8 @@ output/
 .playwright-cli/
 playwright-report/
 test-results/
+native/**/bin/
+native/**/obj/
 
 # Local environment and runtime data
 .env
@@ -35,4 +37,3 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 Desktop.ini
-

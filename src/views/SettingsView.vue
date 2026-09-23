@@ -4,6 +4,7 @@ import { NAlert, NButton, NCard, NForm, NFormItem, NSelect, NSpace, NText, useMe
 import AppShell from '../components/common/AppShell.vue'
 import BackupRestore from '../components/common/BackupRestore.vue'
 import PlaintextTransfer from '../components/common/PlaintextTransfer.vue'
+import VaultSecurity from '../components/common/VaultSecurity.vue'
 import { useSettingsStore } from '../stores/settings'
 import { backupService } from '../services/backup'
 import { callCommand } from '../services/ipc'
@@ -54,6 +55,7 @@ async function createBackup() {
       </n-form>
       <n-text depth="3">设置自动保存。无操作或切换应用后按所选时间锁定；系统锁屏、休眠时立即锁定。锁定和退出时也会清理本应用复制的内容。</n-text>
     </n-card>
+    <VaultSecurity />
     <n-card title="加密备份与恢复" class="settings-card backup-card" bordered>
       <n-text depth="3">备份包含全部凭证、项目、回收站和设置，使用当前主密码加密。恢复时需要备份创建时的主密码。</n-text>
       <n-space class="backup-actions">

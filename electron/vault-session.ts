@@ -46,6 +46,7 @@ export class VaultSession {
     let key: Buffer | null = null
     try {
       key = await derive()
+      this.checkExpiry()
       if (revision !== this.generation) throw new Error('VAULT_LOCKED')
       if (!key) return false
       commit()

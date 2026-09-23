@@ -1,17 +1,27 @@
 # 交付与验收
 
-## 上一轮 Windows 安装包
+## 当前 Windows 安装包（0.1.1，2026-09-23）
 
-以下安装包来自第三批交付，尚未包含本轮自定义字段、分类和性能改动。本轮已更新源码与 `dist` / `dist-electron`，未重新生成或安装 NSIS 包；打包当前版本使用 `pnpm electron:build:win`。
+包含第四批自定义字段、分类、复制与性能改动，以及本轮首次引导、修改主密码和系统快捷解锁。
 
-- 文件：`release/Jiazi Vault Setup 0.1.0.exe`，Windows x64 NSIS 引导安装，可选择目录，完成后不自动启动。
-- SHA-256：`680686C2A790F00E897BA191EAEE4F87816656A07BD3A31911AC3177EEA58A97`。
-- 大小：123,559,190 字节；未代码签名，Windows 可能显示未知发布者。
-- 构建：`pnpm electron:build:win`。使用 `node_modules/electron/dist` 中已安装的同版本 Windows Electron，避免再次下载 Electron。需要先完成依赖安装及 Electron 安装脚本。
+- 文件：`release/Jiazi Vault Setup 0.1.1.exe`，Windows x64 NSIS 引导安装，可选择目录，完成后不自动启动。
+- SHA-256：`31E90EB0FA5037E4975AF5B88BEC58C139106E365C3F39EA9AEF201930C77413`。
+- 大小：127,961,584 字节；签名实测为 `NotSigned`，Windows 可能显示未知发布者。
+- 构建：`pnpm electron:build:win`。使用本地同版本 Electron；Windows 构建机还需 .NET 9 SDK。`build` / `electron:dev` 自动构建 Windows Hello 辅助程序，macOS/Linux 跳过此 Windows 组件。安装包内置 .NET 9.0.20 运行时，用户无需安装 .NET。
 - 已在 Windows 11 上将安装包静默安装到 `output/windows-install`，退出码为 0；测试数据使用独立 `--user-data-dir`，不使用个人保险库。
-- 测试安装已卸载，卸载退出码为 0，程序文件已移除，独立测试保险库仍保留。安装/卸载记录在 `output/playwright/windows-install-report.json`。
+- 本轮安装记录：`output/playwright/windows-install-v0.1.1-report.json`。旧 0.1.0 包和 `windows-install-report.json` 是历史交付记录。
+- 隔离安装及卸载退出码均为 0，测试程序已移除，独立测试保险库保留；没有使用个人保险库。
 
-## 本轮功能
+## 本轮 V1 功能与安全边界
+
+- 首次使用：独立欢迎页 → 设置主密码 → 确认主密码 → 安全须知 → 创建保险库；短密码、不一致及未确认安全须知均不能创建，支持返回上一步。
+- 设置页可修改主密码：验证当前密码，限制错误尝试；全部有效凭证和回收站密文、校验信息在同一 SQLite 事务更新，失败回滚。成功后锁定并删除设备快捷解锁登记；旧备份仍用备份创建时密码，新备份用新密码。
+- 系统快捷解锁默认关闭，启用需当前主密码和系统认证。Windows 使用真实 Windows Hello（系统决定指纹、人脸或 PIN）；macOS 接入 Electron Touch ID。设备不可用时仍可使用主密码；Linux 本轮没有生物识别后端。
+- 主密钥只在主进程使用；设备登记保存 `safeStorage` 加密后的密钥，不保存主密码、不进入加密备份。每次解锁先系统认证，再取出密钥并校验当前保险库；关闭、修改主密码或恢复备份移除登记。锁定会使等待中的认证失效。
+- Windows 密钥存储依赖 DPAPI，**不能防御同一登录用户权限下的其他进程读取**；这是便利解锁，不是 TPM 绑定的密钥存储。macOS 使用 Keychain，需要在 macOS 上验证并使用稳定应用签名。[Electron 44.2.0 安全存储说明](https://github.com/electron/electron/blob/v44.2.0/docs/api/safe-storage.md)
+- Windows 原生组件编译有 SDK WinRT 程序集的 IL2104 裁剪警告；可用性及认证路径已在当前 Windows 11 实测。Touch ID、macOS/Linux 构建运行仍未验收。
+
+## 第四批功能（已包含在当前安装包）
 
 - 新建入口包含全部八种凭证类型，Custom 可从空字段开始创建。所有类型均可添加额外字段，并修改字段名、字段值或删除字段；空名称、去除首尾空白后的重名、与模板字典字段重名会阻止保存。空字段值保留，删除最后一个字段后不会恢复旧字段。
 - 已保存的自定义字段默认隐藏，点击「显示」后可编辑多行内容；「复制」直接复制完整原值。数据仍使用原有加密字段字典，没有数据库迁移或新增依赖。
@@ -66,14 +76,37 @@ CSV 使用 UTF-8，可包含 BOM；第一行为字段名，必填列为 `type,ti
 
 ## 验证
 
-- `pnpm test`：28 项测试通过，覆盖旧库迁移、30 天边界、使用记录、备份版本与回滚、JSON/CSV 往返和错误输入。
+- `pnpm test`：35 项测试通过，覆盖原有 28 项，以及主密码修改的数据完整性/事务回滚/旧备份、生物识别认证取消/登记校验/锁定竞态。
 - `pnpm build`：Vue 类型检查、Vite 生产构建、Electron TypeScript 编译通过。
 - `tests/electron-smoke.mjs`：11 项流程通过，真实 Electron UI/SQLite/剪贴板与原生 IPC；文件选择、确认框响应由测试注入，系统锁定由事件模拟。报告在 `output/playwright/batch3-smoke-report.json`。
 - `tests/credentials-smoke.mjs`：6 组新增功能流程通过，覆盖 Custom 创建/字段校验/增删改/空值/隐藏显示、多行及各类字段真实复制、组合分类过滤/导航历史/新建默认类型、搜索结果信息、删除全部字段与重启；无 renderer error。报告在 `output/playwright/credentials-smoke-report.json`。
-- `tests/installed-smoke.mjs`：上一轮 4 项流程通过，运行真正安装后的应用，使用独立数据目录，检查原生依赖、凭证持久化、实际一分钟清理定时器和重启。报告在 `output/playwright/installed-smoke-report.json`；本轮未重复安装验收。
+- `tests/access-smoke.mjs`：5 组新增流程通过，涵盖四步引导、UI/IPC 密码校验、修改后立即锁定、旧密码失效、新密码重启及字段/回收站保留。报告在 `output/playwright/access-smoke-report.json`。
+- `tests/biometric-smoke.mjs`：用户参与的真实 Windows Hello 启用、应用重启后免主密码解锁已通过；第三次用户仍通过认证，测试的取消预期超时，不能将这一运行记为全部通过。原始报告保留在 `output/playwright/biometric-smoke-report.json`。
+- 已安装 0.1.1 补测同样返回认证成功，确认发布产物及 .NET 9.0.20 组件可完成认证，但未触发预期取消；记录在 `biometric-cancel-report.json`。真实取消仍待人工验收，自动化取消/锁定竞态已通过。
+- 通过 `JIAZI_BIOMETRIC_STEP=disable` 在已安装产物中验证主密码登录、关闭真实登记、锁定后拒绝生物识别，报告 `output/playwright/biometric-disable-report.json`（无错误）。
+- `tests/installed-smoke.mjs`：4 组通过，实际安装程序的原生依赖、凭证持久化、实际一分钟清理及重启；`resume` 为事件模拟。报告 `output/playwright/installed-smoke-report.json`。
+- `JIAZI_INSTALLED_EXE` 指向已安装 exe 后，`tests/access-smoke.mjs` 的 5 组新增流程全部通过，报告 `output/playwright/installed-access-report.json`。源码与已安装程序均无 renderer error。
 - 桌面脚本运行前，将 `JIAZI_PLAYWRIGHT_MODULE` 设置为已安装 `playwright-core/index.mjs` 的绝对路径；脚本不进入常规 `pnpm test`。
 
-## 10,000 条性能验收（2026-09-23）
+## 当前安装产物的 10,000 条验收（0.1.1）
+
+真正的 NSIS 安装程序、隔离保险库、10,000 条加密凭证和 100 个项目；25 条分页，第 400 页可达，编辑/删除/恢复可用。
+
+| 指标 | 实测 | 规格目标 |
+|---|---:|---:|
+| 请求启动至解锁表单绘制完成，5 次 | 870.9–1044.0 ms | < 1500 ms |
+| 主列表搜索，18 个样本 | 16.8–39.1 ms | < 100 ms |
+| 快捷搜索，18 个样本 | 29.8–31.9 ms | < 100 ms |
+| 解锁至首屏列表 | 1039.8 ms | 无单独指标 |
+| 10,000 条数据修改主密码 | 584.4 ms | 无单独指标 |
+
+密码修改后旧密码失效，新密码可解锁，条目总数及抽样完整字段保持一致。报告 `output/playwright/performance-installed-v0.1.1.json`，所有性能目标通过，无 renderer error。
+
+边界：保留系统磁盘缓存；计时从测试进程发起启动请求开始，包含 Playwright 启动开销和两帧绘制，排除输入主密码及派生时间。与下方源码启动器的计时起点不同，不直接对比快慢，也不代表清空缓存的硬冷启动。
+
+复现：安装后设置 `JIAZI_INSTALLED_EXE` 为实际安装 exe 的绝对路径，`JIAZI_PERF_LABEL=installed-v0.1.1`，以及 `JIAZI_PLAYWRIGHT_MODULE`，运行 `node tests/performance.mjs`。
+
+## 上一轮源码构建的 10,000 条验收（2026-09-23）
 
 Windows 11（10.0.22631），i9-13900H，20 逻辑核，约 31.7 GiB 内存。独立保险库含 10,000 条真实加密凭证、100 个项目、全部八类凭证；通过真实 IPC 验证编辑、删除、恢复，并验证第 400 页可达。
 
@@ -93,4 +126,4 @@ Windows 11（10.0.22631），i9-13900H，20 逻辑核，约 31.7 GiB 内存。�
 
 复现：先执行 `pnpm build`，设置 `JIAZI_PLAYWRIGHT_MODULE` 为现有 `playwright-core/index.mjs` 绝对路径，再运行 `node tests/credentials-smoke.mjs`、`node tests/electron-smoke.mjs`、`node tests/performance.mjs`（桌面脚本顺序执行，避免争用剪贴板或窗口焦点）。性能默认启动 5 次，可用 `JIAZI_PERF_RUNS` 调整；报告和隔离测试库写入 `output/playwright`。
 
-仍待完成：macOS/Linux 构建与运行、清空系统缓存的硬冷启动及安装产物性能、全局快捷键物理按键与冲突、真实系统锁屏和休眠、Windows 代码签名。生物识别、修改主密码与后续版本的环境变量、SSH 连接、浏览器自动填充、同步、移动端、团队保险库未在本轮实现。
+仍待完成：macOS/Linux 构建与运行及 Touch ID 实机认证、Windows Hello 真实取消、清空系统缓存的硬冷启动、全局快捷键物理按键与冲突、真实系统锁屏和休眠、Windows 代码签名。V1.2 / V1.3 / V2 的环境变量、SSH 连接、浏览器自动填充、同步、移动端、团队保险库等后续能力不在本轮范围。

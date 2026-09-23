@@ -119,6 +119,15 @@ function decryptVerifier(metadata: VaultMetadata, key: Buffer) {
   return decryptBytes(key, metadata.verifier)
 }
 
+export function verifyVaultKey(metadata: VaultMetadata, key: Buffer): boolean {
+  if (!isVaultMetadata(metadata) || key.length !== 32) return false
+  try {
+    const verifier = decryptVerifier(metadata, key)
+    try { return verifier.length === VERIFIER.length && timingSafeEqual(verifier, VERIFIER) }
+    finally { verifier.fill(0) }
+  } catch { return false }
+}
+
 export async function createVaultCredential(password: string): Promise<CreatedVaultCredential> {
   const salt = randomBytes(16)
   const masterKey = await deriveKey(password, salt)
@@ -149,17 +158,11 @@ export async function unlockVaultCredential(password: string, metadata: VaultMet
     parallelism: metadata.kdf.parallelism,
     outputLen: metadata.kdf.outputLen,
   })
-  try {
-    const verifier = decryptVerifier(metadata, masterKey)
-    if (verifier.length !== VERIFIER.length || !timingSafeEqual(verifier, VERIFIER)) {
-      masterKey.fill(0)
-      return null
-    }
-    return masterKey
-  } catch {
+  if (!verifyVaultKey(metadata, masterKey)) {
     masterKey.fill(0)
     return null
   }
+  return masterKey
 }
 
 export function clearKey(key: Buffer | null) {

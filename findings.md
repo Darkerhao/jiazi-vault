@@ -1,5 +1,22 @@
 # Findings
 
+## 第五批 V1 缺口核对
+
+- 最终发布包已验证真实原生模块、设置入口、新密码持久化、主密码与 Windows Hello 解锁、禁用登记。补测取消时 OS 返回成功，UI 相应解锁，测试正确报预期不符；没有取消实机通过证据。
+- 0.1.1 安装产物的一万条性能与主密码更新已通过，具体指标和缓存/计时边界见 DELIVERY.md；实际程序安装/卸载均成功，未改变个人保险库。
+
+- Windows 采用自有小型 .NET 辅助程序调用 UserConsentVerifierInterop.RequestVerificationForWindowAsync，绑定 Electron HWND；仅传递操作和窗口句柄，不传密码/密钥。本机可用性和用户实际成功验证已通过。
+- 主进程在系统认证成功后才调用 Electron safeStorage 取出设备加密密钥，再校验当前保险库 verifier；保留会话 revision 失效检查。Windows DPAPI 不防御同登录用户下其他进程读取；这不是 TPM 绑定密钥方案。macOS 采用 promptTouchID + Keychain-backed safeStorage，尚需 macOS 设备和稳定签名验收。
+- 官方接口依据：https://learn.microsoft.com/en-us/uwp/api/windows.security.credentials.ui.userconsentverifier 。Electron safeStorage 与 systemPreferences 的 44.2.0 C++ 源码已核对。Naive UI 当前 Checkbox/Input 源码与 2.45.3 官方 API 文档已核对。
+- Windows 辅助程序使用现有 .NET 9 SDK 构建，运行时固定为 NuGet 当前稳定 9.0.20（已查官方版本索引）。self-contained 单文件部署，不要求用户安装 .NET；未引入 npm 依赖。SDK 的 WinRT 程序集裁剪警告仍需记录。
+- 工作过程中外部提交已纳入第四批变更，并将 Electron tsconfig 移到 electron/tsconfig.json；本轮保留并使用当前配置，不回退该改动。
+
+- 用户确认本轮补齐 V1 与 Windows 安装包。工作区含第四批未提交变更，必须保留；未发现磁盘 AGENTS.md，遵循用户提供规则。
+- UnlockView 目前直接显示创建/确认表单；规格 1928–1988 行要求欢迎、密码设置、确认、安全信息再创建。
+- 主密钥由主密码直接经 Argon2id 派生；修改密码必须更新 vault_metadata 和所有 items.secret（包含回收站），一个事务提交，旧备份仍使用创建时密码。
+- Electron 44.2.0 safeStorage 的 Windows 保护为 DPAPI，不能独立作为 Windows Hello 认证；Touch ID prompt 也只负责认证。须明确平台认证与加密存储边界。
+- 本轮 web 搜索代理返回 404，改为直接读取官方版本文档： https://github.com/electron/electron/blob/v44.2.0/docs/api/safe-storage.md 及 https://github.com/electron/electron/blob/v44.2.0/docs/api/system-preferences.md 。
+
 ## 第四批功能与性能审计
 
 - 工作树干净，无磁盘 AGENTS.md，遵循用户本轮提供的规则；已恢复仓库三份规划文件。

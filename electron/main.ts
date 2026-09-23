@@ -3,7 +3,7 @@ import { readFile, stat, writeFile, rename, rm } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, powerMonitor } from 'electron'
 import { openDatabase, purgeExpiredItems, type DatabaseState } from './database.js'
-import { createVaultCredential, isVaultMetadata, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
+import { clearKey, createVaultCredential, isVaultMetadata, type CreatedVaultCredential, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
 import { createItemStore, type ItemInput, type VaultItem } from './item-store.js'
 import { readSettings, writeSettings, type AppSettings } from './settings.js'
 import { VaultSession } from './vault-session.js'
@@ -14,16 +14,20 @@ import { createProjectStore, type ProjectInput } from './project-store.js'
 import { generatePassword, type PasswordOptions } from './password-generator.js'
 import { createDesktopControls } from './desktop.js'
 import { assertTransferFormat, exportPlaintext, importPlaintext, readPlaintext, type TransferFormat } from './transfer.js'
+import { replaceVaultPassword } from './vault-password.js'
+import { BiometricVault } from './biometric-vault.js'
+import { createBiometricProvider } from './biometric-provider.js'
 
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
 let settings: AppSettings
 let session: VaultSession
 let clipboardManager: ClipboardManager
-let backupBusy = false
+let vaultOperationBusy = false
 let unlockLimiter: UnlockLimiter
 let desktop: ReturnType<typeof createDesktopControls>
 let trashTimer: ReturnType<typeof setInterval> | undefined
+let biometric: BiometricVault
 
 function cleanTrash() {
   if (database && purgeExpiredItems(database.connection)) mainWindow?.webContents.send('items_changed')
@@ -52,6 +56,15 @@ function assertPassword(password: unknown) {
 
 function requireUnlocked(): Buffer {
   return session.requireKey()
+}
+
+async function verifyCurrentPassword(password: string) {
+  if (unlockLimiter.retryAt) throw new Error('UNLOCK_RATE_LIMITED')
+  const metadata = readVaultMetadata()
+  if (!metadata) throw new Error('VAULT_NOT_FOUND')
+  const key = await unlockVaultCredential(password, metadata)
+  if (!key) { unlockLimiter.fail(); throw new Error('INVALID_PASSWORD') }
+  return key
 }
 
 function hasVault() {
@@ -132,7 +145,7 @@ function registerIpcHandlers() {
     return generatePassword(args)
   })
   ipcMain.handle('create_vault', async (_event, args: { password: string }) => {
-    if (backupBusy) throw new Error('VAULT_BUSY')
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
     assertPassword(args?.password)
     if (readVaultMetadata()) throw new Error('VAULT_EXISTS')
     let metadata: VaultMetadata
@@ -145,7 +158,7 @@ function registerIpcHandlers() {
     })
   })
   ipcMain.handle('unlock_vault', async (_event, args: { password: string }) => {
-    if (backupBusy) throw new Error('VAULT_BUSY')
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
     if (unlockLimiter.retryAt) return { unlocked: false, retryAt: unlockLimiter.retryAt }
     if (typeof args?.password !== 'string') throw new Error('INVALID_DATA')
     const metadata = readVaultMetadata()
@@ -155,6 +168,53 @@ function registerIpcHandlers() {
       () => unlockLimiter.reset(),
     )
     return { unlocked, retryAt: unlocked ? 0 : unlockLimiter.fail() }
+  })
+  ipcMain.handle('get_biometric_status', () => biometric.status())
+  ipcMain.handle('enable_biometric', async (_event, args: { password: string }) => {
+    requireUnlocked()
+    assertPassword(args?.password)
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
+    vaultOperationBusy = true
+    let encrypted = ''
+    try {
+      await session.authenticate(async () => {
+        const key = await verifyCurrentPassword(args.password)
+        try { encrypted = await biometric.prepare(key); return key }
+        catch (error) { clearKey(key); throw error }
+      }, () => { biometric.save(encrypted); unlockLimiter.reset() })
+    } finally { vaultOperationBusy = false }
+  })
+  ipcMain.handle('disable_biometric', () => {
+    requireUnlocked()
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
+    biometric.disable()
+  })
+  ipcMain.handle('unlock_biometric', async () => {
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
+    const metadata = readVaultMetadata()
+    if (!metadata) throw new Error('VAULT_NOT_FOUND')
+    vaultOperationBusy = true
+    try {
+      await session.authenticate(() => biometric.unlock(metadata), () => unlockLimiter.reset())
+    } finally { vaultOperationBusy = false }
+  })
+  ipcMain.handle('change_master_password', async (_event, args: { currentPassword: string; newPassword: string }) => {
+    requireUnlocked()
+    assertPassword(args?.currentPassword)
+    assertPassword(args?.newPassword)
+    if (args.currentPassword === args.newPassword) throw new Error('PASSWORD_UNCHANGED')
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
+    vaultOperationBusy = true
+    let credential: CreatedVaultCredential
+    try {
+      await session.authenticate(async () => {
+        const verifiedKey = await verifyCurrentPassword(args.currentPassword)
+        clearKey(verifiedKey)
+        credential = await createVaultCredential(args.newPassword)
+        return credential.masterKey
+      }, () => replaceVaultPassword(requireDatabase().connection, requireUnlocked(), credential))
+      session.lock()
+    } finally { vaultOperationBusy = false }
   })
   ipcMain.handle('list_items', (_event, args?: { trashed?: boolean }) => {
     requireUnlocked()
@@ -227,8 +287,8 @@ function registerTransferHandlers() {
   ipcMain.handle('export_plaintext', async (_event, args: { format: TransferFormat }) => {
     requireUnlocked()
     assertTransferFormat(args?.format)
-    if (backupBusy || !mainWindow) throw new Error('VAULT_BUSY')
-    backupBusy = true
+    if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
+    vaultOperationBusy = true
     const revision = session.revision
     try {
       const confirmation = await dialog.showMessageBox(mainWindow, {
@@ -252,12 +312,12 @@ function registerTransferHandlers() {
       await writeExport(path, contents, revision)
       return basename(path)
     } catch { throw new Error('EXPORT_FAILED') }
-    finally { backupBusy = false }
+    finally { vaultOperationBusy = false }
   })
   ipcMain.handle('import_plaintext', async () => {
     requireUnlocked()
-    if (backupBusy || !mainWindow) throw new Error('VAULT_BUSY')
-    backupBusy = true
+    if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
+    vaultOperationBusy = true
     const revision = session.revision
     try {
       const choice = await dialog.showOpenDialog(mainWindow, {
@@ -283,7 +343,7 @@ function registerTransferHandlers() {
       assertRevision(revision)
       return importPlaintext(requireDatabase().connection, requireUnlocked(), items)
     } catch { throw new Error('IMPORT_FAILED') }
-    finally { backupBusy = false }
+    finally { vaultOperationBusy = false }
   })
 }
 
@@ -291,8 +351,8 @@ function registerBackupHandlers() {
   const filters = [{ name: 'Jiazi Vault 加密备份', extensions: ['jvault'] }]
   ipcMain.handle('create_backup', async () => {
     requireUnlocked()
-    if (backupBusy || !mainWindow) throw new Error('VAULT_BUSY')
-    backupBusy = true
+    if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
+    vaultOperationBusy = true
     const revision = session.revision
     try {
       const choice = await dialog.showSaveDialog(mainWindow, {
@@ -308,13 +368,13 @@ function registerBackupHandlers() {
     } catch {
       throw new Error('BACKUP_WRITE_FAILED')
     } finally {
-      backupBusy = false
+      vaultOperationBusy = false
     }
   })
   ipcMain.handle('restore_backup', async (_event, args: { password: string }) => {
     assertPassword(args?.password)
-    if (backupBusy || !mainWindow) throw new Error('VAULT_BUSY')
-    backupBusy = true
+    if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
+    vaultOperationBusy = true
     const revision = session.revision
     try {
       const choice = await dialog.showOpenDialog(mainWindow, { title: '选择加密备份', filters, properties: ['openFile'] })
@@ -340,7 +400,7 @@ function registerBackupHandlers() {
       return true
     } catch {
       throw new Error('BACKUP_RESTORE_FAILED')
-    } finally { backupBusy = false }
+    } finally { vaultOperationBusy = false }
   })
 }
 
@@ -355,6 +415,7 @@ else app.whenReady().then(() => {
     if (mainWindow && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('vault_locked')
     void clipboardManager.clearOnLock().catch(() => {})
   })
+  biometric = new BiometricVault(database.connection, createBiometricProvider(() => mainWindow))
   powerMonitor.on('lock-screen', () => session.lock())
   powerMonitor.on('suspend', () => session.lock())
   powerMonitor.on('resume', () => { session.checkExpiry(); cleanTrash() })
