@@ -2,10 +2,11 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NAlert, NButton, NEmpty, NIcon, NList, NListItem, NPagination, NSelect, NSpin, NTag, NText, useDialog, useMessage } from 'naive-ui'
-import { KeyOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
+import { CopyOutline, KeyOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
 import AppShell from '../components/common/AppShell.vue'
 import ItemFormModal from '../components/item/ItemFormModal.vue'
 import { useVaultStore } from '../stores/vault'
+import { useClipboard } from '../composables/useClipboard'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, ITEM_TYPE_OPTIONS } from '../utils/item-fields'
 import { ITEM_TYPE_ICONS } from '../utils/item-icons'
 import { projectService } from '../services/project'
@@ -106,6 +107,15 @@ async function toggle(item: VaultItemSummary) {
   if (!(await vault.toggleFavorite(item.id))) message.error('操作失败，请重试')
 }
 
+const { copyItem } = useClipboard()
+const copyingId = ref<string | null>(null)
+async function copyRow(item: VaultItemSummary) {
+  if (copyingId.value) return
+  copyingId.value = item.id
+  try { await copyItem(item.id) }
+  finally { copyingId.value = null }
+}
+
 function remove(item: VaultItemSummary) {
   dialog.warning({
     title: '删除凭证',
@@ -173,6 +183,7 @@ async function restore(item: VaultItemSummary) {
                 <n-button quaternary circle size="small" @click="removePermanently(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
               </template>
               <template v-else>
+                <n-button quaternary circle size="small" :loading="copyingId === item.id" :aria-label="`复制${item.title}`" @click="copyRow(item)"><template #icon><n-icon><copy-outline /></n-icon></template></n-button>
                 <n-button quaternary circle size="small" @click="toggle(item)"><template #icon><n-icon><star v-if="item.favorite" /><star-outline v-else /></n-icon></template></n-button>
                 <n-button quaternary circle size="small" @click="remove(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
               </template>

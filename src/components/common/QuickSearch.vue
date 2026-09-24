@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NAlert, NButton, NEmpty, NIcon, NInput, NModal, NSpin, NText, useMessage, type InputInst } from 'naive-ui'
+import { NAlert, NButton, NEmpty, NIcon, NInput, NModal, NSpin, NText, type InputInst } from 'naive-ui'
 import { useVaultStore } from '../../stores/vault'
 import { useAuthStore } from '../../stores/auth'
 import { useClipboard } from '../../composables/useClipboard'
@@ -13,8 +13,7 @@ const emit = defineEmits<{ (event: 'close'): void }>()
 const vault = useVaultStore()
 const auth = useAuthStore()
 const router = useRouter()
-const message = useMessage()
-const { copy } = useClipboard()
+const { copyItem } = useClipboard()
 const query = ref('')
 const selected = ref(0)
 const input = ref<InputInst | null>(null)
@@ -40,13 +39,8 @@ async function copySelected() {
   const item = active.value
   if (!item || copying.value) return
   copying.value = true
-  try {
-    const full = await vault.get(item.id, false)
-    if (!full || !auth.unlocked) return
-    const secret = full.password || full.fields?.apiKey || full.fields?.privateKey
-    if (!secret) { message.info('此凭证没有可快捷复制的密码，请打开后选择字段。'); return }
-    await copy(secret, item.id)
-  } finally { copying.value = false }
+  try { await copyItem(item.id) }
+  finally { copying.value = false }
 }
 
 function keydown(event: KeyboardEvent) {
@@ -77,7 +71,7 @@ function subtitle(item: VaultItemSummary) {
           <n-empty v-if="!vault.loading && !results.length" class="search-state" description="没有匹配的凭证" />
         </div>
       </n-spin>
-      <div class="search-footer"><n-text depth="3">↑ ↓ 选择 · Enter 打开 · Ctrl C 复制密码 · Esc 关闭</n-text><n-button size="small" :disabled="!active" :loading="copying" @click="copySelected">复制密码</n-button></div>
+      <div class="search-footer"><n-text depth="3">↑ ↓ 选择 · Enter 打开 · Ctrl C 复制 · Esc 关闭</n-text><n-button size="small" :disabled="!active" :loading="copying" @click="copySelected">复制</n-button></div>
     </div>
   </n-modal>
 </template>

@@ -1,4 +1,4 @@
-import type { Environment, ItemType } from '../types/vault'
+import type { Environment, ItemType, VaultItem } from '../types/vault'
 
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   login: '登录账号',
@@ -84,4 +84,17 @@ export const TYPE_FIELDS: Record<ItemType, FieldDef[]> = {
   ],
   custom: [],
   env: [],
+}
+
+/** The value a one-click copy uses for each type; env sets are copied as a whole .env instead. */
+export function primarySecret(item: VaultItem): string | undefined {
+  const fields = item.fields ?? {}
+  switch (item.type) {
+    case 'api-key': return fields.apiKey || fields.secret
+    case 'ssh': return fields.privateKey
+    case 'secure-note': return item.notes
+    case 'database': return item.password || fields.connectionString
+    case 'custom': return item.password || Object.values(fields).find(Boolean)
+    default: return item.password
+  }
 }

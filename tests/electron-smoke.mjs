@@ -87,7 +87,7 @@ try {
 
   await page.keyboard.press('Control+k')
   await page.getByPlaceholder('搜索名称、项目、环境、账号…').fill('Copied Credential')
-  await page.getByRole('button', { name: '复制密码', exact: true }).click()
+  await page.getByRole('button', { name: '复制', exact: true }).click()
   await page.getByText('已复制到剪贴板', { exact: true }).waitFor()
   assert.equal(await application.evaluate(async ({ clipboard }) => clipboard.readText()), 'second-secret')
   await page.keyboard.press('Escape')
