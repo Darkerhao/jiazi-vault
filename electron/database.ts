@@ -18,7 +18,8 @@ export function openDatabase(userDataPath: string): DatabaseState {
   const path = join(userDataPath, 'vault.db')
   const connection = new DatabaseSync(path)
 
-  connection.exec(`
+  try {
+    connection.exec(`
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS unlock_attempts (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -61,12 +62,16 @@ export function openDatabase(userDataPath: string): DatabaseState {
     );
   `)
 
-  const columns = connection.prepare('PRAGMA table_info(items)').all()
-  if (!columns.some((column) => column.name === 'last_accessed_at')) {
-    connection.exec('ALTER TABLE items ADD COLUMN last_accessed_at INTEGER')
-  }
-  connection.exec('CREATE INDEX IF NOT EXISTS items_deleted_at ON items(deleted_at)')
-  purgeExpiredItems(connection)
+    const columns = connection.prepare('PRAGMA table_info(items)').all()
+    if (!columns.some((column) => column.name === 'last_accessed_at')) {
+      connection.exec('ALTER TABLE items ADD COLUMN last_accessed_at INTEGER')
+    }
+    connection.exec('CREATE INDEX IF NOT EXISTS items_deleted_at ON items(deleted_at)')
+    purgeExpiredItems(connection)
 
-  return { connection, path }
+    return { connection, path }
+  } catch (error) {
+    connection.close()
+    throw error
+  }
 }

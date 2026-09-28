@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { _electron } from 'playwright-core'
 import { createVaultThroughUI } from './onboarding.mjs'
 
-const { _electron } = await import(pathToFileURL(process.env.JIAZI_PLAYWRIGHT_MODULE).href)
 const root = process.cwd(), output = resolve(root, 'output/playwright')
 const data = resolve(output, `installed-data-${Date.now()}`)
 const executablePath = resolve(root, 'output/windows-install/Jiazi Vault.exe')

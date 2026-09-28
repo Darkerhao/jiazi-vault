@@ -29,6 +29,7 @@ export interface FieldDef {
   key: string
   label: string
   kind: 'text' | 'password' | 'textarea'
+  sensitive?: boolean
   target: 'username' | 'password' | 'url' | 'host' | 'port' | 'notes' | 'field'
 }
 
@@ -50,7 +51,7 @@ export const TYPE_FIELDS: Record<ItemType, FieldDef[]> = {
     { key: 'port', label: '端口', kind: 'text', target: 'port' },
     { key: 'username', label: '用户名', kind: 'text', target: 'username' },
     { key: 'password', label: '密码', kind: 'password', target: 'password' },
-    { key: 'sshKey', label: 'SSH Key', kind: 'textarea', target: 'field' },
+    { key: 'sshKey', label: 'SSH Key', kind: 'textarea', target: 'field', sensitive: true },
     { key: 'notes', label: '备注', kind: 'textarea', target: 'notes' },
   ],
   database: [
@@ -60,7 +61,7 @@ export const TYPE_FIELDS: Record<ItemType, FieldDef[]> = {
     { key: 'dbName', label: '数据库名', kind: 'text', target: 'field' },
     { key: 'username', label: '用户名', kind: 'text', target: 'username' },
     { key: 'password', label: '密码', kind: 'password', target: 'password' },
-    { key: 'connectionString', label: '连接串', kind: 'text', target: 'field' },
+    { key: 'connectionString', label: '连接串', kind: 'text', target: 'field', sensitive: true },
     { key: 'notes', label: '备注', kind: 'textarea', target: 'notes' },
   ],
   'api-key': [
@@ -75,7 +76,7 @@ export const TYPE_FIELDS: Record<ItemType, FieldDef[]> = {
     { key: 'host', label: '主机', kind: 'text', target: 'host' },
     { key: 'port', label: '端口', kind: 'text', target: 'port' },
     { key: 'username', label: '用户名', kind: 'text', target: 'username' },
-    { key: 'privateKey', label: '私钥', kind: 'textarea', target: 'field' },
+    { key: 'privateKey', label: '私钥', kind: 'textarea', target: 'field', sensitive: true },
     { key: 'passphrase', label: 'Passphrase', kind: 'password', target: 'field' },
     { key: 'notes', label: '备注', kind: 'textarea', target: 'notes' },
   ],

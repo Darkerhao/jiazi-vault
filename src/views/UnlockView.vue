@@ -22,6 +22,7 @@ const remaining = computed(() => Math.max(0, Math.ceil((auth.retryAt - now.value
 const clock = setInterval(() => { now.value = Date.now() }, 250)
 onMounted(async () => {
   void auth.checkStatus()
+  if (auth.databaseError) return
   try { biometric.value = await vaultService.biometricStatus() } catch { /* Master password remains available. */ }
 })
 onUnmounted(() => clearInterval(clock))
@@ -77,6 +78,11 @@ async function submit() {
       <img class="unlock-icon" src="/brand/icon.svg" alt="" width="64" height="64">
       <n-text depth="1">Jiazi Vault</n-text>
       <n-spin v-if="!auth.isReady" class="loading" />
+      <template v-else-if="auth.databaseError">
+        <h1>无法打开保险库</h1>
+        <n-alert type="error" :show-icon="false" class="security-note">数据文件可能损坏或暂时无法访问。请检查文件权限后重新启动，或从加密备份恢复。恢复前会保留原文件。</n-alert>
+        <div class="restore-action"><BackupRestore /></div>
+      </template>
       <template v-else>
       <h1>{{ isCreating ? titles[step] : '解锁保险库' }}</h1>
       <n-text v-if="isCreating && step === 'welcome'" depth="3" class="intro">凭证只保存在此设备。<br>无需账号，无云端同步，无追踪。</n-text>

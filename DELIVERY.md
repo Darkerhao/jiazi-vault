@@ -1,5 +1,16 @@
 # 交付与验收
 
+## 可靠性与安全修复（当前源码）
+
+- 数据库打开或初始化失败时显示恢复入口；错误密码和无效备份不移动原库。恢复先写入独立临时数据库，成功后将原数据库及 SQLite 附属文件保留到数据目录的 `recovery/restore-*`，再安装已验证的替换库。正常保险库仍使用原有事务恢复流程。
+- 加密备份导出和恢复统一上限 256 MiB；超限明确提示，导出不写文件，恢复不替换原库。10,000 条凭证、约 76 MiB 的备份已通过真实文件导出及 IPC 恢复验证。备份格式不变；明文 JSON/CSV 导入仍限 64 MiB。
+- 条目编辑器有未保存内容时，取消、Esc、遮罩关闭、切换页面或打开其他条目会要求确认；切换类型会在丢弃字段前确认。保存或导出期间禁止关闭；系统锁定直接销毁编辑内容及确认框。
+- 已保存的 SSH Key、私钥和连接串默认隐藏，可显式显示、编辑或直接复制；切换显示状态不修改数据。
+- IPC 统一检查应用窗口、主 frame 和精确页面 URL；禁止新窗口及非应用页面的网络导航。Chromium 的 `about:blank` 不触发可取消的网络导航事件，但离开应用会锁定，且该页面无法调用保险库 IPC。
+- `playwright-core` 固定为项目开发依赖，不再需要外部模块路径。执行 `pnpm test:desktop` 完成构建并顺序运行凭证、访问、环境变量和本轮回归；已有构建可执行 `node tests/desktop.mjs`，或指定脚本名，如 `node tests/desktop.mjs desktop-regression`。测试使用 `output/playwright` 下的隔离数据。
+
+自动验证：`pnpm test` 的 44 项 Node 测试、`pnpm test:desktop` 的 5 组桌面测试（含新增 5 个回归场景）全部通过；类型检查、前端及 Electron 编译、Windows Hello 辅助程序构建通过。桌面回归包括损坏库恢复和原文件保留、大备份往返及超限拒绝、敏感字段显示、草稿保护、保存中锁定、非授权窗口及页面 IPC 拒绝。原生完整构建存在已有 IL2104 裁剪警告；本轮不包含安装包重新打包、签名、macOS/Linux 实机及用户参与的生物识别验收。
+
 ## V1.2 环境变量集（0.1.2，2026-09-23）
 
 入口：新建条目选择「环境变量集」，或从「分类 → 环境变量集」进入。可按项目和环境筛选；环境必选，项目可选，删除项目后变量集保留并解除归属。
@@ -104,7 +115,7 @@ CSV 使用 UTF-8，可包含 BOM；第一行为字段名，必填列为 `type,ti
 - 通过 `JIAZI_BIOMETRIC_STEP=disable` 在已安装产物中验证主密码登录、关闭真实登记、锁定后拒绝生物识别，报告 `output/playwright/biometric-disable-report.json`（无错误）。
 - `tests/installed-smoke.mjs`：4 组通过，实际安装程序的原生依赖、凭证持久化、实际一分钟清理及重启；`resume` 为事件模拟。报告 `output/playwright/installed-smoke-report.json`。
 - `JIAZI_INSTALLED_EXE` 指向已安装 exe 后，`tests/access-smoke.mjs` 的 5 组新增流程全部通过，报告 `output/playwright/installed-access-report.json`。源码与已安装程序均无 renderer error。
-- 桌面脚本运行前，将 `JIAZI_PLAYWRIGHT_MODULE` 设置为已安装 `playwright-core/index.mjs` 的绝对路径；脚本不进入常规 `pnpm test`。
+- 桌面脚本直接使用项目内 `playwright-core`；`pnpm test:desktop` 为统一入口，脚本不进入常规 `pnpm test`。
 
 ## 当前安装产物的 10,000 条验收（0.1.1）
 
@@ -122,7 +133,7 @@ CSV 使用 UTF-8，可包含 BOM；第一行为字段名，必填列为 `type,ti
 
 边界：保留系统磁盘缓存；计时从测试进程发起启动请求开始，包含 Playwright 启动开销和两帧绘制，排除输入主密码及派生时间。与下方源码启动器的计时起点不同，不直接对比快慢，也不代表清空缓存的硬冷启动。
 
-复现：安装后设置 `JIAZI_INSTALLED_EXE` 为实际安装 exe 的绝对路径，`JIAZI_PERF_LABEL=installed-v0.1.1`，以及 `JIAZI_PLAYWRIGHT_MODULE`，运行 `node tests/performance.mjs`。
+复现：安装后设置 `JIAZI_INSTALLED_EXE` 为实际安装 exe 的绝对路径、`JIAZI_PERF_LABEL=installed-v0.1.1`，运行 `node tests/performance.mjs`。
 
 ## 上一轮源码构建的 10,000 条验收（2026-09-23）
 
@@ -142,6 +153,6 @@ Windows 11（10.0.22631），i9-13900H，20 逻辑核，约 31.7 GiB 内存。�
 
 边界：启动测量采用新的 Electron 进程、生产构建页面和测试启动器，保留操作系统磁盘缓存，排除输入主密码及密码派生时间；包含 Playwright 调试开销。它是本机新进程启动验证，不代表清空系统缓存后的硬冷启动、已安装产物或其他机器的性能承诺。
 
-复现：先执行 `pnpm build`，设置 `JIAZI_PLAYWRIGHT_MODULE` 为现有 `playwright-core/index.mjs` 绝对路径，再运行 `node tests/credentials-smoke.mjs`、`node tests/electron-smoke.mjs`、`node tests/performance.mjs`（桌面脚本顺序执行，避免争用剪贴板或窗口焦点）。性能默认启动 5 次，可用 `JIAZI_PERF_RUNS` 调整；报告和隔离测试库写入 `output/playwright`。
+复现：先执行 `pnpm build`，再运行 `node tests/credentials-smoke.mjs`、`node tests/electron-smoke.mjs`、`node tests/performance.mjs`（桌面脚本顺序执行，避免争用剪贴板或窗口焦点）。性能默认启动 5 次，可用 `JIAZI_PERF_RUNS` 调整；报告和隔离测试库写入 `output/playwright`。
 
 历史 0.1.1 的待验收项由本文开头的 0.1.2 记录更新。仍独立保留 macOS/Linux 构建与运行、Touch ID 实机认证、硬冷启动及 Windows 代码签名；SSH 连接、浏览器扩展、同步、移动端与团队保险库属于后续迭代。

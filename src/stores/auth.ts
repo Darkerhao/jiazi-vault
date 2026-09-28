@@ -5,6 +5,7 @@ import { vaultService } from '../services/vault'
 export const useAuthStore = defineStore('auth', () => {
   const unlocked = ref(false)
   const hasVault = ref<boolean | null>(null)
+  const databaseError = ref(false)
   const busy = ref(false)
   const error = ref<string | null>(null)
   const notice = ref<string | null>(null)
@@ -26,6 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (revision !== sessionRevision.value) return
       unlocked.value = status.unlocked
       hasVault.value = status.exists
+      databaseError.value = status.databaseError
       retryAt.value = status.retryAt
     } catch {
       error.value = '无法连接桌面服务，请重新启动应用。'
@@ -98,5 +100,5 @@ export const useAuthStore = defineStore('auth', () => {
     } finally { busy.value = false }
   }
 
-  return { unlocked, hasVault, busy, error, notice, sessionRevision, retryAt, isReady, checkStatus, create, unlock, unlockBiometric, lock, markLocked }
+  return { unlocked, hasVault, databaseError, busy, error, notice, sessionRevision, retryAt, isReady, checkStatus, create, unlock, unlockBiometric, lock, markLocked }
 })

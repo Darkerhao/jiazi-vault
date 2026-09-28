@@ -6,7 +6,7 @@ export interface AppSettings {
   autoLockMinutes: 5 | 15 | 30 | 60 | null
 }
 
-const defaults: AppSettings = { themeMode: 'system', clipboardClearTimeout: 15, autoLockMinutes: 15 }
+export const DEFAULT_SETTINGS: Readonly<AppSettings> = { themeMode: 'system', clipboardClearTimeout: 15, autoLockMinutes: 15 }
 
 export function validateSettings(value: unknown): AppSettings {
   if (!value || typeof value !== 'object') throw new Error('INVALID_SETTINGS')
@@ -23,7 +23,7 @@ export function validateSettings(value: unknown): AppSettings {
 
 export function readSettings(db: DatabaseSync): AppSettings {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('preferences')
-  return row ? validateSettings(JSON.parse(String(row.value))) : { ...defaults }
+  return row ? validateSettings(JSON.parse(String(row.value))) : { ...DEFAULT_SETTINGS }
 }
 
 export function writeSettings(db: DatabaseSync, value: unknown): AppSettings {

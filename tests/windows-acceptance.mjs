@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import electron from 'electron'
+import { _electron } from 'playwright-core'
 import { createVaultThroughUI } from './onboarding.mjs'
 
-const { _electron } = await import(pathToFileURL(process.env.JIAZI_PLAYWRIGHT_MODULE).href)
 const root = process.cwd(), output = resolve(root, 'output/playwright')
 const step = process.argv[2]
 assert.ok(['conflict', 'enroll', 'cancel', 'lock', 'sleep', 'hotkey'].includes(step))
@@ -16,7 +16,7 @@ let application, holder, page, originalClipboard, events = []
 const pass = (message) => { report.push(message); console.log('PASS ' + message) }
 const call = (command, args) => page.evaluate(({ command, args }) => window.jiaziVault.invoke(command, args), { command, args })
 async function launch() {
-  application = await _electron.launch({ executablePath: resolve(root, 'node_modules/electron/dist/electron.exe'), args: [resolve(root, 'tests/electron-launch.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data } })
+  application = await _electron.launch({ executablePath: electron, args: [resolve(root, 'tests/electron-launch.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data } })
   page = await application.firstWindow()
   page.setDefaultTimeout(15_000)
   page.on('pageerror', (error) => errors.push(error.message))
@@ -32,7 +32,7 @@ async function unlock() {
 }
 try {
   if (step === 'conflict') {
-    holder = await _electron.launch({ executablePath: resolve(root, 'node_modules/electron/dist/electron.exe'), args: [resolve(root, 'tests/shortcut-holder.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data + '-holder' } })
+    holder = await _electron.launch({ executablePath: electron, args: [resolve(root, 'tests/shortcut-holder.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data + '-holder' } })
     assert.equal(await holder.evaluate(() => globalThis.shortcutHeld), true, 'Shortcut already occupied before test holder started')
   }
   await launch()

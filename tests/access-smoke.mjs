@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import electron from 'electron'
+import { _electron } from 'playwright-core'
 
-const { _electron } = await import(pathToFileURL(process.env.JIAZI_PLAYWRIGHT_MODULE).href)
 const root = process.cwd(), output = resolve(root, 'output/playwright')
 const data = resolve(output, `access-data-${Date.now()}`)
 const installed = process.env.JIAZI_INSTALLED_EXE
@@ -15,7 +15,7 @@ const pass = (name) => { report.push(name); console.log('PASS ' + name) }
 const call = (command, args) => page.evaluate(({ command, args }) => window.jiaziVault.invoke(command, args), { command, args })
 async function launch() {
   application = await _electron.launch({
-    executablePath: installed || resolve(root, 'node_modules/electron/dist/electron.exe'),
+    executablePath: installed || electron,
     args: installed ? [`--user-data-dir=${data}`] : [resolve(root, 'tests/electron-launch.cjs')], cwd: root,
     env: { ...process.env, JIAZI_TEST_DATA: data },
   })

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, useMessage } from 'naive-ui'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, useDialog, useMessage } from 'naive-ui'
 import { useVaultStore } from '../../stores/vault'
 import { useClipboard } from '../../composables/useClipboard'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_OPTIONS, TYPE_FIELDS, type FieldDef } from '../../utils/item-fields'
@@ -15,11 +16,18 @@ const emit = defineEmits<{ (event: 'close'): void }>()
 
 const vault = useVaultStore()
 const message = useMessage()
+const dialog = useDialog()
 const { copy } = useClipboard()
 const auth = useAuthStore()
 const importing = ref(false), exporting = ref(false)
 let disposed = false
-onBeforeUnmount(() => { disposed = true; extraFields.value = []; for (const key of Object.keys(values)) delete values[key] })
+onBeforeUnmount(() => {
+  disposed = true
+  dismissDiscard?.()
+  initialSnapshot.value = ''
+  extraFields.value = []
+  for (const key of Object.keys(values)) delete values[key]
+})
 
 const type = ref<ItemType>('login')
 const title = ref('')
@@ -29,8 +37,43 @@ const saving = ref(false)
 const projectOptions = computed(() => vault.projects.map((p) => ({ label: p.name, value: p.id })))
 const tags = ref('')
 const values = reactive<Record<string, string | null>>({})
+const revealedFields = reactive(new Set<string>())
 const extraFields = ref<{ id: number; name: string; value: string; visible: boolean }[]>([])
 let nextFieldId = 0
+const initialSnapshot = ref('')
+let discardDecision: Promise<boolean> | null = null
+let dismissDiscard: (() => void) | undefined
+
+function snapshot() {
+  return JSON.stringify({ type: type.value, title: title.value, environment: environment.value, projectId: projectId.value,
+    tags: tags.value, values, fields: extraFields.value.map(({ name, value }) => ({ name, value })), importing: importing.value })
+}
+
+function confirmDiscard(changed = snapshot() !== initialSnapshot.value): Promise<boolean> {
+  if (!auth.unlocked) return Promise.resolve(true)
+  if (saving.value || exporting.value) return Promise.resolve(false)
+  if (!changed) return Promise.resolve(true)
+  if (discardDecision) return discardDecision
+  discardDecision = new Promise<boolean>((resolve) => {
+    const prompt = dialog.warning({
+      title: '放弃未保存的修改？', content: '继续操作将丢弃未保存的内容。',
+      positiveText: '放弃修改', negativeText: '继续编辑',
+      onPositiveClick: () => resolve(true), onAfterLeave: () => resolve(false),
+    })
+    dismissDiscard = () => { prompt.destroy(); resolve(false) }
+  }).finally(() => { discardDecision = null; dismissDiscard = undefined })
+  return discardDecision
+}
+
+async function requestClose() {
+  if (await confirmDiscard() && !disposed) emit('close')
+}
+
+onBeforeRouteLeave(() => confirmDiscard())
+onBeforeRouteUpdate((to, from) => {
+  if ((to.query.new && to.query.new !== from.query.new) || (to.query.item && to.query.item !== from.query.item)) return confirmDiscard()
+  return true
+})
 
 const isEdit = computed(() => props.item !== null)
 const isEnv = computed(() => type.value === 'env')
@@ -102,13 +145,18 @@ watch(
     }
     resetValues(item)
     if (!item && props.draft?.password) values.password = props.draft.password
+    initialSnapshot.value = snapshot()
   },
   { immediate: true },
 )
 
 function resetValues(item: VaultItem | null) {
+  revealedFields.clear()
   for (const key of Object.keys(values)) delete values[key]
-  for (const field of fields.value) values[field.key] = readField(item, field)
+  for (const field of fields.value) {
+    values[field.key] = readField(item, field)
+    if (!item && field.sensitive) revealedFields.add(field.key)
+  }
   const known = new Set(fields.value.filter((field) => field.target === 'field').map((field) => field.key))
   extraFields.value = Object.entries(item?.fields ?? {}).filter(([name]) => !known.has(name))
     .map(([name, value]) => ({ id: nextFieldId++, name, value, visible: false }))
@@ -121,7 +169,9 @@ function readField(item: VaultItem | null, field: FieldDef): string | null {
   return item[field.target] ?? null
 }
 
-function onTypeChange(value: ItemType) {
+async function onTypeChange(value: ItemType) {
+  const hasValues = Object.values(values).some(Boolean) || extraFields.value.length > 0 || importing.value
+  if (!await confirmDiscard(hasValues) || disposed) return
   importing.value = false
   type.value = value
   resetValues(null)
@@ -158,6 +208,7 @@ async function save() {
   const input = buildItem()
   const ok = props.item ? await vault.updateItem({ ...input, id: props.item.id, createdAt: props.item.createdAt, updatedAt: props.item.updatedAt }) : await vault.createItem(input)
   saving.value = false
+  if (disposed) return
   if (!ok) {
     message.error('保存失败，请重试')
     return
@@ -173,10 +224,13 @@ async function save() {
     :title="isEnv ? (isEdit ? '编辑环境变量集' : '新建环境变量集') : (isEdit ? '编辑凭证' : '新建凭证')"
     style="width: 720px; max-width: calc(100vw - 40px)"
     :bordered="false"
+    :closable="!saving && !exporting"
+    :mask-closable="!saving && !exporting"
+    :close-on-esc="!saving && !exporting"
     :content-style="isEnv ? { maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' } : undefined"
-    @update:show="(v) => !v && emit('close')"
+    @update:show="(v) => !v && requestClose()"
   >
-    <n-form label-placement="left" label-width="96">
+    <n-form label-placement="left" label-width="96" :disabled="saving || exporting">
       <n-form-item label="类型">
         <n-select :value="type" :options="ITEM_TYPE_OPTIONS" :disabled="isEdit" @update:value="onTypeChange" />
       </n-form-item>
@@ -191,7 +245,9 @@ async function save() {
       </n-form-item>
       <n-form-item v-for="field in fields" :key="field.key" :label="field.label">
         <div class="field-value">
-          <n-input v-model:value="values[field.key]" :type="field.kind" show-password-on="click" :autosize="field.kind === 'textarea' ? { minRows: 3, maxRows: 8 } : false" :placeholder="field.label" />
+          <n-input v-if="!field.sensitive || revealedFields.has(field.key)" v-model:value="values[field.key]" :type="field.kind" show-password-on="click" :autosize="field.kind === 'textarea' ? { minRows: 3, maxRows: 8 } : false" :placeholder="field.label" />
+          <n-input v-else :value="values[field.key] ? '••••••••' : ''" readonly :placeholder="field.label" />
+          <n-button v-if="field.sensitive" :aria-label="`${revealedFields.has(field.key) ? '隐藏' : '显示'}${field.label}`" @click="revealedFields.has(field.key) ? revealedFields.delete(field.key) : revealedFields.add(field.key)">{{ revealedFields.has(field.key) ? '隐藏' : '显示' }}</n-button>
           <n-button :disabled="!values[field.key]" :aria-label="`复制${field.label}`" @click="copy(values[field.key] ?? '', item?.id)">复制</n-button>
         </div>
       </n-form-item>
@@ -231,7 +287,7 @@ async function save() {
     </n-form>
     <template #footer>
       <n-space justify="end">
-        <n-button @click="emit('close')">取消</n-button>
+        <n-button :disabled="saving || exporting" @click="requestClose">取消</n-button>
         <n-button type="primary" :loading="saving" :disabled="invalid || exporting" @click="save">保存</n-button>
       </n-space>
     </template>

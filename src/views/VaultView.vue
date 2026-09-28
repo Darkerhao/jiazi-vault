@@ -20,6 +20,7 @@ const message = useMessage()
 
 const modalShow = ref(false)
 const editing = ref<VaultItem | null>(null)
+const newEditorKey = ref(0)
 const projectId = computed(() => typeof route.query.project === 'string' ? route.query.project : undefined)
 const environment = computed(() => ENVIRONMENT_OPTIONS.some((o) => o.value === route.query.environment) ? route.query.environment as Environment : undefined)
 const currentProject = computed(() => vault.projects.find((p) => p.id === projectId.value))
@@ -71,6 +72,7 @@ watch(
   (value) => {
     if (!value) return
     editing.value = null
+    newEditorKey.value++
     modalShow.value = true
     const query = { ...route.query }
     delete query.new
@@ -197,7 +199,7 @@ async function restore(item: VaultItemSummary) {
       </div>
     </n-spin>
 
-    <ItemFormModal v-if="modalShow" :key="editing?.id ?? 'new'" :show="modalShow" :item="editing" :draft="{ type: itemType, projectId, environment }" @close="closeEditor" />
+    <ItemFormModal v-if="modalShow" :key="editing?.id ?? `new-${newEditorKey}`" :show="modalShow" :item="editing" :draft="{ type: itemType, projectId, environment }" @close="closeEditor" />
   </AppShell>
 </template>
 

@@ -1,14 +1,16 @@
 import { basename, extname, join } from 'node:path'
 import { readFile, stat, writeFile, rename, rm } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
+import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, powerMonitor } from 'electron'
 import { openDatabase, purgeExpiredItems, type DatabaseState } from './database.js'
 import { clearKey, createVaultCredential, isVaultMetadata, type CreatedVaultCredential, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
 import { createItemStore, type ItemInput, type VaultItem } from './item-store.js'
-import { readSettings, writeSettings, type AppSettings } from './settings.js'
+import { DEFAULT_SETTINGS, readSettings, writeSettings, type AppSettings } from './settings.js'
 import { VaultSession } from './vault-session.js'
 import { ClipboardManager } from './clipboard-manager.js'
-import { createBackup, readBackup, restoreBackup } from './backup.js'
+import { assertBackupSize, createBackup, readBackup, restoreBackup } from './backup.js'
+import { recoverDatabase } from './database-recovery.js'
 import { UnlockLimiter } from './unlock-limiter.js'
 import { createProjectStore, type ProjectInput } from './project-store.js'
 import { generatePassword, type PasswordOptions } from './password-generator.js'
@@ -21,7 +23,7 @@ import { ENV_MAX_BYTES, serializeEnv, validateEnvFields } from './env.js'
 
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
-let settings: AppSettings
+let settings: AppSettings = { ...DEFAULT_SETTINGS }
 let session: VaultSession
 let clipboardManager: ClipboardManager
 let vaultOperationBusy = false
@@ -29,6 +31,47 @@ let unlockLimiter: UnlockLimiter
 let desktop: ReturnType<typeof createDesktopControls>
 let trashTimer: ReturnType<typeof setInterval> | undefined
 let biometric: BiometricVault
+let itemStore: ReturnType<typeof createItemStore>
+let projects: ReturnType<typeof createProjectStore>
+
+function initializeDatabase() {
+  const opened = openDatabase(app.getPath('userData'))
+  try {
+    settings = readSettings(opened.connection)
+    unlockLimiter = new UnlockLimiter(opened.connection)
+    itemStore = createItemStore(opened.connection, requireUnlocked)
+    projects = createProjectStore(opened.connection)
+    biometric = new BiometricVault(opened.connection, createBiometricProvider(() => mainWindow))
+    database = opened
+  } catch (error) {
+    opened.connection.close()
+    throw error
+  }
+}
+
+function applicationUrl() {
+  return app.isPackaged ? pathToFileURL(join(app.getAppPath(), 'dist', 'index.html')).href : 'http://127.0.0.1:1420/'
+}
+
+function isApplicationUrl(value: string) {
+  try {
+    const url = new URL(value)
+    url.hash = ''
+    return url.href === applicationUrl()
+  } catch { return false }
+}
+
+const recoveryCommands = new Set(['health_check', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'restore_backup'])
+
+function handleIpc(channel: string, listener: Parameters<typeof ipcMain.handle>[1]) {
+  ipcMain.handle(channel, (event, ...args) => {
+    const contents = mainWindow?.webContents
+    if (!contents || event.sender !== contents || event.senderFrame !== contents.mainFrame
+      || !isApplicationUrl(event.senderFrame.url)) throw new Error('INVALID_IPC_SENDER')
+    if (!database && !recoveryCommands.has(channel)) throw new Error('DATABASE_ERROR')
+    return listener(event, ...args)
+  })
+}
 
 function cleanTrash() {
   if (database && purgeExpiredItems(database.connection)) mainWindow?.webContents.send('items_changed')
@@ -97,6 +140,10 @@ function createWindow() {
   mainWindow.webContents.on('before-input-event', () => session.touch())
   mainWindow.webContents.on('before-mouse-event', () => session.touch())
   mainWindow.webContents.on('render-process-gone', () => session.lock())
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  mainWindow.webContents.on('will-frame-navigate', (event) => {
+    if (!event.isMainFrame || !isApplicationUrl(event.url)) event.preventDefault()
+  })
   mainWindow.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) session.lock()
   })
@@ -115,26 +162,25 @@ function createWindow() {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle('health_check', () => 'ok')
-  ipcMain.handle('get_desktop_status', () => desktop.status)
-  ipcMain.handle('database_info', () => {
+  handleIpc('health_check', () => 'ok')
+  handleIpc('get_desktop_status', () => desktop.status)
+  handleIpc('database_info', () => {
     const currentDatabase = requireDatabase()
     currentDatabase.connection.prepare('SELECT 1').get()
     return { initialized: true, path: currentDatabase.path }
   })
-  ipcMain.handle('get_vault_status', () => ({ exists: hasVault(), unlocked: session.unlocked, retryAt: unlockLimiter.retryAt }))
-  ipcMain.handle('is_vault_unlocked', () => session.unlocked)
-  ipcMain.handle('lock_vault', () => session.lock())
-  ipcMain.handle('get_settings', () => settings)
-  ipcMain.handle('update_settings', (_event, args: { settings: AppSettings }) => {
+  handleIpc('get_vault_status', () => ({ exists: database ? hasVault() : false, unlocked: session.unlocked, retryAt: database ? unlockLimiter.retryAt : 0, databaseError: !database }))
+  handleIpc('is_vault_unlocked', () => session.unlocked)
+  handleIpc('lock_vault', () => session.lock())
+  handleIpc('get_settings', () => settings)
+  handleIpc('update_settings', (_event, args: { settings: AppSettings }) => {
     requireUnlocked()
     settings = writeSettings(requireDatabase().connection, args?.settings)
     session.checkExpiry()
     clipboardManager.reschedule()
     return settings
   })
-  const itemStore = createItemStore(requireDatabase().connection, () => requireUnlocked())
-  ipcMain.handle('copy_to_clipboard', async (_event, args: { text: string; itemId?: string }) => {
+  handleIpc('copy_to_clipboard', async (_event, args: { text: string; itemId?: string }) => {
     requireUnlocked()
     if (typeof args?.text !== 'string') throw new Error('INVALID_DATA')
     const revision = session.revision
@@ -142,11 +188,11 @@ function registerIpcHandlers() {
     assertRevision(revision)
     return args.itemId ? itemStore.markUsed(args.itemId) : null
   })
-  ipcMain.handle('generate_password', (_event, args: PasswordOptions) => {
+  handleIpc('generate_password', (_event, args: PasswordOptions) => {
     requireUnlocked()
     return generatePassword(args)
   })
-  ipcMain.handle('create_vault', async (_event, args: { password: string }) => {
+  handleIpc('create_vault', async (_event, args: { password: string }) => {
     if (vaultOperationBusy) throw new Error('VAULT_BUSY')
     assertPassword(args?.password)
     if (readVaultMetadata()) throw new Error('VAULT_EXISTS')
@@ -159,7 +205,7 @@ function registerIpcHandlers() {
       requireDatabase().connection.prepare('INSERT INTO vault_metadata (key, value) VALUES (?, ?)').run('vault', JSON.stringify(metadata))
     })
   })
-  ipcMain.handle('unlock_vault', async (_event, args: { password: string }) => {
+  handleIpc('unlock_vault', async (_event, args: { password: string }) => {
     if (vaultOperationBusy) throw new Error('VAULT_BUSY')
     if (unlockLimiter.retryAt) return { unlocked: false, retryAt: unlockLimiter.retryAt }
     if (typeof args?.password !== 'string') throw new Error('INVALID_DATA')
@@ -171,8 +217,8 @@ function registerIpcHandlers() {
     )
     return { unlocked, retryAt: unlocked ? 0 : unlockLimiter.fail() }
   })
-  ipcMain.handle('get_biometric_status', () => biometric.status())
-  ipcMain.handle('enable_biometric', async (_event, args: { password: string }) => {
+  handleIpc('get_biometric_status', () => biometric.status())
+  handleIpc('enable_biometric', async (_event, args: { password: string }) => {
     requireUnlocked()
     assertPassword(args?.password)
     if (vaultOperationBusy) throw new Error('VAULT_BUSY')
@@ -186,12 +232,12 @@ function registerIpcHandlers() {
       }, () => { biometric.save(encrypted); unlockLimiter.reset() })
     } finally { vaultOperationBusy = false }
   })
-  ipcMain.handle('disable_biometric', () => {
+  handleIpc('disable_biometric', () => {
     requireUnlocked()
     if (vaultOperationBusy) throw new Error('VAULT_BUSY')
     biometric.disable()
   })
-  ipcMain.handle('unlock_biometric', async () => {
+  handleIpc('unlock_biometric', async () => {
     if (vaultOperationBusy) throw new Error('VAULT_BUSY')
     const metadata = readVaultMetadata()
     if (!metadata) throw new Error('VAULT_NOT_FOUND')
@@ -200,7 +246,7 @@ function registerIpcHandlers() {
       await session.authenticate(() => biometric.unlock(metadata), () => unlockLimiter.reset())
     } finally { vaultOperationBusy = false }
   })
-  ipcMain.handle('change_master_password', async (_event, args: { currentPassword: string; newPassword: string }) => {
+  handleIpc('change_master_password', async (_event, args: { currentPassword: string; newPassword: string }) => {
     requireUnlocked()
     assertPassword(args?.currentPassword)
     assertPassword(args?.newPassword)
@@ -218,66 +264,65 @@ function registerIpcHandlers() {
       session.lock()
     } finally { vaultOperationBusy = false }
   })
-  ipcMain.handle('list_items', (_event, args?: { trashed?: boolean }) => {
+  handleIpc('list_items', (_event, args?: { trashed?: boolean }) => {
     requireUnlocked()
     cleanTrash()
     return itemStore.list(args?.trashed ?? false)
   })
-  ipcMain.handle('get_item', (_event, args: { id: string; recordAccess?: boolean }) => {
+  handleIpc('get_item', (_event, args: { id: string; recordAccess?: boolean }) => {
     requireUnlocked()
     cleanTrash()
     return itemStore.get(args?.id, args?.recordAccess !== false)
   })
-  ipcMain.handle('create_item', (_event, args: { item: ItemInput }) => {
+  handleIpc('create_item', (_event, args: { item: ItemInput }) => {
     requireUnlocked()
     return itemStore.create(args?.item)
   })
-  ipcMain.handle('update_item', (_event, args: { item: VaultItem }) => {
+  handleIpc('update_item', (_event, args: { item: VaultItem }) => {
     requireUnlocked()
     return itemStore.update(args?.item)
   })
-  ipcMain.handle('toggle_favorite', (_event, args: { id: string }) => {
+  handleIpc('toggle_favorite', (_event, args: { id: string }) => {
     requireUnlocked()
     return itemStore.toggleFavorite(args?.id)
   })
-  ipcMain.handle('delete_item', (_event, args: { id: string; permanently?: boolean }) => {
+  handleIpc('delete_item', (_event, args: { id: string; permanently?: boolean }) => {
     requireUnlocked()
     itemStore.remove(args?.id, args?.permanently)
   })
-  ipcMain.handle('restore_item', (_event, args: { id: string }) => {
+  handleIpc('restore_item', (_event, args: { id: string }) => {
     requireUnlocked()
     cleanTrash()
     if (!itemStore.get(args?.id)) throw new Error('ITEM_NOT_FOUND')
     itemStore.restore(args?.id)
   })
-  const projects = createProjectStore(requireDatabase().connection)
-  ipcMain.handle('list_projects', () => {
+  handleIpc('list_projects', () => {
     requireUnlocked()
     return projects.list()
   })
-  ipcMain.handle('create_project', (_event, args: { project: ProjectInput }) => {
+  handleIpc('create_project', (_event, args: { project: ProjectInput }) => {
     requireUnlocked()
     return projects.create(args?.project)
   })
-  ipcMain.handle('update_project', (_event, args: { project: ProjectInput & { id: string } }) => {
+  handleIpc('update_project', (_event, args: { project: ProjectInput & { id: string } }) => {
     requireUnlocked()
     return projects.update(args?.project)
   })
-  ipcMain.handle('delete_project', (_event, args: { id: string }) => {
+  handleIpc('delete_project', (_event, args: { id: string }) => {
     requireUnlocked()
     projects.remove(args?.id)
   })
-  ipcMain.handle('visit_project', (_event, args: { id: string }) => {
+  handleIpc('visit_project', (_event, args: { id: string }) => {
     requireUnlocked()
     return projects.visit(args?.id)
   })
   registerBackupHandlers()
   registerTransferHandlers()
-  registerEnvHandlers(itemStore)
+  registerEnvHandlers()
 }
 
-function registerEnvHandlers(itemStore: ReturnType<typeof createItemStore>) {
-  ipcMain.handle('read_env_file', async () => {
+function registerEnvHandlers() {
+  handleIpc('read_env_file', async () => {
     requireUnlocked()
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
     vaultOperationBusy = true
@@ -299,7 +344,7 @@ function registerEnvHandlers(itemStore: ReturnType<typeof createItemStore>) {
     } catch { throw new Error('ENV_IMPORT_FAILED') }
     finally { vaultOperationBusy = false }
   })
-  ipcMain.handle('export_env', async (_event, args: { fields: Record<string, string>; destination: 'clipboard' | 'file'; itemId?: string }) => {
+  handleIpc('export_env', async (_event, args: { fields: Record<string, string>; destination: 'clipboard' | 'file'; itemId?: string }) => {
     requireUnlocked()
     validateEnvFields(args?.fields)
     if (!['clipboard', 'file'].includes(args?.destination)) throw new Error('INVALID_DATA')
@@ -345,7 +390,7 @@ async function writeExport(path: string, contents: string, revision: number) {
 }
 
 function registerTransferHandlers() {
-  ipcMain.handle('export_plaintext', async (_event, args: { format: TransferFormat }) => {
+  handleIpc('export_plaintext', async (_event, args: { format: TransferFormat }) => {
     requireUnlocked()
     assertTransferFormat(args?.format)
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
@@ -375,7 +420,7 @@ function registerTransferHandlers() {
     } catch { throw new Error('EXPORT_FAILED') }
     finally { vaultOperationBusy = false }
   })
-  ipcMain.handle('import_plaintext', async () => {
+  handleIpc('import_plaintext', async () => {
     requireUnlocked()
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
     vaultOperationBusy = true
@@ -410,7 +455,7 @@ function registerTransferHandlers() {
 
 function registerBackupHandlers() {
   const filters = [{ name: 'Jiazi Vault 加密备份', extensions: ['jvault'] }]
-  ipcMain.handle('create_backup', async () => {
+  handleIpc('create_backup', async () => {
     requireUnlocked()
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
     vaultOperationBusy = true
@@ -426,13 +471,14 @@ function registerBackupHandlers() {
       const path = choice.filePath.toLowerCase().endsWith('.jvault') ? choice.filePath : `${choice.filePath}.jvault`
       await writeExport(path, contents, revision)
       return basename(path)
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === 'BACKUP_TOO_LARGE') throw error
       throw new Error('BACKUP_WRITE_FAILED')
     } finally {
       vaultOperationBusy = false
     }
   })
-  ipcMain.handle('restore_backup', async (_event, args: { password: string }) => {
+  handleIpc('restore_backup', async (_event, args: { password: string }) => {
     assertPassword(args?.password)
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
     vaultOperationBusy = true
@@ -441,10 +487,10 @@ function registerBackupHandlers() {
       const choice = await dialog.showOpenDialog(mainWindow, { title: '选择加密备份', filters, properties: ['openFile'] })
       if (choice.canceled || !choice.filePaths[0]) return false
       const path = choice.filePaths[0]
-      if ((await stat(path)).size > 64 * 1024 * 1024) throw new Error('INVALID_BACKUP')
+      assertBackupSize((await stat(path)).size)
       const backup = await readBackup(await readFile(path, 'utf8'), args.password)
       assertRevision(revision)
-      if (hasVault()) {
+      if (database && hasVault()) {
         const confirmation = await dialog.showMessageBox(mainWindow, {
           type: 'warning', title: '替换当前保险库',
           message: '恢复将替换当前全部凭证、项目、回收站和设置。',
@@ -454,12 +500,17 @@ function registerBackupHandlers() {
         if (confirmation.response !== 1) return false
       }
       assertRevision(revision)
-      restoreBackup(requireDatabase().connection, backup)
+      if (database) restoreBackup(database.connection, backup)
+      else {
+        recoverDatabase(app.getPath('userData'), backup)
+        initializeDatabase()
+      }
       unlockLimiter.reset()
       settings = backup.settings
       session.lock()
       return true
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === 'BACKUP_TOO_LARGE') throw error
       throw new Error('BACKUP_RESTORE_FAILED')
     } finally { vaultOperationBusy = false }
   })
@@ -468,15 +519,13 @@ function registerBackupHandlers() {
 const primaryInstance = app.requestSingleInstanceLock()
 if (!primaryInstance) app.quit()
 else app.whenReady().then(() => {
-  database = openDatabase(app.getPath('userData'))
-  unlockLimiter = new UnlockLimiter(database.connection)
-  settings = readSettings(database.connection)
   clipboardManager = new ClipboardManager(clipboard, () => settings.clipboardClearTimeout)
   session = new VaultSession(() => settings.autoLockMinutes, () => {
     if (mainWindow && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('vault_locked')
     void clipboardManager.clearOnLock().catch(() => {})
   })
-  biometric = new BiometricVault(database.connection, createBiometricProvider(() => mainWindow))
+  try { initializeDatabase() }
+  catch { /* The unlock page exposes backup recovery without opening the damaged database. */ }
   powerMonitor.on('lock-screen', () => session.lock())
   powerMonitor.on('suspend', () => session.lock())
   powerMonitor.on('resume', () => { session.checkExpiry(); cleanTrash() })

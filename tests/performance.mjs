@@ -2,13 +2,13 @@ import assert from 'node:assert/strict'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { cpus, platform, release, totalmem } from 'node:os'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import electron from 'electron'
+import { _electron } from 'playwright-core'
 import { openDatabase } from '../dist-electron/database.js'
 import { createItemStore } from '../dist-electron/item-store.js'
 import { createProjectStore } from '../dist-electron/project-store.js'
 import { createVaultCredential, clearKey } from '../dist-electron/vault-crypto.js'
 
-const { _electron } = await import(pathToFileURL(process.env.JIAZI_PLAYWRIGHT_MODULE).href)
 const root = process.cwd(), output = resolve(root, 'output/playwright')
 const installed = process.env.JIAZI_INSTALLED_EXE
 const label = process.env.JIAZI_PERF_LABEL || 'current'
@@ -52,7 +52,7 @@ const call = (command, args) => page.evaluate(({ command, args }) => window.jiaz
 try {
   for (let run = 0; run < runs; run++) {
     const launchStarted = performance.now()
-    application = await _electron.launch({ executablePath: installed || resolve(root, 'node_modules/electron/dist/electron.exe'), args: installed ? [`--user-data-dir=${data}`] : [resolve(root, 'tests/performance-launch.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data } })
+    application = await _electron.launch({ executablePath: installed || electron, args: installed ? [`--user-data-dir=${data}`] : [resolve(root, 'tests/performance-launch.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data } })
     page = await application.firstWindow()
     page.setDefaultTimeout(30_000)
     page.on('pageerror', (error) => report.errors.push(error.message))

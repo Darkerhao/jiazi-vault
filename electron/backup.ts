@@ -6,6 +6,12 @@ import { purgeExpiredItems } from './database.js'
 import { ITEM_TYPES, type ItemType } from './contracts.js'
 import { validateEnvFields } from './env.js'
 
+export const BACKUP_MAX_BYTES = 256 * 1024 * 1024
+
+export function assertBackupSize(bytes: number) {
+  if (bytes > BACKUP_MAX_BYTES) throw new Error('BACKUP_TOO_LARGE')
+}
+
 const ITEM_COLUMNS = ['id', 'type', 'title', 'project_id', 'environment', 'username', 'url', 'host', 'port', 'tags', 'secret', 'has_secret', 'favorite', 'created_at', 'updated_at', 'deleted_at', 'last_accessed_at'] as const
 type ItemRow = Record<typeof ITEM_COLUMNS[number], SQLInputValue>
 const PROJECT_COLUMNS = ['id', 'name', 'icon', 'color', 'description', 'last_accessed_at'] as const
@@ -35,7 +41,9 @@ export function createBackup(db: DatabaseSync, metadata: VaultMetadata, key: Buf
     format: 'jiazi-vault', version: 3, metadata,
     payload: encryptValue(key, JSON.stringify(payload)),
   }
-  return JSON.stringify(envelope)
+  const contents = JSON.stringify(envelope)
+  assertBackupSize(Buffer.byteLength(contents, 'utf8'))
+  return contents
 }
 
 function validateItem(value: unknown, key: Buffer, version: number): ItemRow {
@@ -73,6 +81,7 @@ function validateItem(value: unknown, key: Buffer, version: number): ItemRow {
 
 /** Authenticate and validate everything before opening a transaction on the live vault. */
 export async function readBackup(contents: string, password: string): Promise<RestoredBackup> {
+  assertBackupSize(Buffer.byteLength(contents, 'utf8'))
   let key: Buffer | null = null
   try {
     const envelope = JSON.parse(contents) as BackupEnvelope

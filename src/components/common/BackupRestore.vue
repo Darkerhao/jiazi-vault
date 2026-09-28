@@ -33,8 +33,10 @@ async function restore() {
       await Promise.all([auth.checkStatus(), settings.load()])
     }
     close()
-  } catch {
-    error.value = '恢复失败：请检查备份主密码、文件完整性和文件权限。当前保险库未被替换。'
+  } catch (cause) {
+    error.value = cause instanceof Error && cause.message.includes('BACKUP_TOO_LARGE')
+      ? '备份超过 256 MiB 容量上限，当前保险库未被替换。'
+      : '恢复失败：请检查备份主密码、文件完整性和文件权限。'
   } finally {
     password.value = ''
     busy.value = false
@@ -47,7 +49,7 @@ onBeforeUnmount(() => { password.value = '' })
 <template>
   <n-button :disabled="auth.busy" @click="show = true">从加密备份恢复</n-button>
   <n-modal :show="show" preset="card" title="恢复加密备份" style="width: 440px" :closable="!busy" :mask-closable="!busy" :close-on-esc="!busy" @update:show="(value) => !value && close()">
-    <n-alert type="warning" :show-icon="false" style="margin-bottom: 20px">恢复将整体替换当前凭证、项目、回收站和设置。请先备份当前保险库。</n-alert>
+    <n-alert type="warning" :show-icon="false" style="margin-bottom: 20px">{{ auth.databaseError ? '恢复后使用备份创建时的主密码解锁。原数据库文件将保留在数据目录的 recovery 文件夹中。' : '恢复将整体替换当前凭证、项目、回收站和设置。请先备份当前保险库。' }}</n-alert>
     <n-form @submit.prevent="restore">
       <n-form-item label="备份主密码">
         <n-input v-model:value="password" type="password" placeholder="备份创建时使用的主密码" :disabled="busy" autofocus />

@@ -38,7 +38,11 @@ async function createBackup() {
   try {
     const name = await backupService.create()
     if (name) message.success(`加密备份已保存：${name}`)
-  } catch { message.error('备份保存失败，请检查目标位置权限，或重新解锁后重试。') }
+  } catch (cause) {
+    message.error(cause instanceof Error && cause.message.includes('BACKUP_TOO_LARGE')
+      ? '备份超过 256 MiB 容量上限，未生成备份文件。'
+      : '备份保存失败，请检查目标位置权限，或重新解锁后重试。')
+  }
   finally { backingUp.value = false }
 }
 </script>

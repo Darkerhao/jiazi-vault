@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import electron from 'electron'
+import { _electron } from 'playwright-core'
 import { createVaultThroughUI } from './onboarding.mjs'
 
-const { _electron } = await import(pathToFileURL(process.env.JIAZI_PLAYWRIGHT_MODULE).href)
 const root = process.cwd(), output = resolve(root, 'output/playwright')
 const data = resolve(output, `batch3-data-${Date.now()}`)
 await mkdir(data, { recursive: true })
@@ -14,7 +14,7 @@ let application, page, originalClipboard
 const pass = (name) => { report.push(name); console.log('PASS ' + name) }
 const call = (command, args) => page.evaluate(({ command, args }) => window.jiaziVault.invoke(command, args), { command, args })
 async function launch() {
-  application = await _electron.launch({ executablePath: resolve(root, 'node_modules/electron/dist/electron.exe'), args: [resolve(root, 'tests/electron-launch.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data } })
+  application = await _electron.launch({ executablePath: electron, args: [resolve(root, 'tests/electron-launch.cjs')], cwd: root, env: { ...process.env, JIAZI_TEST_DATA: data } })
   page = await application.firstWindow()
   page.setDefaultTimeout(12_000)
   page.on('pageerror', (error) => errors.push(error.message))

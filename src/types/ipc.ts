@@ -25,6 +25,7 @@ export interface VaultStatus {
   exists: boolean
   unlocked: boolean
   retryAt: number
+  databaseError: boolean
 }
 
 export interface IpcCommands {
