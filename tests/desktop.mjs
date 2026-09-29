@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 // OS authentication, physical lock/suspend and installed-package checks stay manual.
-const scripts = ['electron-smoke', 'credentials-smoke', 'access-smoke', 'env-smoke', 'desktop-regression', 'product-experience']
+const scripts = ['electron-smoke', 'credentials-smoke', 'access-smoke', 'env-smoke', 'desktop-regression', 'product-experience', 'creation-shortcuts']
 const requested = process.argv.slice(2)
 if (requested.some((name) => !scripts.includes(name))) throw new Error(`Choose from: ${scripts.join(', ')}`)
 

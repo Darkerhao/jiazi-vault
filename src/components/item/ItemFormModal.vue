@@ -10,6 +10,8 @@ import { ENV_NAME, serializeEnv } from '../../../electron/env'
 import { callCommand } from '../../services/ipc'
 import { useAuthStore } from '../../stores/auth'
 import EnvImport from './EnvImport.vue'
+import PasswordGenerator from '../common/PasswordGenerator.vue'
+import { projectService } from '../../services/project'
 import { validExpiry, expiryState } from '../../../electron/expiry'
 
 const props = defineProps<{ show: boolean; item: VaultItem | null; draft?: { type?: ItemType; password?: string; projectId?: string; environment?: Environment } }>()
@@ -21,6 +23,29 @@ const dialog = useDialog()
 const { copy } = useClipboard()
 const auth = useAuthStore()
 const importing = ref(false), exporting = ref(false)
+const generating = ref(false)
+const creatingProject = ref(false)
+const projectName = ref('')
+const projectError = ref('')
+const projectSaving = ref(false)
+
+async function createProject() {
+  if (!projectName.value.trim() || projectSaving.value) return
+  projectSaving.value = true
+  projectError.value = ''
+  const revision = auth.sessionRevision
+  try {
+    const project = await projectService.create({ name: projectName.value.trim(), icon: '📁', color: '#c7ef68' })
+    if (disposed || revision !== auth.sessionRevision) return
+    vault.projects = [...vault.projects, project]
+    projectId.value = project.id
+    creatingProject.value = false
+    projectName.value = ''
+    void vault.load()
+  } catch (error) {
+    if (!disposed && revision === auth.sessionRevision) projectError.value = error instanceof Error && error.message.includes('PROJECT_NAME_EXISTS') ? '项目名称已存在，请选择已有项目或更换名称。' : '创建失败，请重试。'
+  } finally { projectSaving.value = false }
+}
 let disposed = false
 onBeforeUnmount(() => {
   disposed = true
@@ -47,12 +72,13 @@ let dismissDiscard: (() => void) | undefined
 
 function snapshot() {
   return JSON.stringify({ type: type.value, title: title.value, environment: environment.value, projectId: projectId.value,
-    tags: tags.value, values, fields: extraFields.value.map(({ name, value }) => ({ name, value })), importing: importing.value })
+    tags: tags.value, values, fields: extraFields.value.map(({ name, value }) => ({ name, value })), importing: importing.value,
+    projectName: creatingProject.value ? projectName.value : '' })
 }
 
 function confirmDiscard(changed = snapshot() !== initialSnapshot.value): Promise<boolean> {
   if (!auth.unlocked || viewing.value) return Promise.resolve(true)
-  if (saving.value || exporting.value) return Promise.resolve(false)
+  if (saving.value || exporting.value || projectSaving.value) return Promise.resolve(false)
   if (!changed) return Promise.resolve(true)
   if (discardDecision) return discardDecision
   discardDecision = new Promise<boolean>((resolve) => {
@@ -180,6 +206,7 @@ async function onTypeChange(value: ItemType) {
   const hasValues = Object.values(values).some(Boolean) || extraFields.value.length > 0 || importing.value
   if (!await confirmDiscard(hasValues) || disposed) return
   importing.value = false
+  generating.value = false
   type.value = value
   resetValues(null)
 }
@@ -210,7 +237,7 @@ function buildItem(): ItemInput {
 }
 
 async function save() {
-  if (invalid.value || saving.value) return
+  if (invalid.value || saving.value || projectSaving.value || creatingProject.value) return
   saving.value = true
   const input = buildItem()
   const ok = props.item ? await vault.updateItem({ ...input, id: props.item.id, createdAt: props.item.createdAt, updatedAt: props.item.updatedAt }) : await vault.createItem(input)
@@ -264,7 +291,20 @@ async function save() {
         <n-input v-model:value="title" :placeholder="isEnv ? '变量集名称' : '凭证名称'" />
       </n-form-item>
       <n-form-item label="项目">
-        <n-select v-model:value="projectId" :options="projectOptions" clearable filterable placeholder="选择项目（可选）" />
+        <div class="custom-fields">
+          <div class="field-value">
+            <n-select v-model:value="projectId" :options="projectOptions" clearable filterable placeholder="选择项目（可选）" />
+            <n-button v-if="!creatingProject" @click="creatingProject = true; projectError = ''">新建项目</n-button>
+          </div>
+          <template v-if="creatingProject">
+            <div class="field-value">
+              <n-input v-model:value="projectName" placeholder="新项目名称" :maxlength="80" :disabled="projectSaving" @keydown.enter.prevent="createProject" />
+              <n-button :loading="projectSaving" :disabled="!projectName.trim()" @click="createProject">创建并选中</n-button>
+              <n-button :disabled="projectSaving" @click="creatingProject = false; projectName = ''; projectError = ''">取消创建</n-button>
+            </div>
+            <n-alert v-if="projectError" type="error">{{ projectError }}</n-alert>
+          </template>
+        </div>
       </n-form-item>
       <n-form-item label="环境" :required="isEnv">
         <n-select v-model:value="environment" :options="ENVIRONMENT_OPTIONS" clearable placeholder="选择环境" />
@@ -276,7 +316,14 @@ async function save() {
           <n-input v-else :value="values[field.key] ? '••••••••' : ''" readonly :placeholder="field.label" />
           <n-button v-if="field.sensitive" :aria-label="`${revealedFields.has(field.key) ? '隐藏' : '显示'}${field.label}`" @click="revealedFields.has(field.key) ? revealedFields.delete(field.key) : revealedFields.add(field.key)">{{ revealedFields.has(field.key) ? '隐藏' : '显示' }}</n-button>
           <n-button :disabled="!values[field.key]" :aria-label="`复制${field.label}`" @click="copy(values[field.key] ?? '', item?.id)">复制</n-button>
+          <n-button v-if="field.target === 'password'" @click="generating = !generating">{{ generating ? '收起生成器' : '生成密码' }}</n-button>
         </div>
+      </n-form-item>
+      <n-form-item v-if="generating" label="密码生成器">
+        <PasswordGenerator v-slot="{ password, busy }">
+          <n-button type="primary" :disabled="!password || busy" @click="values.password = password ?? null; generating = false">填入密码</n-button>
+          <n-button @click="generating = false">取消生成</n-button>
+        </PasswordGenerator>
       </n-form-item>
       <n-form-item v-if="isEnv" label=".env 文件">
         <div class="custom-fields">
@@ -316,7 +363,7 @@ async function save() {
       <n-space justify="end">
         <n-button :disabled="saving || exporting" @click="requestClose">{{ viewing ? '关闭' : '取消' }}</n-button>
         <n-button v-if="viewing && !item?.deletedAt" type="primary" @click="viewing = false">编辑凭证</n-button>
-        <n-button v-if="!viewing" type="primary" :loading="saving" :disabled="invalid || exporting" @click="save">保存</n-button>
+        <n-button v-if="!viewing" type="primary" :loading="saving" :disabled="invalid || exporting || creatingProject" @click="save">保存</n-button>
       </n-space>
     </template>
   </n-modal>
@@ -330,6 +377,7 @@ async function save() {
 .detail-field pre { flex: 1; min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .field-value { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
 .field-value > .n-input { flex: 1; min-width: 0; }
+.field-value > .n-select { flex: 1; min-width: 0; }
 .custom-fields { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 .custom-field { display: flex; flex-direction: column; gap: 8px; }
 </style>

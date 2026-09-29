@@ -116,3 +116,11 @@
 
 - 验收确认：900×600 时详情编辑的保存按钮位于可视区域；导入预览使用记录号（CSV 不含表头），无效记录显式跳过；默认去重不覆盖同名不同内容，也不会把空值自定义字段误判为缺失字段。
 - 备份状态不进入备份 payload，恢复后重置设备侧记录；备份写文件期间发生内容修改时保留未备份状态。元数据加密范围未改变，UI 已明确说明。
+
+## 2026-09-29 新建与取用提效
+
+- `src/views/GeneratorView.vue` 原有安全生成/字符规则 UI 可整体提取到 `src/components/common/PasswordGenerator.vue`，通过 slot 将已生成密码交给填入或保存操作，避免第二套规则实现。依据当前 Vue 3.5.42 renderSlot 源码与官方 scoped slots 文档：https://vuejs.org/guide/components/slots.html 。
+- `electron/project-store.ts` 已做名称 trim、长度和重名校验；快速入口直接使用 projectService.create，成功将返回项目加入现有列表并选中，失败保留草稿。
+- `vaultService.getItem(id, false)` 可按需获取完整字段而不记录访问；快捷搜索只展示字段标签，成功复制继续调用 useClipboard.copy 更新使用记录与主进程清理计时。
+- `QuickSearch.vue` 原 watch(results) 无条件重置索引；copy 后 applyUsage 更新 items 就会触发。现按原选中 ID 找新索引，新增真实剪贴板测试覆盖非首行连续复制。
+- 未扩展凭证历史和批量整理。当前项目创建是独立持久化操作，取消凭证不撤销已成功创建的项目，符合已有项目生命周期。

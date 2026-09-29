@@ -133,3 +133,13 @@
 - 原有导入 IPC 已移除，测试和 UI 统一使用 preview/confirm/cancel；原有 JSON/CSV 严格解析复用同一解析器，不保留第二套导入页面。
 - 文档更新：README/DELIVERY 与当前导入、详情、备份提醒、到期规则同步。Windows CI 加入桌面回归，但尚未在远端执行；本地未构建安装器，未提交或暂存。
 - 截图及报告：`output/playwright/product-experience/`。测试均为独立数据目录；实际系统认证、物理锁屏及跨平台安装未在本轮复验。
+
+## 2026-09-29 新建与取用提效
+
+- 用户授权沿用现有任务文件继续实现，跳过缺失 .ai_state 的初始化要求；保留原有暂存改动。
+- 提取 PasswordGenerator 共享组件，独立页与表单复用规则、预览和异步失效机制。项目就地创建及重名/取消路径完成，不重置凭证草稿。
+- 快捷搜索新增按字段复制；只读取当前选中凭证并拒绝过时返回。定位原 results watcher 在使用时间刷新后将选中项重置为第一项，改为保留当前 ID；应用内 Ctrl+C 使用所选字段。
+- 构建通过，55/55 单元测试通过；5 个原有桌面脚本全部通过，新增 creation-shortcuts 最终 7/7 场景通过。已核对 900×600 截图，无 renderer error。
+- 补充共享独立生成器调节长度和保存、环境变量空值复制及完整复制确认的回归。初次测试误将 Naive InputNumber 定位为 spinbutton，读取当前组件实现后改为真实输入控件，复测通过。
+- README、DELIVERY 和任务计划同步；新增测试接入既有 desktop 入口。未新增依赖、IPC 或数据表；未构建安装器、暂存、提交或发布。
+- 中断后续验完成：重新核对共享生成器、表单项目创建、快捷搜索字段复制及调用链；`pnpm build`、55/55 单元测试通过，`node tests/desktop.mjs creation-shortcuts desktop-regression product-experience` 的 7+5+6 项场景全部通过。核对 900×600 截图及暂存/未暂存差异检查，无需追加产品代码修改。原生构建仍有既有 IL2104 裁剪警告；本次未打包或发布。
