@@ -10,7 +10,7 @@
 4. 全部成功后创建 GitHub Release，上传所有安装包、自动生成版本说明，最后公开发布。
 5. 发布成功后，将本次发布的 `main` 提交自动合并并推送到 `dev`，同步代码、版本号和分支历史，保留 `dev` 上尚未发布的开发提交。
 
-无需手动修改版本号、打标签或创建 Release。当前源码版本为 `0.1.2`，第一次自动发版为 `0.1.3`。合并 PR 或直接推送到 `main` 会触发自动发版，单独在本地 `git commit` 不会触发。日常在 `dev` 开发并验证，通过 PR 合入 `main` 表示确认发布；`dev` 不升版、不打标签、不创建 Release。
+无需手动修改版本号、打标签或创建 Release。合并 PR 或直接推送到 `main` 会触发自动发版，单独在本地 `git commit` 不会触发。日常在 `dev` 开发并验证，通过 PR 合入 `main` 表示确认发布；`dev` 推送不触发此工作流、不打包。
 
 | 平台 | 架构 | 安装包 |
 |---|---|---|
@@ -34,9 +34,9 @@ git pull --ff-only origin dev
 
 构建失败时不公开 Release，但已推送的版本提交和标签会保留。优先使用 Actions 的 **Re-run failed jobs** 重跑该版本；如果完整重跑或手动运行，而 `main` 已有新代码，则会为最新代码生成新版本。附件上传失败时 Release 保持草稿，重试会更新同一版本附件，不重复创建 Release。准备版本期间若恰好发生其他推送，Git 会拒绝整个版本提交/标签推送；不强制覆盖分支或标签，后续任务从最新分支继续。
 
-向 `main` 提交的 PR，以及 `dev` 等其他分支的推送，仅运行测试、构建并提供 Artifacts，不升版、不发布；非 `main` 的旧任务可被新推送取消。工作流不再由标签推送触发。配置位于默认分支后，可通过 **Run workflow** 选择分支手动运行；选择 `main` 会执行同样的自动发版流程。
+仅向 `main` 推送或合入代码时自动运行此工作流；PR 事件、`dev` 等其他分支及标签推送均不触发。配置位于默认分支后，可通过 **Run workflow** 选择 `main` 手动发版；选择其他分支时全部任务跳过。构建必须等待 `main` 版本准备成功，统一检出本次发布提交；不再为其他分支提供测试、打包或 Artifacts。
 
-构建使用 Node.js 24、`packageManager` 固定的 pnpm 9.12.1、仓库锁文件，以及 Windows 上的 .NET 9 SDK；复用现有 `pnpm test` 和 `pnpm electron:build`。版本准备、发布和分支同步任务使用 GitHub 自动提供的 `GITHUB_TOKEN` 并声明 `contents: write`，构建任务保持只读权限，无需个人令牌；仓库规则须允许工作流写入 `main`、`dev` 和版本标签。[GitHub 的令牌触发规则](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)使机器人的版本推送及 `dev` 同步推送不会再次启动工作流，构建、发布和同步直接在本次工作流中继续。建议为 `main` 配置 PR 合并和必需构建检查；当前脚本直接回写版本提交，`contents: write` 不会绕过分支保护，启用保护时必须同时配置允许发版身份写入的规则，否则版本准备或分支同步会失败。本次修改不更改 GitHub 默认分支、分支保护或仓库权限。Runner 架构与目标包一致，使用其本机安装的 Electron 和 Argon2 原生依赖。
+构建使用 Node.js 24、`packageManager` 固定的 pnpm 9.12.1、仓库锁文件，以及 Windows 上的 .NET 9 SDK；复用现有 `pnpm test` 和 `pnpm electron:build`。版本准备、发布和分支同步任务使用 GitHub 自动提供的 `GITHUB_TOKEN` 并声明 `contents: write`，构建任务保持只读权限，无需个人令牌；仓库规则须允许工作流写入 `main`、`dev` 和版本标签。[GitHub 的令牌触发规则](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)使机器人的版本推送及 `dev` 同步推送不会再次启动工作流，构建、发布和同步直接在本次工作流中继续。建议为 `main` 配置 PR 合并；当前脚本直接回写版本提交，`contents: write` 不会绕过分支保护，启用保护时必须同时配置允许发版身份写入的规则，否则版本准备或分支同步会失败。此工作流仅在合入 `main` 后构建，不应将它设为 PR 合并前的必需检查。本次修改不更改 GitHub 默认分支、分支保护或仓库权限。Runner 架构与目标包一致，使用其本机安装的 Electron 和 Argon2 原生依赖。
 
 CI 在安装依赖后执行 `pnpm exec install-electron`，下载锁定版本、当前平台和架构的官方 Electron 二进制，再由打包器复用 `node_modules/electron/dist`。[Electron 44.2.0 的安装说明](https://github.com/electron/electron/blob/v44.2.0/docs/tutorial/installation.md#binary-download-step)明确二进制在首次运行 Electron 时才自动下载，也可用此命令显式安装；仅执行 `pnpm install` 不会生成该目录。缺少这一步会使全新 Runner 的四个平台都在打包时失败。版本提交和标签创建成功仅表示准备完成，所有安装包打包成功后才会公开 Release。
 

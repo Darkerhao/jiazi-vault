@@ -2,8 +2,6 @@ name: Build and release desktop apps
 
 on:
   push:
-    branches: ['**']
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -12,7 +10,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_name != 'main' }}
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -46,7 +44,6 @@ jobs:
   build:
     name: Build ${{ matrix.platform }}-${{ matrix.arch }}
     needs: prepare
-    if: always() && !cancelled() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
@@ -72,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.prepare.outputs.commit || github.sha }}
+          ref: ${{ needs.prepare.outputs.commit }}
 
       - uses: pnpm/action-setup@v5
 
@@ -118,7 +115,6 @@ jobs:
 
   release:
     name: Publish release
-    if: github.ref_type == 'branch' && github.ref_name == 'main'
     needs: [prepare, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -145,7 +141,6 @@ jobs:
 
   sync-dev:
     name: Sync release back to dev
-    if: github.ref_type == 'branch' && github.ref_name == 'main'
     needs: [prepare, release]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
