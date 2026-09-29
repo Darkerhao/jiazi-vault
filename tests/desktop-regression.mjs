@@ -102,7 +102,8 @@ test('private keys and connection strings start hidden, reveal exact values and 
     ['Review SSH 0', '私钥', 'review-placeholder-'.repeat(2)],
     ['Review Database', '连接串', 'postgres://review:fixture-password@localhost/example'],
   ]) {
-    await page.locator('.item-main').filter({ hasText: title }).click()
+    await page.getByRole('button', { name: title, exact: true }).click()
+    await page.getByRole('button', { name: '编辑凭证', exact: true }).click()
     assert.equal(await page.getByPlaceholder(label, { exact: true }).inputValue(), '••••••••')
     await page.getByRole('button', { name: `显示${label}`, exact: true }).click()
     assert.equal(await page.getByPlaceholder(label, { exact: true }).inputValue(), expected)

@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { useBackupStore } from './backup'
 import type { AppSettings } from '../../electron/settings'
 import { settingsService } from '../services/settings'
 
@@ -20,7 +21,7 @@ export const useSettingsStore = defineStore('settings', () => {
     if (!preferences.value || busy.value) return
     busy.value = true
     error.value = null
-    try { preferences.value = await settingsService.save({ ...preferences.value, ...patch }) }
+    try { preferences.value = await settingsService.save({ ...preferences.value, ...patch }); await useBackupStore().load() }
     catch { error.value = '设置保存失败，已保留原设置。请重试。' }
     finally { busy.value = false }
   }

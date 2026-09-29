@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
-import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, useDialog, useMessage } from 'naive-ui'
+import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, NText, useDialog, useMessage } from 'naive-ui'
 import { useVaultStore } from '../../stores/vault'
 import { useClipboard } from '../../composables/useClipboard'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_OPTIONS, TYPE_FIELDS, type FieldDef } from '../../utils/item-fields'
@@ -10,6 +10,7 @@ import { ENV_NAME, serializeEnv } from '../../../electron/env'
 import { callCommand } from '../../services/ipc'
 import { useAuthStore } from '../../stores/auth'
 import EnvImport from './EnvImport.vue'
+import { validExpiry, expiryState } from '../../../electron/expiry'
 
 const props = defineProps<{ show: boolean; item: VaultItem | null; draft?: { type?: ItemType; password?: string; projectId?: string; environment?: Environment } }>()
 const emit = defineEmits<{ (event: 'close'): void }>()
@@ -50,7 +51,7 @@ function snapshot() {
 }
 
 function confirmDiscard(changed = snapshot() !== initialSnapshot.value): Promise<boolean> {
-  if (!auth.unlocked) return Promise.resolve(true)
+  if (!auth.unlocked || viewing.value) return Promise.resolve(true)
   if (saving.value || exporting.value) return Promise.resolve(false)
   if (!changed) return Promise.resolve(true)
   if (discardDecision) return discardDecision
@@ -75,6 +76,7 @@ onBeforeRouteUpdate((to, from) => {
   return true
 })
 
+const viewing = ref(props.item !== null)
 const isEdit = computed(() => props.item !== null)
 const isEnv = computed(() => type.value === 'env')
 const fields = computed<FieldDef[]>(() => {
@@ -104,7 +106,12 @@ const exportError = computed(() => {
   try { serializeEnv(envFields.value); return '' }
   catch (error) { return (error as Error).message }
 })
-const invalid = computed(() => !title.value.trim() || !!fieldError.value || (isEnv.value && (!environment.value || importing.value)))
+const portError = computed(() => {
+  const port = values.port
+  return port && (!/^\d+$/.test(port) || Number(port) > 65535) ? '端口需为 0–65535 的整数。' : ''
+})
+const expiryError = computed(() => type.value === 'api-key' && values.expiresAt && !validExpiry(values.expiresAt) ? '请选择有效日期（YYYY-MM-DD），旧日期需重新选择。' : '')
+const invalid = computed(() => !!expiryError.value || !!portError.value || !title.value.trim() || !!fieldError.value || (isEnv.value && (!environment.value || importing.value)))
 
 function applyEnv(fields: Record<string, string>) {
   extraFields.value.push(...Object.entries(fields).map(([name, value]) => ({ id: nextFieldId++, name, value, visible: false })))
@@ -221,16 +228,35 @@ async function save() {
   <n-modal
     :show="show"
     preset="card"
-    :title="isEnv ? (isEdit ? '编辑环境变量集' : '新建环境变量集') : (isEdit ? '编辑凭证' : '新建凭证')"
+    :title="viewing ? '凭证详情' : isEnv ? (isEdit ? '编辑环境变量集' : '新建环境变量集') : (isEdit ? '编辑凭证' : '新建凭证')"
     style="width: 720px; max-width: calc(100vw - 40px)"
     :bordered="false"
     :closable="!saving && !exporting"
     :mask-closable="!saving && !exporting"
     :close-on-esc="!saving && !exporting"
-    :content-style="isEnv ? { maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' } : undefined"
+    :content-style="{ maxHeight: 'calc(100dvh - 200px)', overflowY: 'auto' }"
     @update:show="(v) => !v && requestClose()"
   >
-    <n-form label-placement="left" label-width="96" :disabled="saving || exporting">
+    <section v-if="viewing" class="item-detail">
+      <h2>{{ title }}</h2>
+      <n-text depth="3">{{ ITEM_TYPE_OPTIONS.find((option) => option.value === type)?.label }} · {{ vault.projects.find((project) => project.id === projectId)?.name || '未分配项目' }}<span v-if="environment"> · {{ ENVIRONMENT_OPTIONS.find((option) => option.value === environment)?.label }}</span></n-text>
+      <n-alert v-if="type === 'api-key' && ['expired', 'soon', 'invalid'].includes(expiryState(values.expiresAt ?? undefined))" :type="expiryState(values.expiresAt ?? undefined) === 'expired' ? 'error' : 'warning'">{{ expiryState(values.expiresAt ?? undefined) === 'expired' ? '此 API Key 已过期，请向服务商确认并更新凭证。' : expiryState(values.expiresAt ?? undefined) === 'invalid' ? '过期日期格式待修正，请编辑凭证重新选择日期。' : '此 API Key 将在 7 天内到期（所选日期当天有效）。' }}</n-alert>
+      <div v-for="field in fields.filter((field) => values[field.key])" :key="field.key" class="detail-field">
+        <n-text depth="3">{{ field.label }}</n-text>
+        <div class="field-value">
+          <pre>{{ (field.sensitive || field.kind === 'password' || field.target === 'notes') && !revealedFields.has(field.key) ? '••••••••' : values[field.key] }}</pre>
+          <n-button v-if="field.sensitive || field.kind === 'password' || field.target === 'notes'" size="small" :aria-label="`${revealedFields.has(field.key) ? '隐藏' : '显示'}${field.label}`" @click="revealedFields.has(field.key) ? revealedFields.delete(field.key) : revealedFields.add(field.key)">{{ revealedFields.has(field.key) ? '隐藏' : '显示' }}</n-button>
+          <n-button size="small" :aria-label="`复制${field.label}`" @click="copy(values[field.key] ?? '', item?.id)">复制</n-button>
+        </div>
+      </div>
+      <div v-for="field in extraFields" :key="field.id" class="detail-field">
+        <n-text depth="3">{{ field.name }}</n-text>
+        <div class="field-value"><pre>{{ field.visible ? field.value || '（空值）' : '••••••••' }}</pre><n-button size="small" :aria-label="`${field.visible ? '隐藏' : '显示'}${field.name}`" @click="field.visible = !field.visible">{{ field.visible ? '隐藏' : '显示' }}</n-button><n-button size="small" :aria-label="`复制${field.name}`" @click="copy(field.value, item?.id)">复制</n-button></div>
+      </div>
+      <n-space v-if="isEnv"><n-button :disabled="!!exportError" :loading="exporting" @click="exportEnv('clipboard')">复制完整 .env</n-button><n-button :disabled="!!exportError" :loading="exporting" @click="exportEnv('file')">导出 .env 文件</n-button></n-space>
+      <n-text v-if="tags" depth="3">标签：{{ tags }}</n-text>
+    </section>
+    <n-form v-else label-placement="left" label-width="96" :disabled="saving || exporting">
       <n-form-item label="类型">
         <n-select :value="type" :options="ITEM_TYPE_OPTIONS" :disabled="isEdit" @update:value="onTypeChange" />
       </n-form-item>
@@ -243,9 +269,10 @@ async function save() {
       <n-form-item label="环境" :required="isEnv">
         <n-select v-model:value="environment" :options="ENVIRONMENT_OPTIONS" clearable placeholder="选择环境" />
       </n-form-item>
-      <n-form-item v-for="field in fields" :key="field.key" :label="field.label">
+      <n-form-item v-for="field in fields" :key="field.key" :label="field.label" :validation-status="(field.target === 'port' && portError) || (field.key === 'expiresAt' && expiryError) ? 'error' : undefined" :feedback="field.target === 'port' ? portError : field.key === 'expiresAt' ? expiryError : undefined">
         <div class="field-value">
-          <n-input v-if="!field.sensitive || revealedFields.has(field.key)" v-model:value="values[field.key]" :type="field.kind" show-password-on="click" :autosize="field.kind === 'textarea' ? { minRows: 3, maxRows: 8 } : false" :placeholder="field.label" />
+          <input v-if="field.key === 'expiresAt'" v-model="values[field.key]" type="date" class="expiry-input" aria-label="过期时间" />
+          <n-input v-else-if="!field.sensitive || revealedFields.has(field.key)" v-model:value="values[field.key]" :type="field.kind" show-password-on="click" :autosize="field.kind === 'textarea' ? { minRows: 3, maxRows: 8 } : false" :placeholder="field.label" />
           <n-input v-else :value="values[field.key] ? '••••••••' : ''" readonly :placeholder="field.label" />
           <n-button v-if="field.sensitive" :aria-label="`${revealedFields.has(field.key) ? '隐藏' : '显示'}${field.label}`" @click="revealedFields.has(field.key) ? revealedFields.delete(field.key) : revealedFields.add(field.key)">{{ revealedFields.has(field.key) ? '隐藏' : '显示' }}</n-button>
           <n-button :disabled="!values[field.key]" :aria-label="`复制${field.label}`" @click="copy(values[field.key] ?? '', item?.id)">复制</n-button>
@@ -287,14 +314,20 @@ async function save() {
     </n-form>
     <template #footer>
       <n-space justify="end">
-        <n-button :disabled="saving || exporting" @click="requestClose">取消</n-button>
-        <n-button type="primary" :loading="saving" :disabled="invalid || exporting" @click="save">保存</n-button>
+        <n-button :disabled="saving || exporting" @click="requestClose">{{ viewing ? '关闭' : '取消' }}</n-button>
+        <n-button v-if="viewing && !item?.deletedAt" type="primary" @click="viewing = false">编辑凭证</n-button>
+        <n-button v-if="!viewing" type="primary" :loading="saving" :disabled="invalid || exporting" @click="save">保存</n-button>
       </n-space>
     </template>
   </n-modal>
 </template>
 
 <style scoped>
+.expiry-input { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--n-border-color); border-radius: 10px; color: inherit; background: transparent; font: inherit; color-scheme: light dark; }
+.item-detail { display: flex; flex-direction: column; gap: 20px; }
+.item-detail h2 { margin: 0; overflow-wrap: anywhere; }
+.detail-field { display: flex; flex-direction: column; gap: 8px; }
+.detail-field pre { flex: 1; min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .field-value { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
 .field-value > .n-input { flex: 1; min-width: 0; }
 .custom-fields { display: flex; flex-direction: column; gap: 12px; width: 100%; }

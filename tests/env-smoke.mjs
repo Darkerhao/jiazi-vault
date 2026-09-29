@@ -38,7 +38,8 @@ async function dialogs(response, path) {
   }, { response, path })
 }
 async function openItem(title) {
-  await page.locator('.item-main').filter({ hasText: title }).first().click()
+  await page.getByRole('button', { name: title, exact: true }).click()
+  await modal().getByRole('button', { name: '编辑凭证', exact: true }).click()
   await page.getByPlaceholder('变量集名称').waitFor()
 }
 async function save() {

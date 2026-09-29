@@ -64,6 +64,7 @@ try {
   pass('custom creation, empty/duplicate name blocking, trimmed names, multiline and empty values persist')
 
   await page.getByText('Custom Lifecycle', { exact: true }).click()
+  await dialog().getByRole('button', { name: '编辑凭证', exact: true }).click()
   assert.equal(await dialog().getByRole('textbox', { name: '字段值token', exact: true }).inputValue(), '••••••••')
   await copy('token', 'first line\nsecond line')
   await dialog().getByRole('button', { name: '显示token', exact: true }).click()
@@ -102,6 +103,7 @@ try {
     ['Imported Common', [['主机', 'retained-host'], ['密码', 'retained-password'], ['imported', 'retained-token']]],
   ]) {
     await page.getByText(title, { exact: true }).click()
+    await dialog().getByRole('button', { name: '编辑凭证', exact: true }).click()
     for (const [label, value] of copies) await copy(label, value)
     if (title === 'Database Copy') {
       await dialog().getByRole('button', { name: '新增字段' }).click()
@@ -121,11 +123,11 @@ try {
   assert.equal(await page.locator('.item-title').count(), 1)
   await select('全部项目', 'Smoke Project')
   await select('全部环境', 'Production')
-  await page.getByPlaceholder('搜索凭证…').fill('alice')
+  await page.getByPlaceholder('搜索当前凭证…').fill('alice')
   assert.equal(await page.locator('.item-title').count(), 1)
-  await page.getByPlaceholder('搜索凭证…').fill('no-match')
+  await page.getByPlaceholder('搜索当前凭证…').fill('no-match')
   await page.getByText('没有匹配的凭证').waitFor()
-  await page.getByPlaceholder('搜索凭证…').fill('')
+  await page.getByPlaceholder('搜索当前凭证…').fill('')
   await page.goBack()
   await page.goForward()
   await page.getByRole('heading', { name: 'Smoke Project', exact: true }).waitFor()
@@ -158,6 +160,7 @@ try {
 
   await section('全部条目')
   await page.getByText('Custom Lifecycle', { exact: true }).click()
+  await dialog().getByRole('button', { name: '编辑凭证', exact: true }).click()
   await page.screenshot({ path: resolve(output, 'credentials-custom.png') })
   while (await dialog().getByRole('button', { name: /^删除字段/ }).count()) await dialog().getByRole('button', { name: /^删除字段/ }).first().click()
   await save()
