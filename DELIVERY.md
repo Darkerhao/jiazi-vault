@@ -8,6 +8,7 @@
 2. 由 `github-actions[bot]` 提交 `chore(release): v0.1.3`，原子推送版本提交和对应标签。
 3. 四个构建任务统一检出该版本提交，运行测试、类型检查、生产构建和安装包打包。
 4. 全部成功后创建 GitHub Release，上传所有安装包、自动生成版本说明，最后公开发布。
+5. 发布成功后，将本次发布的 `main` 提交自动合并并推送到 `dev`，同步代码、版本号和分支历史，保留 `dev` 上尚未发布的开发提交。
 
 无需手动修改版本号、打标签或创建 Release。当前源码版本为 `0.1.2`，第一次自动发版为 `0.1.3`。合并 PR 或直接推送到 `main` 会触发自动发版，单独在本地 `git commit` 不会触发。日常在 `dev` 开发并验证，通过 PR 合入 `main` 表示确认发布；`dev` 不升版、不打标签、不创建 Release。
 
@@ -20,15 +21,14 @@
 
 下载正式安装包：打开仓库的 [Releases](https://github.com/Darkerhao/jiazi-vault/releases)。各平台的构建包也会保存在 [Actions](https://github.com/Darkerhao/jiazi-vault/actions) → **Build and release desktop apps** → 对应构建记录 → **Artifacts**，保留 30 天，下载需登录 GitHub 并解压。
 
-机器人会向 `main` 回写版本提交。发版后将 `main` 合回 `dev`，保持版本号和分支历史同步；以下命令在工作区干净时执行：
+机器人会向 `main` 回写版本提交，并在发布成功后通过 **Sync release back to dev** 任务同步到远端 `dev`。本地开发时只需更新 `dev`，无需再手动合并 `main`；以下命令在工作区干净时执行：
 
 ```sh
-git fetch origin
 git switch dev
 git pull --ff-only origin dev
-git merge origin/main
-git push origin dev
 ```
+
+同步使用本次发布的准确提交，不会带入发布期间 `main` 上的新提交。若合并冲突、分支保护或同步期间其他人推送导致失败，任务会明确报错，保留远端 `dev` 和已发布的 Release，不强制覆盖分支。冲突需人工处理；并发推送处理完后可用 **Re-run failed jobs** 重新同步。构建或发布失败时不执行同步。
 
 `main` 的发版任务串行执行，已开始的任务不会被新推送取消；等待中的多次推送会保留最新任务，准备版本时读取分支最新代码。重跑时，如果分支仍停留在已有版本标签对应的提交，则复用该版本，不重复递增。有后续代码提交时才生成下一个版本。版本号采用稳定的 `主版本.次版本.补丁版本` 格式，当前自动流程不生成预发布版本。
 
@@ -36,7 +36,9 @@ git push origin dev
 
 向 `main` 提交的 PR，以及 `dev` 等其他分支的推送，仅运行测试、构建并提供 Artifacts，不升版、不发布；非 `main` 的旧任务可被新推送取消。工作流不再由标签推送触发。配置位于默认分支后，可通过 **Run workflow** 选择分支手动运行；选择 `main` 会执行同样的自动发版流程。
 
-构建使用 Node.js 24、`packageManager` 固定的 pnpm 9.12.1、仓库锁文件，以及 Windows 上的 .NET 9 SDK；复用现有 `pnpm test` 和 `pnpm electron:build`。版本准备和发布任务使用 GitHub 自动提供的 `GITHUB_TOKEN` 并声明 `contents: write`，构建任务保持只读权限，无需个人令牌；仓库规则须允许工作流写入 `main` 和版本标签。[GitHub 的令牌触发规则](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)使机器人的版本推送不会再次启动工作流，构建和发布直接在本次工作流中继续。建议为 `main` 配置 PR 合并和必需构建检查；当前脚本直接回写版本提交，`contents: write` 不会绕过分支保护，启用保护时必须同时配置允许发版身份写入的规则，否则版本准备会失败。本次修改不更改 GitHub 默认分支、分支保护或仓库权限。Runner 架构与目标包一致，使用其本机安装的 Electron 和 Argon2 原生依赖。
+构建使用 Node.js 24、`packageManager` 固定的 pnpm 9.12.1、仓库锁文件，以及 Windows 上的 .NET 9 SDK；复用现有 `pnpm test` 和 `pnpm electron:build`。版本准备、发布和分支同步任务使用 GitHub 自动提供的 `GITHUB_TOKEN` 并声明 `contents: write`，构建任务保持只读权限，无需个人令牌；仓库规则须允许工作流写入 `main`、`dev` 和版本标签。[GitHub 的令牌触发规则](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)使机器人的版本推送及 `dev` 同步推送不会再次启动工作流，构建、发布和同步直接在本次工作流中继续。建议为 `main` 配置 PR 合并和必需构建检查；当前脚本直接回写版本提交，`contents: write` 不会绕过分支保护，启用保护时必须同时配置允许发版身份写入的规则，否则版本准备或分支同步会失败。本次修改不更改 GitHub 默认分支、分支保护或仓库权限。Runner 架构与目标包一致，使用其本机安装的 Electron 和 Argon2 原生依赖。
+
+CI 在安装依赖后执行 `pnpm exec install-electron`，下载锁定版本、当前平台和架构的官方 Electron 二进制，再由打包器复用 `node_modules/electron/dist`。[Electron 44.2.0 的安装说明](https://github.com/electron/electron/blob/v44.2.0/docs/tutorial/installation.md#binary-download-step)明确二进制在首次运行 Electron 时才自动下载，也可用此命令显式安装；仅执行 `pnpm install` 不会生成该目录。缺少这一步会使全新 Runner 的四个平台都在打包时失败。版本提交和标签创建成功仅表示准备完成，所有安装包打包成功后才会公开 Release。
 
 当前产物没有开发者证书签名：Windows 可能显示未知发布者；macOS 只做 ad-hoc 临时签名，关闭 hardened runtime，未做 Apple 公证，系统可能阻止直接打开。面向正式用户分发的证书签名、公证和 Touch ID 实机验收需另行配置、验证。Linux 使用前需赋予 AppImage 执行权限，系统需支持 AppImage/FUSE。现有 Electron 工程只覆盖桌面端，不包含 Android/iOS 安装包。
 
