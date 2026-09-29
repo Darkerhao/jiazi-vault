@@ -55,20 +55,27 @@
     "win": {
       "icon": "build/icon.ico",
       "extraResources": [{ "from": "output/windows-hello", "to": "windows-hello", "filter": ["**/*"] }],
-      "target": [{ "target": "nsis", "arch": ["x64"] }]
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "runAfterFinish": false
     },
+    "portable": {
+      "artifactName": "${name}-${version}-${os}-${arch}-portable.${ext}"
+    },
     "mac": {
       "icon": "build/icon.icns",
-      "target": "dmg"
+      "target": ["dmg", "zip"]
     },
     "linux": {
       "icon": "build/icon.png",
-      "target": "AppImage"
+      "target": ["AppImage", "tar.gz"]
     }
   }
 }
