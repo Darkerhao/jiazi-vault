@@ -2,6 +2,7 @@
   "name": "jiazi-vault",
   "private": true,
   "version": "0.1.2",
+  "packageManager": "pnpm@9.12.1",
   "description": "Local encrypted credential vault for developers",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -42,6 +43,7 @@
   "build": {
     "appId": "com.jiazi.vault",
     "productName": "Jiazi Vault",
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },

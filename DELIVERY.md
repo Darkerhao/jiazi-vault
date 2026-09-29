@@ -1,5 +1,51 @@
 # 交付与验收
 
+## GitHub 自动版本与发版
+
+工作流：`.github/workflows/build.yml`，自动发版分支为 **`main`**。将配置提交并推送后，每次向 `main` 合入或推送新代码，GitHub 会自动完成：
+
+1. 读取 `main` 最新代码，将 `package.json` 的补丁版本加一，例如 `0.1.2 → 0.1.3`。
+2. 由 `github-actions[bot]` 提交 `chore(release): v0.1.3`，原子推送版本提交和对应标签。
+3. 四个构建任务统一检出该版本提交，运行测试、类型检查、生产构建和安装包打包。
+4. 全部成功后创建 GitHub Release，上传所有安装包、自动生成版本说明，最后公开发布。
+
+无需手动修改版本号、打标签或创建 Release。当前源码版本为 `0.1.2`，第一次自动发版为 `0.1.3`。合并 PR 或直接推送到 `main` 会触发自动发版，单独在本地 `git commit` 不会触发。日常在 `dev` 开发并验证，通过 PR 合入 `main` 表示确认发布；`dev` 不升版、不打标签、不创建 Release。
+
+| 平台 | 架构 | 安装包 |
+|---|---|---|
+| Windows | x64 | `jiazi-vault-<版本>-win-x64.exe`，包含 Windows Hello 组件及 .NET 运行时 |
+| macOS Intel | x64 | `jiazi-vault-<版本>-mac-x64.dmg` |
+| macOS Apple Silicon | arm64 | `jiazi-vault-<版本>-mac-arm64.dmg` |
+| Linux | x64 | `jiazi-vault-<版本>-linux-x64.AppImage` |
+
+下载正式安装包：打开仓库的 [Releases](https://github.com/Darkerhao/jiazi-vault/releases)。各平台的构建包也会保存在 [Actions](https://github.com/Darkerhao/jiazi-vault/actions) → **Build and release desktop apps** → 对应构建记录 → **Artifacts**，保留 30 天，下载需登录 GitHub 并解压。
+
+机器人会向 `main` 回写版本提交。发版后将 `main` 合回 `dev`，保持版本号和分支历史同步；以下命令在工作区干净时执行：
+
+```sh
+git fetch origin
+git switch dev
+git pull --ff-only origin dev
+git merge origin/main
+git push origin dev
+```
+
+`main` 的发版任务串行执行，已开始的任务不会被新推送取消；等待中的多次推送会保留最新任务，准备版本时读取分支最新代码。重跑时，如果分支仍停留在已有版本标签对应的提交，则复用该版本，不重复递增。有后续代码提交时才生成下一个版本。版本号采用稳定的 `主版本.次版本.补丁版本` 格式，当前自动流程不生成预发布版本。
+
+构建失败时不公开 Release，但已推送的版本提交和标签会保留。优先使用 Actions 的 **Re-run failed jobs** 重跑该版本；如果完整重跑或手动运行，而 `main` 已有新代码，则会为最新代码生成新版本。附件上传失败时 Release 保持草稿，重试会更新同一版本附件，不重复创建 Release。准备版本期间若恰好发生其他推送，Git 会拒绝整个版本提交/标签推送；不强制覆盖分支或标签，后续任务从最新分支继续。
+
+向 `main` 提交的 PR，以及 `dev` 等其他分支的推送，仅运行测试、构建并提供 Artifacts，不升版、不发布；非 `main` 的旧任务可被新推送取消。工作流不再由标签推送触发。配置位于默认分支后，可通过 **Run workflow** 选择分支手动运行；选择 `main` 会执行同样的自动发版流程。
+
+构建使用 Node.js 24、`packageManager` 固定的 pnpm 9.12.1、仓库锁文件，以及 Windows 上的 .NET 9 SDK；复用现有 `pnpm test` 和 `pnpm electron:build`。版本准备和发布任务使用 GitHub 自动提供的 `GITHUB_TOKEN` 并声明 `contents: write`，构建任务保持只读权限，无需个人令牌；仓库规则须允许工作流写入 `main` 和版本标签。[GitHub 的令牌触发规则](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)使机器人的版本推送不会再次启动工作流，构建和发布直接在本次工作流中继续。建议为 `main` 配置 PR 合并和必需构建检查；当前脚本直接回写版本提交，`contents: write` 不会绕过分支保护，启用保护时必须同时配置允许发版身份写入的规则，否则版本准备会失败。本次修改不更改 GitHub 默认分支、分支保护或仓库权限。Runner 架构与目标包一致，使用其本机安装的 Electron 和 Argon2 原生依赖。
+
+当前产物没有开发者证书签名：Windows 可能显示未知发布者；macOS 只做 ad-hoc 临时签名，关闭 hardened runtime，未做 Apple 公证，系统可能阻止直接打开。面向正式用户分发的证书签名、公证和 Touch ID 实机验收需另行配置、验证。Linux 使用前需赋予 AppImage 执行权限，系统需支持 AppImage/FUSE。现有 Electron 工程只覆盖桌面端，不包含 Android/iOS 安装包。
+
+自动化边界：工作流运行现有 Node 测试与构建检查，不包含桌面 UI、安装卸载或生物识别实机测试。GitHub 四平台首次构建结果应以推送后的 Actions 记录为准。
+
+前一轮打包配置验收（2026-09-28）：44 项业务测试在本机 Node.js 22 和 Electron 内置 Node.js 24.20.0 下均通过；类型检查、生产构建、Windows Hello 构建和 Windows x64 NSIS 打包通过。验证产物为 `output/ci-validation/jiazi-vault-0.1.2-win-x64.exe`，包内包含前端、主进程、preload、Argon2 原生模块及 Windows Hello 组件，原生模块加载成功；安装包签名状态为 `NotSigned`。
+
+自动版本测试入口：`node --test tests/release.test.mjs`，已纳入 `pnpm test`。测试使用隔离的本地 Git 仓库和 bare 远端，验证非 `main` 分支拒绝发版、版本递增、源码/标签一致、重试复用、标签冲突拒绝、并发推送的原子拒绝及未提交修改保护，不向真实 GitHub 仓库推送。尚未提交、推送本次配置，未实跑 GitHub Actions 或 macOS/Linux 安装包。
+
 ## 可靠性与安全修复（当前源码）
 
 - 数据库打开或初始化失败时显示恢复入口；错误密码和无效备份不移动原库。恢复先写入独立临时数据库，成功后将原数据库及 SQLite 附属文件保留到数据目录的 `recovery/restore-*`，再安装已验证的替换库。正常保险库仍使用原有事务恢复流程。

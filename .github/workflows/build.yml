@@ -1,0 +1,141 @@
+name: Build and release desktop apps
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    name: Prepare release version
+    if: github.ref_type == 'branch' && github.ref_name == 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Bump version and push release commit
+        id: version
+        run: node scripts/prepare-release.mjs
+
+  build:
+    name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: prepare
+    if: always() && !cancelled() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: win
+            arch: x64
+            extra_args: ''
+          - os: macos-15-intel
+            platform: mac
+            arch: x64
+            extra_args: --config.mac.identity=- --config.mac.hardenedRuntime=false
+          - os: macos-15
+            platform: mac
+            arch: arm64
+            extra_args: --config.mac.identity=- --config.mac.hardenedRuntime=false
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+            extra_args: ''
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.commit || github.sha }}
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Set up Windows Hello build tools
+        if: runner.os == 'Windows'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build installer
+        run: >-
+          pnpm electron:build
+          --${{ matrix.platform }} --${{ matrix.arch }}
+          --publish never
+          --config.electronDist=node_modules/electron/dist
+          ${{ matrix.extra_args }}
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v6
+        with:
+          name: jiazi-vault-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  release:
+    name: Publish release
+    if: github.ref_type == 'branch' && github.ref_name == 'main'
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: jiazi-vault-*
+          path: release
+          merge-multiple: true
+
+      - name: Publish installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Jiazi Vault $RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false
