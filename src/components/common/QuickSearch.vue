@@ -1,19 +1,20 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NAlert, NButton, NEmpty, NIcon, NInput, NModal, NSpin, NText, type InputInst } from 'naive-ui'
 import { useVaultStore } from '../../stores/vault'
 import { useAuthStore } from '../../stores/auth'
 import { useClipboard } from '../../composables/useClipboard'
-import { ITEM_TYPE_LABELS } from '../../utils/item-fields'
+import { ITEM_TYPE_LABELS, TYPE_FIELDS } from '../../utils/item-fields'
+import { vaultService } from '../../services/vault'
 import { ITEM_TYPE_ICONS } from '../../utils/item-icons'
-import type { VaultItemSummary } from '../../types/vault'
+import type { VaultItem, VaultItemSummary } from '../../types/vault'
 
 const emit = defineEmits<{ (event: 'close'): void }>()
 const vault = useVaultStore()
 const auth = useAuthStore()
 const router = useRouter()
-const { copyItem } = useClipboard()
+const { copy, copyItem } = useClipboard()
 const query = ref('')
 const selected = ref(0)
 const input = ref<InputInst | null>(null)
@@ -21,8 +22,51 @@ const resultsElement = ref<HTMLElement | null>(null)
 const copying = ref(false)
 const results = computed(() => vault.search(vault.items, query.value, 50))
 const active = computed(() => results.value[selected.value])
+const details = ref<VaultItem | null>(null)
+const fieldsLoading = ref(false)
+const fieldsError = ref('')
+const selectedField = ref('primary')
+let request = 0
+const copyFields = computed(() => {
+  const item = details.value
+  if (!item) return []
+  const fields: { key: string; label: string; value: string }[] = []
+  for (const key of ['username', 'password', 'host', 'port', 'url', 'notes'] as const) {
+    const value = item[key]
+    if (value !== undefined && value !== '') fields.push({ key, label: TYPE_FIELDS[item.type].find((field) => field.target === key)?.label ?? ({ username: '用户名', password: '密码', host: '主机', port: '端口', url: 'URL', notes: '备注' })[key], value: String(value) })
+  }
+  for (const [key, value] of Object.entries(item.fields ?? {})) {
+    if (value || item.type === 'env') fields.push({ key: `field:${key}`, label: TYPE_FIELDS[item.type].find((field) => field.target === 'field' && field.key === key)?.label ?? key, value })
+  }
+  return fields
+})
 
-watch(results, () => { selected.value = 0 })
+async function loadFields() {
+  const current = ++request
+  const revision = auth.sessionRevision
+  const id = active.value?.id
+  details.value = null
+  fieldsError.value = ''
+  selectedField.value = 'primary'
+  fieldsLoading.value = !!id
+  if (!id) return
+  try {
+    const item = await vaultService.getItem(id, false)
+    if (current !== request || revision !== auth.sessionRevision) return
+    if (!item) throw new Error('ITEM_NOT_FOUND')
+    details.value = item
+  } catch {
+    if (current === request && revision === auth.sessionRevision) fieldsError.value = '读取字段失败，请重试。'
+  } finally { if (current === request) fieldsLoading.value = false }
+}
+watch(() => active.value?.id, loadFields, { immediate: true })
+onBeforeUnmount(() => { request++; details.value = null })
+
+watch(query, () => { selected.value = 0 })
+watch(results, (items, previous) => {
+  const id = previous[selected.value]?.id
+  selected.value = Math.max(0, items.findIndex((item) => item.id === id))
+})
 watch(selected, async () => {
   await nextTick()
   resultsElement.value?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
@@ -37,13 +81,18 @@ function open(item = active.value) {
 
 async function copySelected() {
   const item = active.value
-  if (!item || copying.value) return
+  if (!item || copying.value || fieldsLoading.value || !auth.unlocked) return
+  const field = copyFields.value.find((field) => field.key === selectedField.value)
   copying.value = true
-  try { await copyItem(item.id) }
+  try {
+    if (selectedField.value === 'primary') await copyItem(item.id)
+    else if (field && details.value?.id === item.id) await copy(field.value, item.id)
+  }
   finally { copying.value = false }
 }
 
 function keydown(event: KeyboardEvent) {
+  if ((event.target as HTMLElement).closest('select, button')) return
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault()
     if (results.value.length) selected.value = (selected.value + (event.key === 'ArrowDown' ? 1 : -1) + results.value.length) % results.value.length
@@ -71,7 +120,17 @@ function subtitle(item: VaultItemSummary) {
           <n-empty v-if="!vault.loading && !results.length" class="search-state" description="没有匹配的凭证" />
         </div>
       </n-spin>
-      <div class="search-footer"><n-text depth="3">↑ ↓ 选择 · Enter 打开 · Ctrl C 复制 · Esc 关闭</n-text><n-button size="small" :disabled="!active" :loading="copying" @click="copySelected">复制</n-button></div>
+      <n-alert v-if="fieldsError" type="error">{{ fieldsError }} <n-button text @click="loadFields">重试</n-button></n-alert>
+      <div class="search-footer">
+        <n-text depth="3">↑ ↓ 选择 · Enter 打开 · Ctrl C 复制 · Esc 关闭</n-text>
+        <div class="copy-controls">
+          <select v-model="selectedField" aria-label="选择复制字段" :disabled="!details || fieldsLoading || copying">
+            <option value="primary">{{ active?.type === 'env' ? '完整 .env（需确认）' : '默认内容' }}</option>
+            <option v-for="field in copyFields" :key="field.key" :value="field.key">{{ field.label }}</option>
+          </select>
+          <n-button size="small" :disabled="!active || fieldsLoading || !!fieldsError" :loading="copying" @click="copySelected">复制</n-button>
+        </div>
+      </div>
     </div>
   </n-modal>
 </template>
@@ -84,5 +143,7 @@ function subtitle(item: VaultItemSummary) {
 .result[aria-selected=true] { background: rgba(108, 140, 58, .16); }
 .subtitle { display: block; margin-top: 4px; font-size: 12px; overflow-wrap: anywhere; }
 .search-state { margin: 20px 0; }
-.search-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+.search-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+.copy-controls { display: flex; align-items: center; gap: 8px; }
+.copy-controls select { max-width: 220px; min-width: 120px; height: 30px; border-radius: 6px; padding: 0 8px; color: inherit; background: var(--n-color); border: 1px solid var(--n-border-color); color-scheme: light dark; }
 </style>
