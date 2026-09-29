@@ -20,7 +20,7 @@ async function launch() {
   page = await application.firstWindow()
   page.setDefaultTimeout(15_000)
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.getByRole('heading', { name: /欢迎使用 Jiazi Vault|解锁保险库/ }).waitFor()
+  await page.getByRole('heading', { name: /欢迎使用 Keystill|解锁保险库/ }).waitFor()
 }
 async function unlock(secret = password) {
   await page.getByPlaceholder('主密码', { exact: true }).fill(secret)

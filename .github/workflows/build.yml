@@ -107,7 +107,7 @@ jobs:
       - name: Upload packages
         uses: actions/upload-artifact@v6
         with:
-          name: jiazi-vault-${{ matrix.platform }}-${{ matrix.arch }}
+          name: keystill-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             release/*.exe
             release/*.dmg
@@ -130,7 +130,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v7
         with:
-          pattern: jiazi-vault-*
+          pattern: keystill-*
           path: release
           merge-multiple: true
 
@@ -141,7 +141,7 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Jiazi Vault $RELEASE_TAG" --generate-notes
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Keystill $RELEASE_TAG" --generate-notes
           fi
           gh release upload "$RELEASE_TAG" release/* --clobber
           gh release edit "$RELEASE_TAG" --draft=false

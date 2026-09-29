@@ -42,8 +42,8 @@
   },
   "build": {
     "appId": "com.jiazi.vault",
-    "productName": "Jiazi Vault",
-    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+    "productName": "Keystill",
+    "artifactName": "keystill-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -67,7 +67,7 @@
       "runAfterFinish": false
     },
     "portable": {
-      "artifactName": "${name}-${version}-${os}-${arch}-portable.${ext}"
+      "artifactName": "keystill-${version}-${os}-${arch}-portable.${ext}"
     },
     "mac": {
       "icon": "build/icon.icns",

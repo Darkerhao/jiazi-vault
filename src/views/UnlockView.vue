@@ -16,7 +16,7 @@ const acknowledged = ref(false)
 const biometric = ref<BiometricStatus | null>(null)
 const localError = ref<string | null>(null)
 const isCreating = computed(() => auth.hasVault === false)
-const titles = { welcome: '欢迎使用 Jiazi Vault', password: '设置主密码', confirm: '确认主密码', security: '安全须知' }
+const titles = { welcome: '欢迎使用 Keystill', password: '设置主密码', confirm: '确认主密码', security: '安全须知' }
 const now = ref(Date.now())
 const remaining = computed(() => Math.max(0, Math.ceil((auth.retryAt - now.value) / 1000)))
 const clock = setInterval(() => { now.value = Date.now() }, 250)
@@ -73,10 +73,10 @@ async function submit() {
 </script>
 
 <template>
-  <n-layout class="unlock-page">
+  <n-layout class="unlock-page" content-style="min-height: 100vh; display: grid; place-items: center; padding: 24px;">
     <n-card class="unlock-card" bordered>
       <img class="unlock-icon" src="/brand/icon.svg" alt="" width="64" height="64">
-      <n-text depth="1">Jiazi Vault</n-text>
+      <n-text depth="1" class="unlock-brand">Keystill <span>密序</span></n-text>
       <n-spin v-if="!auth.isReady" class="loading" />
       <template v-else-if="auth.databaseError">
         <h1>无法打开保险库</h1>
@@ -114,9 +114,11 @@ async function submit() {
 </template>
 
 <style scoped>
-.unlock-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-.unlock-card { width: min(420px, 100%); text-align: center; }
-.unlock-icon { display: block; margin: 10px auto 14px; width: 64px; height: 64px; }
+.unlock-page { min-height: 100vh; }
+.unlock-card { width: min(440px, 100%); text-align: center; border-radius: 24px; padding: 12px; }
+.unlock-icon { display: block; margin: 12px auto 18px; width: 76px; height: 76px; }
+.unlock-brand { display: block; font-size: 26px; font-weight: 650; letter-spacing: -.6px; margin-bottom: 24px; }
+.unlock-brand span { font-size: 13px; font-weight: 400; letter-spacing: 3px; margin-left: 8px; opacity: .7; }
 h1 { margin: 8px 0 24px; font-size: 24px; }
 .loading { margin: 28px 0 18px; }
 .intro { display: block; margin: -12px 0 20px; line-height: 1.7; }

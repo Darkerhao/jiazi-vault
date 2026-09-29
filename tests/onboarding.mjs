@@ -1,5 +1,5 @@
 export async function createVaultThroughUI(page, password) {
-  await page.getByRole('heading', { name: '欢迎使用 Jiazi Vault' }).waitFor()
+  await page.getByRole('heading', { name: '欢迎使用 Keystill' }).waitFor()
   await page.getByRole('button', { name: '开始创建', exact: true }).click()
   await page.getByPlaceholder('主密码', { exact: true }).fill(password)
   await page.getByRole('button', { name: '下一步', exact: true }).click()

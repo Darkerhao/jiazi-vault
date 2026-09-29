@@ -122,13 +122,13 @@ function assertRevision(revision: number) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    title: 'Jiazi Vault',
+    title: 'Keystill',
     icon: join(app.getAppPath(), app.isPackaged ? 'dist' : 'public', 'brand', 'icon.png'),
     width: 1200,
     height: 760,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#181a1f',
+    backgroundColor: '#20251f',
     webPreferences: {
       preload: join(import.meta.dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -409,7 +409,7 @@ function registerTransferHandlers() {
       const choice = await dialog.showSaveDialog(mainWindow, {
         title: `导出 ${format.toUpperCase()}`,
         filters: [{ name: format.toUpperCase(), extensions: [format] }],
-        defaultPath: `jiazi-vault-${new Date().toISOString().slice(0, 10)}.${format}`,
+        defaultPath: `keystill-${new Date().toISOString().slice(0, 10)}.${format}`,
       })
       if (choice.canceled || !choice.filePath) return null
       assertRevision(revision)
@@ -454,7 +454,7 @@ function registerTransferHandlers() {
 }
 
 function registerBackupHandlers() {
-  const filters = [{ name: 'Jiazi Vault 加密备份', extensions: ['jvault'] }]
+  const filters = [{ name: 'Keystill 加密备份', extensions: ['jvault'] }]
   handleIpc('create_backup', async () => {
     requireUnlocked()
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
@@ -463,7 +463,7 @@ function registerBackupHandlers() {
     try {
       const choice = await dialog.showSaveDialog(mainWindow, {
         title: '保存加密备份', filters,
-        defaultPath: `jiazi-vault-backup-${new Date().toISOString().slice(0, 10)}.jvault`,
+        defaultPath: `keystill-backup-${new Date().toISOString().slice(0, 10)}.jvault`,
       })
       if (choice.canceled || !choice.filePath) return null
       assertRevision(revision)

@@ -16,13 +16,13 @@ const show = ref(false)
 const editingId = ref<string | null>(null)
 const saving = ref(false)
 const error = ref('')
-const form = reactive<ProjectInput>({ name: '', icon: '📁', color: '#8ab4f8', description: '' })
+const form = reactive<ProjectInput>({ name: '', icon: '📁', color: '#c7ef68', description: '' })
 const icons = ['📁', '💻', '🌐', '🔧', '📦', '🚀', '🎓', '🔒'].map((icon) => ({ label: icon, value: icon }))
 const visibleProjects = computed(() => vault.projects.filter((p) => `${p.name} ${p.description ?? ''}`.toLowerCase().includes(vault.query.trim().toLowerCase())))
 
 function edit(project?: Project) {
   editingId.value = project?.id ?? null
-  Object.assign(form, { name: project?.name ?? '', icon: project?.icon ?? '📁', color: project?.color ?? '#8ab4f8', description: project?.description ?? '' })
+  Object.assign(form, { name: project?.name ?? '', icon: project?.icon ?? '📁', color: project?.color ?? '#c7ef68', description: project?.description ?? '' })
   error.value = ''
   show.value = true
 }
@@ -67,7 +67,7 @@ function remove(project: Project) {
       <n-list v-else bordered>
         <n-list-item v-for="project in visibleProjects" :key="project.id">
           <div class="project-row">
-            <span class="project-icon" :style="{ backgroundColor: project.color ?? '#8ab4f8' }">{{ project.icon || '📁' }}</span>
+            <span class="project-icon" :style="{ backgroundColor: project.color ?? '#c7ef68' }">{{ project.icon || '📁' }}</span>
             <div class="project-info">
               <n-button text class="project-name" @click="router.push({ name: 'vault', query: { project: project.id } })">{{ project.name }}</n-button>
               <n-text v-if="project.description" depth="3" class="description">{{ project.description }}</n-text>

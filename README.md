@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="./public/brand/icon.svg" width="88" height="88" alt="Jiazi Vault 图标">
+  <img src="./public/brand/icon.svg" width="88" height="88" alt="Keystill 图标">
 </p>
 
-# Jiazi Vault
+# Keystill · 密序
+
+**密钥有序，专注如常。** 原 Jiazi Vault，现以 Keystill 品牌持续迭代。
 
 面向开发者的本地凭证保险库，集中管理账号密码、服务器、数据库、API Key、SSH 私钥和环境变量。
 
@@ -36,7 +38,7 @@
 | macOS | Intel x64 / Apple Silicon arm64 | `.dmg`、`.zip` |
 | Linux | x64 | `.AppImage`、`.tar.gz` |
 
-Windows 安装版可选择安装目录；ZIP 版本需完整解压后运行 `Jiazi Vault.exe`。Windows 包含 Windows Hello 组件及所需 .NET 运行时，普通用户无需另装 .NET。
+Windows 安装版可选择安装目录；ZIP 版本需完整解压后运行 `Keystill.exe`。Windows 包含 Windows Hello 组件及所需 .NET 运行时，普通用户无需另装 .NET。
 
 免安装版和 ZIP 版也将保险库保存在系统用户数据目录，数据不会随程序文件一起移动。更换设备请使用应用内的加密备份与恢复。
 
@@ -75,7 +77,7 @@ Windows 安装版可选择安装目录；ZIP 版本需完整解压后运行 `Jia
 
 ## 数据与安全
 
-保险库使用 SQLite，数据库文件为 Electron 用户数据目录下的 `vault.db`，路径由主进程的 `app.getPath('userData')` 确定。
+保险库使用 SQLite，数据库文件为 Electron 用户数据目录下的 `vault.db`，路径由主进程的 `app.getPath('userData')` 确定。品牌升级保留内部包名 `jiazi-vault` 与应用 ID，继续使用原数据目录，无需手动迁移；原 `.jvault` 备份仍可恢复。下载文件使用 `keystill-` 前缀，GitHub 仓库地址保持不变。
 
 - 主密码通过 **Argon2id** 派生 256 位密钥，当前参数为 64 MiB 内存、3 次迭代、并行度 1，每个保险库使用随机盐。
 - 密码、备注及 `fields` 中的数据（包括私钥、API Key、自定义字段、环境变量名和值）使用 **AES-256-GCM** 加密存储，每次加密使用随机 nonce。

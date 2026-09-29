@@ -12,15 +12,15 @@ async function generate() {
   await mkdir(build, { recursive: true })
   const master = await readFile(join(brand, 'mark.svg'), 'utf8')
   const mark = master.replace(/<svg[^>]*>|<\/svg>/g, '').trim()
-  const icon = svg(`<defs><linearGradient id="tile" x2="1" y2="1"><stop stop-color="#b3ceff"/><stop offset="1" stop-color="#82acf0"/></linearGradient></defs>
+  const icon = svg(`<defs><linearGradient id="tile" x2="1" y2="1"><stop stop-color="#d4f878"/><stop offset="1" stop-color="#b6e650"/></linearGradient></defs>
   <rect width="64" height="64" rx="16" fill="url(#tile)"/>
   <rect x=".5" y=".5" width="63" height="63" rx="15.5" fill="none" stroke="#fff" stroke-opacity=".25"/>
-  <g color="#172b4d" fill="none">${mark}</g>`)
+  <g color="#20251f" fill="none">${mark}</g>`)
   await writeFile(join(brand, 'icon.svg'), icon)
 
-  for (const [name, ink] of [['logo-light', '#172b4d'], ['logo-dark', '#edf3ff']]) {
+  for (const [name, ink] of [['logo-light', '#20251f'], ['logo-dark', '#f3f5ed']]) {
     const logo = svg(`<g color="${ink}" fill="none">${mark}</g>
-    <text x="80" y="43" fill="${ink}" font-family="Segoe UI, Inter, sans-serif" font-size="36" font-weight="600" letter-spacing="-1">Jiazi Vault</text>`, 256, 64)
+    <text x="80" y="43" fill="${ink}" font-family="Segoe UI, Inter, sans-serif" font-size="36" font-weight="600" letter-spacing="-1">Keystill</text>`, 232, 64)
     await writeFile(join(brand, `${name}.svg`), logo)
   }
 
@@ -79,7 +79,7 @@ async function generate() {
   header.writeUInt32BE(8 + chunks.reduce((total, chunk) => total + chunk.length, 0), 4)
   await writeFile(join(build, 'icon.icns'), Buffer.concat([header, ...chunks]))
   window.destroy()
-  console.log('Generated Jiazi Vault logos, application icons and tray icons from public/brand/mark.svg')
+  console.log('Generated Keystill logos, application icons and tray icons from public/brand/mark.svg')
 }
 
 app.whenReady().then(generate).then(() => app.quit()).catch((error) => {
