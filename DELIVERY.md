@@ -14,10 +14,14 @@
 
 | 平台 | 架构 | 安装包 |
 |---|---|---|
-| Windows | x64 | `jiazi-vault-<版本>-win-x64.exe`，包含 Windows Hello 组件及 .NET 运行时 |
-| macOS Intel | x64 | `jiazi-vault-<版本>-mac-x64.dmg` |
-| macOS Apple Silicon | arm64 | `jiazi-vault-<版本>-mac-arm64.dmg` |
-| Linux | x64 | `jiazi-vault-<版本>-linux-x64.AppImage` |
+| Windows | x64 | 安装版 `jiazi-vault-<版本>-win-x64.exe`、免安装版 `jiazi-vault-<版本>-win-x64-portable.exe`、压缩包 `jiazi-vault-<版本>-win-x64.zip`，均包含 Windows Hello 组件及 .NET 运行时 |
+| macOS Intel | x64 | `jiazi-vault-<版本>-mac-x64.dmg`、`jiazi-vault-<版本>-mac-x64.zip` |
+| macOS Apple Silicon | arm64 | `jiazi-vault-<版本>-mac-arm64.dmg`、`jiazi-vault-<版本>-mac-arm64.zip` |
+| Linux | x64 | `jiazi-vault-<版本>-linux-x86_64.AppImage`、`jiazi-vault-<版本>-linux-x64.tar.gz` |
+
+同一产品版本共提供 9 个安装或压缩包；不同格式复用对应平台的同一份应用，不区分 Lite/Standard 功能版本。构建器生成的 `.blockmap` 也会上传，它们是差分下载辅助文件，不是独立安装包；当前应用尚未接入自动更新。GitHub 另外提供源码 ZIP 和 tar.gz。
+
+Windows 免安装 EXE 会在运行时解压应用，ZIP 则先完整解压再运行其中的 `Jiazi Vault.exe`。两者继续使用系统用户数据目录保存保险库，不会把保险库随程序写入便携文件所在目录；迁移数据使用应用内的加密备份和恢复。
 
 下载正式安装包：打开仓库的 [Releases](https://github.com/Darkerhao/jiazi-vault/releases)。各平台的构建包也会保存在 [Actions](https://github.com/Darkerhao/jiazi-vault/actions) → **Build and release desktop apps** → 对应构建记录 → **Artifacts**，保留 30 天，下载需登录 GitHub 并解压。
 

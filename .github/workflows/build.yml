@@ -93,7 +93,7 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Build installer
+      - name: Build packages
         run: >-
           pnpm electron:build
           --${{ matrix.platform }} --${{ matrix.arch }}
@@ -101,7 +101,7 @@ jobs:
           --config.electronDist=node_modules/electron/dist
           ${{ matrix.extra_args }}
 
-      - name: Upload installer
+      - name: Upload packages
         uses: actions/upload-artifact@v6
         with:
           name: jiazi-vault-${{ matrix.platform }}-${{ matrix.arch }}
@@ -109,6 +109,9 @@ jobs:
             release/*.exe
             release/*.dmg
             release/*.AppImage
+            release/*.zip
+            release/*.tar.gz
+            release/*.blockmap
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
@@ -127,7 +130,7 @@ jobs:
           path: release
           merge-multiple: true
 
-      - name: Publish installers
+      - name: Publish packages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
