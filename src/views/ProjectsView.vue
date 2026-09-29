@@ -18,7 +18,8 @@ const saving = ref(false)
 const error = ref('')
 const form = reactive<ProjectInput>({ name: '', icon: '📁', color: '#c7ef68', description: '' })
 const icons = ['📁', '💻', '🌐', '🔧', '📦', '🚀', '🎓', '🔒'].map((icon) => ({ label: icon, value: icon }))
-const visibleProjects = computed(() => vault.projects.filter((p) => `${p.name} ${p.description ?? ''}`.toLowerCase().includes(vault.query.trim().toLowerCase())))
+const query = computed(() => typeof route.query.q === 'string' ? route.query.q : '')
+const visibleProjects = computed(() => vault.projects.filter((p) => `${p.name} ${p.description ?? ''}`.toLowerCase().includes(query.value.trim().toLowerCase())))
 
 function edit(project?: Project) {
   editingId.value = project?.id ?? null
@@ -63,7 +64,7 @@ function remove(project: Project) {
     <div class="page-heading"><div><n-text depth="3">工作区</n-text><h1>项目</h1></div><n-button type="primary" @click="edit()">新建项目</n-button></div>
     <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text @click="vault.load">重试</n-button></n-alert>
     <n-spin :show="vault.loading">
-      <n-empty v-if="!vault.loading && !visibleProjects.length" :description="vault.query ? '没有匹配的项目' : '还没有项目'" />
+      <n-empty v-if="!vault.loading && !visibleProjects.length" :description="query ? '没有匹配的项目' : '还没有项目'" />
       <n-list v-else bordered>
         <n-list-item v-for="project in visibleProjects" :key="project.id">
           <div class="project-row">

@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { initializeBackupTracking } from './backup-status.js'
 
 export interface DatabaseState {
   connection: DatabaseSync
@@ -67,6 +68,7 @@ export function openDatabase(userDataPath: string): DatabaseState {
       connection.exec('ALTER TABLE items ADD COLUMN last_accessed_at INTEGER')
     }
     connection.exec('CREATE INDEX IF NOT EXISTS items_deleted_at ON items(deleted_at)')
+    initializeBackupTracking(connection)
     purgeExpiredItems(connection)
 
     return { connection, path }

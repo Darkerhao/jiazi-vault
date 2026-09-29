@@ -1,3 +1,5 @@
+import type { ImportPreview } from '../../electron/contracts'
+import type { BackupStatus } from '../../electron/backup-status'
 import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
 import type { AppSettings } from '../../electron/settings'
 import type { GeneratedPassword, PasswordOptions } from '../../electron/password-generator'
@@ -58,10 +60,13 @@ export interface IpcCommands {
   get_settings: { args: undefined; result: AppSettings }
   update_settings: { args: { settings: AppSettings }; result: AppSettings }
   copy_to_clipboard: { args: { text: string; itemId?: string }; result: number | null }
+  get_backup_status: { args: undefined; result: BackupStatus }
   create_backup: { args: undefined; result: string | null }
   restore_backup: { args: { password: string }; result: boolean }
   export_plaintext: { args: { format: TransferFormat }; result: string | null }
-  import_plaintext: { args: undefined; result: number | null }
+  preview_import: { args: undefined; result: ImportPreview | null }
+  confirm_import: { args: { token: string; skipDuplicates: boolean }; result: number }
+  cancel_import: { args: { token: string }; result: void }
   read_env_file: { args: undefined; result: { name: string; contents: string } | null }
   export_env: { args: { fields: Record<string, string>; destination: 'clipboard' | 'file'; itemId?: string }; result: { name: string; usedAt: number | null } | null }
 }

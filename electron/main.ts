@@ -1,3 +1,4 @@
+import { backupRevision, readBackupStatus, recordBackup } from './backup-status.js'
 import { basename, extname, join } from 'node:path'
 import { readFile, stat, writeFile, rename, rm } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -15,7 +16,7 @@ import { UnlockLimiter } from './unlock-limiter.js'
 import { createProjectStore, type ProjectInput } from './project-store.js'
 import { generatePassword, type PasswordOptions } from './password-generator.js'
 import { createDesktopControls } from './desktop.js'
-import { assertTransferFormat, exportPlaintext, importPlaintext, readPlaintext, type TransferFormat } from './transfer.js'
+import { assertTransferFormat, exportPlaintext, parseImport, previewImport, importReviewed, type ImportRecord, type TransferFormat } from './transfer.js'
 import { replaceVaultPassword } from './vault-password.js'
 import { BiometricVault } from './biometric-vault.js'
 import { createBiometricProvider } from './biometric-provider.js'
@@ -30,6 +31,7 @@ let vaultOperationBusy = false
 let unlockLimiter: UnlockLimiter
 let desktop: ReturnType<typeof createDesktopControls>
 let trashTimer: ReturnType<typeof setInterval> | undefined
+let pendingImport: { token: string; revision: number; records: ImportRecord[] } | null = null
 let biometric: BiometricVault
 let itemStore: ReturnType<typeof createItemStore>
 let projects: ReturnType<typeof createProjectStore>
@@ -420,10 +422,11 @@ function registerTransferHandlers() {
     } catch { throw new Error('EXPORT_FAILED') }
     finally { vaultOperationBusy = false }
   })
-  handleIpc('import_plaintext', async () => {
+  handleIpc('preview_import', async () => {
     requireUnlocked()
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
     vaultOperationBusy = true
+    pendingImport = null
     const revision = session.revision
     try {
       const choice = await dialog.showOpenDialog(mainWindow, {
@@ -438,23 +441,34 @@ function registerTransferHandlers() {
       const contents = await readFile(path, 'utf8')
       assertRevision(revision)
       requireUnlocked()
-      const items = readPlaintext(contents, format)
-      if (!items.length) return 0
-      const confirmation = await dialog.showMessageBox(mainWindow, {
-        type: 'question', title: '追加导入凭证', message: `将新增 ${items.length} 条凭证。`,
-        detail: '现有凭证不会被覆盖；重复导入会生成新条目。项目按名称关联，不存在的项目会自动创建。',
-        buttons: ['取消', '确认导入'], defaultId: 0, cancelId: 0, noLink: true,
-      })
-      if (confirmation.response !== 1) return null
-      assertRevision(revision)
-      return importPlaintext(requireDatabase().connection, requireUnlocked(), items)
+      if (Buffer.byteLength(contents, 'utf8') > 64 * 1024 * 1024) throw new Error('INVALID_IMPORT')
+      const records = parseImport(contents, format)
+      const preview = previewImport(requireDatabase().connection, requireUnlocked(), records)
+      const token = randomUUID()
+      pendingImport = { token, revision, records }
+      return { token, name: basename(path), ...preview }
     } catch { throw new Error('IMPORT_FAILED') }
     finally { vaultOperationBusy = false }
   })
+  handleIpc('cancel_import', (_event, args: { token: string }) => {
+    requireUnlocked()
+    if (pendingImport?.token === args?.token) pendingImport = null
+  })
+  handleIpc('confirm_import', (_event, args: { token: string; skipDuplicates: boolean }) => {
+    requireUnlocked()
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
+    if (!pendingImport || pendingImport.token !== args?.token || typeof args.skipDuplicates !== 'boolean') throw new Error('IMPORT_EXPIRED')
+    assertRevision(pendingImport.revision)
+    const records = pendingImport.records
+    pendingImport = null
+    return importReviewed(requireDatabase().connection, requireUnlocked(), records, args.skipDuplicates)
+  })
+
 }
 
 function registerBackupHandlers() {
   const filters = [{ name: 'Keystill 加密备份', extensions: ['jvault'] }]
+  handleIpc('get_backup_status', () => { requireUnlocked(); return readBackupStatus(requireDatabase().connection) })
   handleIpc('create_backup', async () => {
     requireUnlocked()
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
@@ -467,9 +481,11 @@ function registerBackupHandlers() {
       })
       if (choice.canceled || !choice.filePath) return null
       assertRevision(revision)
+      const snapshotRevision = backupRevision(requireDatabase().connection)
       const contents = createBackup(requireDatabase().connection, readVaultMetadata()!, requireUnlocked())
       const path = choice.filePath.toLowerCase().endsWith('.jvault') ? choice.filePath : `${choice.filePath}.jvault`
       await writeExport(path, contents, revision)
+      recordBackup(requireDatabase().connection, snapshotRevision)
       return basename(path)
     } catch (error) {
       if (error instanceof Error && error.message === 'BACKUP_TOO_LARGE') throw error
@@ -521,6 +537,7 @@ if (!primaryInstance) app.quit()
 else app.whenReady().then(() => {
   clipboardManager = new ClipboardManager(clipboard, () => settings.clipboardClearTimeout)
   session = new VaultSession(() => settings.autoLockMinutes, () => {
+    pendingImport = null
     if (mainWindow && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('vault_locked')
     void clipboardManager.clearOnLock().catch(() => {})
   })

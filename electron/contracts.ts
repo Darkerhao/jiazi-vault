@@ -24,10 +24,13 @@ export interface VaultItem {
   deletedAt?: number
 }
 
-export type VaultItemSummary = Omit<VaultItem, 'password' | 'fields' | 'notes'> & { hasSensitiveData?: boolean }
+export type VaultItemSummary = Omit<VaultItem, 'password' | 'fields' | 'notes'> & { hasSensitiveData?: boolean; expiresAt?: string }
 export type ItemInput = Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt' | 'lastAccessedAt' | 'deletedAt'>
 export interface BiometricStatus {
   label: 'Windows Hello' | 'Touch ID' | '生物识别'
   available: boolean
   enabled: boolean
 }
+
+export interface ImportPreviewRow { row: number; title: string; type: string; duplicate: boolean; error?: string }
+export interface ImportPreview { token: string; name: string; rows: ImportPreviewRow[]; validCount: number; duplicateCount: number; invalidCount: number }

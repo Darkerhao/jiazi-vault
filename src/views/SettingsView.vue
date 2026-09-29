@@ -1,18 +1,16 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NAlert, NButton, NCard, NForm, NFormItem, NSelect, NSpace, NText, useMessage } from 'naive-ui'
+import { NAlert, NButton, NCard, NForm, NFormItem, NSelect, NText } from 'naive-ui'
 import AppShell from '../components/common/AppShell.vue'
 import BackupRestore from '../components/common/BackupRestore.vue'
 import PlaintextTransfer from '../components/common/PlaintextTransfer.vue'
 import VaultSecurity from '../components/common/VaultSecurity.vue'
 import { useSettingsStore } from '../stores/settings'
-import { backupService } from '../services/backup'
+import BackupStatus from '../components/common/BackupStatus.vue'
 import { callCommand } from '../services/ipc'
 import type { AppSettings } from '../../electron/settings'
 
 const settings = useSettingsStore()
-const message = useMessage()
-const backingUp = ref(false)
 const shortcut = ref<{ shortcut: string; shortcutRegistered: boolean } | null>(null)
 onMounted(async () => { shortcut.value = await callCommand('get_desktop_status') })
 const themeOptions = [
@@ -32,19 +30,6 @@ function updateAutoLock(value: number) {
   void settings.update({ autoLockMinutes: value === 0 ? null : value as AppSettings['autoLockMinutes'] })
 }
 
-async function createBackup() {
-  if (backingUp.value) return
-  backingUp.value = true
-  try {
-    const name = await backupService.create()
-    if (name) message.success(`加密备份已保存：${name}`)
-  } catch (cause) {
-    message.error(cause instanceof Error && cause.message.includes('BACKUP_TOO_LARGE')
-      ? '备份超过 256 MiB 容量上限，未生成备份文件。'
-      : '备份保存失败，请检查目标位置权限，或重新解锁后重试。')
-  }
-  finally { backingUp.value = false }
-}
 </script>
 
 <template>
@@ -60,12 +45,13 @@ async function createBackup() {
       <n-text depth="3">设置自动保存。无操作或切换应用后按所选时间锁定；系统锁屏、休眠时立即锁定。锁定和退出时也会清理本应用复制的内容。</n-text>
     </n-card>
     <VaultSecurity />
+    <n-card title="本地加密的保护范围" class="settings-card backup-card" bordered>
+      <p>密码、备注和自定义字段（包括私钥、API Key、环境变量）经过加密保存。主密码不以明文保存。</p>
+      <p>凭证名称、用户名、URL、主机、端口、标签、项目名称和使用时间等元数据以明文保存在本地数据库中。获得数据库文件的人可能读取这些信息；锁定保险库不会加密这些元数据。</p>
+      <n-text depth="3">加密备份会加密上述全部业务数据。应用不提供云端同步或主密码找回。</n-text>
+    </n-card>
     <n-card title="加密备份与恢复" class="settings-card backup-card" bordered>
-      <n-text depth="3">备份包含全部凭证、项目、回收站和设置，使用当前主密码加密。恢复时需要备份创建时的主密码。</n-text>
-      <n-space class="backup-actions">
-        <n-button type="primary" :loading="backingUp" @click="createBackup">创建加密备份</n-button>
-        <BackupRestore />
-      </n-space>
+      <BackupStatus detailed><BackupRestore /></BackupStatus>
     </n-card>
     <PlaintextTransfer />
     <n-card title="快捷键与托盘" class="settings-card backup-card" bordered>
@@ -82,5 +68,4 @@ async function createBackup() {
 .settings-card { max-width: 700px; }
 .settings-error { margin-bottom: 16px; }
 .backup-card { margin-top: 24px; }
-.backup-actions { margin-top: 20px; }
 </style>

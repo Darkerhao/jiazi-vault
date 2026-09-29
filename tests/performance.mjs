@@ -98,7 +98,7 @@ try {
           const samples = []
           for (let sample = 0; sample < 3; sample++) {
             const result = await page.evaluate(async ({ surface, query, sample }) => {
-              const input = document.querySelector(surface === 'list' ? 'input[placeholder="搜索凭证…"]' : 'input[placeholder="搜索名称、项目、环境、账号…"]')
+              const input = document.querySelector(surface === 'list' ? 'input[placeholder="搜索当前凭证…"]' : 'input[placeholder="搜索名称、项目、环境、账号…"]')
               const start = performance.now()
               input.value = query + ' '.repeat(sample)
               input.dispatchEvent(new Event('input', { bubbles: true }))

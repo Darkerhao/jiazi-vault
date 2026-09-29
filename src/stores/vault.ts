@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
+import { useBackupStore } from './backup'
 import { vaultService } from '../services/vault'
 import { projectService } from '../services/project'
 import { createSearchIndex, searchItems } from '../utils/search'
@@ -12,7 +13,6 @@ export const useVaultStore = defineStore('vault', () => {
   const trashed = shallowRef<VaultItemSummary[]>([])
   const projects = shallowRef<Project[]>([])
   const error = ref('')
-  const query = ref('')
   const filter = ref<VaultFilter>('all')
   const loading = ref(false)
   let revision = 0
@@ -29,7 +29,6 @@ export const useVaultStore = defineStore('vault', () => {
     trashed.value = []
     projects.value = []
     error.value = ''
-    query.value = ''
     filter.value = 'all'
     loading.value = false
   }
@@ -40,10 +39,11 @@ export const useVaultStore = defineStore('vault', () => {
     else if (filter.value === 'recent') list = list.filter((item) => item.lastAccessedAt !== undefined).sort((a, b) => b.lastAccessedAt! - a.lastAccessedAt!)
     else if (filter.value === 'trash') list = trashed.value
 
-    return search(list, query.value)
+    return list
   })
 
   async function load() {
+    void useBackupStore().load()
     const requestRevision = revision
     loading.value = true
     error.value = ''
@@ -127,11 +127,12 @@ export const useVaultStore = defineStore('vault', () => {
       const updated = await vaultService.toggleFavorite(id)
       if (requestRevision !== revision) return false
       items.value = items.value.map((item) => item.id === id ? updated : item)
+      void useBackupStore().load()
       return true
     } catch {
       return false
     }
   }
 
-  return { items, trashed, projects, error, query, filter, loading, filteredItems, search, clear, load, get, applyUsage, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
+  return { items, trashed, projects, error, filter, loading, filteredItems, search, clear, load, get, applyUsage, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
 })

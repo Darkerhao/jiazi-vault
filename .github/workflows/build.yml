@@ -101,6 +101,11 @@ jobs:
           --config.electronDist=node_modules/electron/dist
           ${{ matrix.extra_args }}
 
+      - name: Verify Windows desktop flows
+        if: runner.os == 'Windows'
+        timeout-minutes: 10
+        run: node tests/desktop.mjs
+
       - name: Upload packages
         uses: actions/upload-artifact@v6
         with:

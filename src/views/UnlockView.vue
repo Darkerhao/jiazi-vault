@@ -86,6 +86,7 @@ async function submit() {
       <template v-else>
       <h1>{{ isCreating ? titles[step] : '解锁保险库' }}</h1>
       <n-text v-if="isCreating && step === 'welcome'" depth="3" class="intro">凭证只保存在此设备。<br>无需账号，无云端同步，无追踪。</n-text>
+      <n-text v-if="isCreating && step === 'welcome'" depth="3" class="intro">密码、备注和自定义字段加密保存；名称、账号、主机等元数据在本地明文保存。</n-text>
       <n-text v-else-if="isCreating && step === 'password'" depth="3" class="intro">设置至少 8 个字符的主密码，建议使用较长且独有的密码短语。</n-text>
       <n-text v-else-if="isCreating && step === 'confirm'" depth="3" class="intro">再次输入主密码，确认你已记住它。</n-text>
       <n-form class="unlock-form" :disabled="auth.busy" @submit.prevent="submit">

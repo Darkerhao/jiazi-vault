@@ -1,10 +1,11 @@
+import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { createItemStore, validateItemInput, type ItemInput } from './item-store.js'
 import { createProjectStore, validateProject } from './project-store.js'
 
-import type { TransferFormat } from './contracts.js'
+import type { TransferFormat, ImportPreviewRow } from './contracts.js'
 export type { TransferFormat } from './contracts.js'
-type TransferItem = Omit<ItemInput, 'projectId'> & {
+export type TransferItem = Omit<ItemInput, 'projectId'> & {
   project?: string
   createdAt?: number
   updatedAt?: number
@@ -74,44 +75,93 @@ function validateTransferItem(value: unknown): TransferItem {
   return input
 }
 
-export function readPlaintext(contents: string, format: TransferFormat): TransferItem[] {
+export interface ImportRecord { row: number; item?: TransferItem; error?: string }
+
+function csvObject(headers: string[], cells: string[]) {
+  if (cells.length !== headers.length) throw new Error('INVALID_IMPORT')
+  return Object.fromEntries(headers.flatMap((header, i) => {
+    const value = cells[i]
+    if (value === '') return []
+    if (['tags', 'fields', 'favorite'].includes(header)) return [[header, JSON.parse(value)]]
+    if (header === 'port' || TIME_COLUMNS.includes(header as typeof TIME_COLUMNS[number])) {
+      if (!/^\d+$/.test(value)) throw new Error('INVALID_IMPORT')
+      return [[header, Number(value)]]
+    }
+    return [[header, value]]
+  }))
+}
+
+/** Whole-file syntax must be valid; individual records report safe, non-secret diagnostics. */
+export function parseImport(contents: string, format: TransferFormat): ImportRecord[] {
   try {
     assertTransferFormat(format)
     const text = contents.replace(/^\uFEFF/, '')
-    let values: unknown
-    if (format === 'json') values = JSON.parse(text)
-    else {
-      const [headers, ...rows] = parseCsv(text)
-      if (!headers || !headers.includes('type') || !headers.includes('title')
-        || new Set(headers).size !== headers.length
-        || headers.some((header) => !COLUMNS.includes(header as typeof COLUMNS[number]))) throw new Error('INVALID_IMPORT')
-      values = rows.map((cells) => {
-        if (cells.length !== headers.length) throw new Error('INVALID_IMPORT')
-        return Object.fromEntries(headers.flatMap((header, i) => {
-          const value = cells[i]
-          if (value === '') return []
-          if (['tags', 'fields', 'favorite'].includes(header)) return [[header, JSON.parse(value)]]
-          if (header === 'port' || TIME_COLUMNS.includes(header as typeof TIME_COLUMNS[number])) {
-            if (!/^\d+$/.test(value)) throw new Error('INVALID_IMPORT')
-            return [[header, Number(value)]]
-          }
-          return [[header, value]]
-        }))
-      })
+    let values: unknown[]
+    let headers: string[] | undefined
+    if (format === 'json') {
+      const parsed: unknown = JSON.parse(text)
+      if (!Array.isArray(parsed)) throw new Error('INVALID_IMPORT')
+      values = parsed
+    } else {
+      const [names, ...rows] = parseCsv(text)
+      if (!names || !names.includes('type') || !names.includes('title') || new Set(names).size !== names.length
+        || names.some((name) => !COLUMNS.includes(name as typeof COLUMNS[number]))) throw new Error('INVALID_IMPORT')
+      headers = names
+      values = rows
     }
-    if (!Array.isArray(values)) throw new Error('INVALID_IMPORT')
-    return values.map(validateTransferItem)
+    return values.map((value, index) => {
+      try { return { row: index + 1, item: validateTransferItem(headers ? csvObject(headers, value as string[]) : value) } }
+      catch (cause) {
+        return { row: index + 1, error: cause instanceof Error && cause.message === 'INVALID_EXPIRY'
+          ? '过期日期需为有效的 YYYY-MM-DD。'
+          : '字段格式无效：请检查类型、名称、端口、项目及 tags/fields 格式。' }
+      }
+    })
   } catch { throw new Error('INVALID_IMPORT') }
+}
+
+export function readPlaintext(contents: string, format: TransferFormat): TransferItem[] {
+  const records = parseImport(contents, format)
+  if (records.some((record) => record.error)) throw new Error('INVALID_IMPORT')
+  return records.map((record) => record.item!)
+}
+
+function transferItems(db: DatabaseSync, key: Buffer): TransferItem[] {
+  const store = createItemStore(db, () => key)
+  const projects = new Map(createProjectStore(db).list().map((project) => [project.id, project.name]))
+  return store.list().map((summary): TransferItem => {
+    const { id, projectId, deletedAt, ...item } = store.get(summary.id)!
+    return { ...item, project: projectId ? projects.get(projectId) : undefined }
+  })
+}
+
+function fingerprint(item: TransferItem): string {
+  const { createdAt, updatedAt, lastAccessedAt, favorite, ...content } = item
+  const normalized = { ...content, project: content.project?.trim().replace(/[A-Z]/g, (letter) => letter.toLowerCase()), tags: content.tags?.length ? [...content.tags].sort() : undefined, fields: content.fields && Object.keys(content.fields).length ? content.fields : undefined }
+  const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
+    ? Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([name, entry]) => [name, stable(entry)])) : value
+  return createHash('sha256').update(JSON.stringify(stable(Object.fromEntries(Object.entries(normalized).filter(([, value]) => value !== ''))))).digest('hex')
+}
+
+export function previewImport(db: DatabaseSync, key: Buffer, records: ImportRecord[]) {
+  const seen = new Set(transferItems(db, key).map(fingerprint))
+  const rows: ImportPreviewRow[] = records.map(({ row, item, error }) => {
+    const hash = item ? fingerprint(item) : ''
+    const duplicate = !!item && seen.has(hash)
+    if (item) seen.add(hash)
+    return { row, title: item?.title ?? '无效记录', type: item?.type ?? '', duplicate, ...(error ? { error } : {}) }
+  })
+  return { rows, validCount: rows.filter((row) => !row.error).length, duplicateCount: rows.filter((row) => row.duplicate).length, invalidCount: rows.filter((row) => row.error).length }
+}
+
+export function importReviewed(db: DatabaseSync, key: Buffer, records: ImportRecord[], skipDuplicates: boolean): number {
+  const preview = previewImport(db, key, records)
+  return importPlaintext(db, key, records.filter((record, i) => record.item && (!skipDuplicates || !preview.rows[i].duplicate)).map((record) => record.item!))
 }
 
 export function exportPlaintext(db: DatabaseSync, key: Buffer, format: TransferFormat): string {
   assertTransferFormat(format)
-  const store = createItemStore(db, () => key)
-  const projects = new Map(createProjectStore(db).list().map((project) => [project.id, project.name]))
-  const values = store.list().map((summary): TransferItem => {
-    const { id, projectId, deletedAt, ...item } = store.get(summary.id)!
-    return { ...item, project: projectId ? projects.get(projectId) : undefined }
-  })
+  const values = transferItems(db, key)
   if (format === 'json') return JSON.stringify(values, null, 2)
   return '\uFEFF' + [COLUMNS.join(','), ...values.map((item) => COLUMNS.map((column) => csvCell(item[column])).join(','))].join('\r\n') + '\r\n'
 }

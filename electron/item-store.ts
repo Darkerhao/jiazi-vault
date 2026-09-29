@@ -1,3 +1,4 @@
+import { validExpiry } from './expiry.js'
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { decryptValue, encryptValue, type EncryptedValue } from './vault-crypto.js'
@@ -48,6 +49,7 @@ export function validateItemInput(value: unknown): asserts value is ItemInput {
     || (input.tags !== undefined && (!Array.isArray(input.tags) || input.tags.some((tag) => typeof tag !== 'string')))
     || (input.fields !== undefined && (!input.fields || typeof input.fields !== 'object' || Array.isArray(input.fields)
       || Object.values(input.fields).some((field) => typeof field !== 'string')))) throw new Error('INVALID_DATA')
+  if (input.type === 'api-key' && input.fields?.expiresAt && !validExpiry(input.fields.expiresAt)) throw new Error('INVALID_EXPIRY')
   if (input.type === 'env') {
     if (!input.environment) throw new Error('INVALID_DATA')
     validateEnvFields(input.fields)
@@ -113,7 +115,8 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
   }
 
   function rowToSummary(row: ItemRow): VaultItemSummary {
-    return { ...rowToBase(row), hasSensitiveData: row.has_secret === 1 }
+    const expiresAt = row.type === 'api-key' ? rowToItem(row).fields?.expiresAt : undefined
+    return { ...rowToBase(row), hasSensitiveData: row.has_secret === 1, ...(expiresAt ? { expiresAt } : {}) }
   }
 
   function rowToItem(row: ItemRow): VaultItem {
