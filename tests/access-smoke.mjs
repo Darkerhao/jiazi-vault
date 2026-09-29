@@ -37,7 +37,7 @@ async function passwordFields(current, next, confirm = next) {
 }
 try {
   await launch()
-  await page.getByRole('heading', { name: '欢迎使用 Jiazi Vault' }).waitFor()
+  await page.getByRole('heading', { name: '欢迎使用 Keystill' }).waitFor()
   assert.equal(await page.locator('input[type="password"]').count(), 0)
   assert.equal((await call('get_vault_status')).exists, false)
   await page.screenshot({ path: resolve(output, 'access-welcome.png') })

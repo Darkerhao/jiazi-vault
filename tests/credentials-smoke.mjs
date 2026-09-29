@@ -18,7 +18,7 @@ async function launch() {
   page = await application.firstWindow()
   page.setDefaultTimeout(15_000)
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.getByRole('heading', { name: /欢迎使用 Jiazi Vault|解锁保险库/ }).waitFor()
+  await page.getByRole('heading', { name: /欢迎使用 Keystill|解锁保险库/ }).waitFor()
 }
 async function section(name) { await page.getByRole('link', { name, exact: true }).click() }
 async function select(placeholder, label) {

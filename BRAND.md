@@ -1,28 +1,42 @@
-# Jiazi Vault 品牌资源
+# Keystill · 密序
 
-标志将「甲」的字形简化成圆角保险库门：外框表达收纳与保护，内部交叉结构与向下延伸的中轴保留「甲」的辨识度。应用图标使用浅蓝底与深墨蓝标志，延续现有界面配色；小尺寸不使用文字或细节装饰。
+面向开发者的本地凭证管理工具。品牌名读作 Key-still，Key 表达密钥，still 表达安静与留存；中文名「密序」表达凭证整理有序。宣传语：**密钥有序，专注如常。**
+
+## 图形与配色
+
+K 字母是识别轮廓，竖笔圆孔暗示钥匙。使用粗实几何结构，小尺寸保留 K 的识别；不在应用图标中加入文字。主色柠檬绿 `#c7ef68`，石墨色 `#20251f`，纸白 `#efeee8`。图标渐变 `#d4f878` → `#b6e650`。
+
+浅色界面的文字、选中图标和控件边框使用深绿 `#4a681d`，避免亮绿在浅底上对比不足；主按钮统一柠檬绿底、石墨色文字。深色界面使用石墨底和柠檬绿强调色。主题通过现有 Naive UI ConfigProvider 设置，不增加第二套组件。
+
+## 资源
 
 - `public/brand/mark.svg`：唯一图形母版，透明背景，支持 `currentColor`。
-- `public/brand/logo-light.svg` / `logo-dark.svg`：浅色 / 深色背景使用的横版 Logo，字标使用 Segoe UI，回退 Inter / sans-serif。
-- `public/brand/icon.svg`：欢迎页、解锁页、侧栏与浏览器标签图标。
-- `public/brand/icon.png`：256 px 桌面窗口图标。
+- `public/brand/logo-light.svg` / `logo-dark.svg`：两种背景下的横版字标，Segoe UI 字体，回退 Inter / sans-serif。
+- `public/brand/icon.svg` / `icon.png`：界面、浏览器标签及桌面窗口图标。
 - `public/brand/tray.png` / `tray@2x.png`：20 / 40 px 彩色托盘图标。
-- `public/brand/trayTemplate.png` / `trayTemplate@2x.png`：macOS 菜单栏透明单色图标。
-- `build/icon.ico`：Windows 应用及安装 / 卸载程序图标，含 16、20、24、32、40、48、64、128、256 px。
-- `build/icon.icns`：macOS 应用图标，含标准与 Retina 尺寸，最大 1024 px。
-- `build/icon.png`：1024 px PNG，供 Linux 打包及通用导出。
+- `public/brand/trayTemplate.png` / `trayTemplate@2x.png`：macOS 单色菜单栏图标。
+- `build/icon.ico`：Windows 图标，16、20、24、32、40、48、64、128、256 px。
+- `build/icon.icns`：macOS 图标，标准及 Retina 尺寸，最大 1024 px。
+- `build/icon.png`：1024 px 通用及 Linux 图标。
 
-颜色：标志 `#172b4d`，应用图标渐变 `#b3ceff` → `#82acf0`，深色背景字标 `#edf3ff`。保留图形自带留白，按原比例缩放。
+运行 `pnpm brand:generate` 从母版统一生成派生资源。复用项目已有 Electron，不增加图形工具或依赖。
 
-修改母版或 `scripts/generate-brand.cjs` 后运行 `pnpm brand:generate`，统一生成所有派生资源。生成器复用项目已有 Electron，不新增依赖；生成资源随代码保存，普通构建无需额外图形工具。Windows NSIS 安装 / 卸载程序继承应用图标。
+## 品牌升级与数据兼容
 
-桌面资源加载遵循 [Electron 44.2.0 NativeImage 文档](https://github.com/electron/electron/blob/v44.2.0/docs/api/native-image.md) 的 Retina 与 macOS Template 命名约定。macOS / Linux 图标文件已生成，系统显示仍需在相应平台验收。
+用户可见名称统一为 Keystill；中文名出现在欢迎页、侧栏、网页标题和文档。Windows Hello、Touch ID、托盘、窗口标题、macOS 菜单、导出文件名、安装包和 CI 发布标题同步升级。
 
-## 本次验证（2026-09-23）
+保留以下持久化身份：`package.json.name = jiazi-vault`、`build.appId = com.jiazi.vault`、备份格式 `jiazi-vault`、扩展名 `.jvault`、密钥校验字符串及现有 IPC 标识。`build.productName` 改为 Keystill，安装包前缀显式设为 `keystill-`。不要向 package.json 顶层添加 `productName`，否则 Electron 将优先使用它作为内部应用名，改变默认数据目录。
 
-- `pnpm build` 通过：Vue 类型检查、Vite 构建、Electron 编译与 Windows 原生组件构建。
-- 使用独立测试保险库，在源码构建和实际 Windows 打包程序中验证欢迎引导、主界面及锁定后的 Logo；深浅色截图、资源加载与渲染错误检查通过。托盘检测到 1× / 2× 两档图像。
-- 从 Windows 应用 EXE 和安装程序提取的 32 px 图标，与设计 ICO 的 RGBA 像素完全一致。
-- 品牌素材包：`output/jiazi-vault-brand.zip`；预览：`output/playwright/brand-preview.png`。
-- 新图标 Windows 安装包：`release/brand-preview/Jiazi Vault Setup 0.1.1.exe`。由现有 0.1.1 源码重新打包，原发布目录中的安装包保留。本次验证了打包程序运行，未重复执行安装 / 卸载流程。
-- 运行记录：`output/playwright/brand-verification.json` 与 `output/playwright/brand-packaged/brand-verification.json`。
+依据：旧 Windows 0.1.2 安装包内的 package.json 使用 `name: jiazi-vault` 且无顶层 productName；[Electron 44.2.0 初始化源码](https://github.com/electron/electron/blob/v44.2.0/lib/browser/init.ts) 由该字段设置内部应用名，[app 文档](https://github.com/electron/electron/blob/v44.2.0/docs/api/app.md) 说明默认 userData 为 appData 下的应用名目录。沿用这些标识即可继续读取原库，无需新增迁移逻辑。
+
+版本号继续由现有 main 发布流程递增，本次品牌修改不另建发布流程。历史规格 `Jiazi Vault.md` 与既有验收记录保留历史名称。
+
+macOS / Linux 资源已生成；平台原生显示与 Touch ID 仍需对应设备验收。
+
+## 本轮验证与交付（2026-09-29）
+
+50 项业务测试、两组桌面回归、类型检查及生产构建通过。真实旧版与新打包程序通过旧库读取、旧备份恢复和重启验证；深浅主题与锁定页面已截图检查。详情见 [DELIVERY.md](./DELIVERY.md)。
+
+- Windows 安装包：`release/keystill-brand/keystill-0.1.5-win-x64.exe`。
+- 素材包：`output/keystill-brand.zip`。
+- 实际应用截图及报告：`output/playwright/brand-upgrade/`。

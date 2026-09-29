@@ -1,5 +1,17 @@
 # 交付与验收
 
+## Keystill · 密序品牌升级（2026-09-29）
+
+- 用户确认的新品牌已接入实际应用：K 钥匙标志、柠檬绿 / 石墨色主题、欢迎与解锁页、侧栏、托盘、系统认证提示、窗口标题和发布产物名称。欢迎页居中改为作用于 Naive UI 的实际内容容器。
+- 保留内部包名、应用 ID、原数据目录、备份格式与加密标识；不增加数据库迁移。正式版本号由下文的 main 自动发版流程递增。
+- 本地 Windows x64 NSIS 安装包：`release/keystill-brand/keystill-0.1.5-win-x64.exe`，基于当前 0.1.5 源码生成的品牌升级构建；签名状态 `NotSigned`。尚未提交、推送或发布到 GitHub，未对用户现有安装执行覆盖安装。
+- `pnpm test` 50 项测试全部通过；`pnpm build`、最终布局的类型检查 / Vite 构建通过；`electron-smoke` 与 `access-smoke` 两组桌面回归通过。原生首次构建有既有 IL2104 裁剪警告。
+- `tests/brand-upgrade.mjs` 实跑旧版 0.1.2 与新打包程序，使用隔离数据完成旧库直接打开、原凭证和项目读取、主题切换、锁定解锁、旧备份恢复及恢复后重启。5 项验证全部通过，无 renderer error；文件选择 / 确认通过测试替身返回，数据库、加密、IPC、文件和两个应用进程均为真实实现。
+- 安装包内 50 个 dist / dist-electron 文件与最终构建逐一字节核对一致。报告及实机界面截图：`output/playwright/brand-upgrade/`；品牌素材包：`output/keystill-brand.zip`；品牌规范：[BRAND.md](./BRAND.md)。
+- macOS / Linux 图标与配置已更新，未实跑对应平台；本轮未触发需用户操作的 Windows Hello / Touch ID 认证。
+
+复现跨版本验证：`node tests/brand-upgrade.mjs "output/windows-install-v012/Jiazi Vault.exe" "release/keystill-brand/win-unpacked/Keystill.exe"`。脚本每次创建独立测试库，不使用真实用户保险库。
+
 ## GitHub 自动版本与发版
 
 工作流：`.github/workflows/build.yml`，自动发版分支为 **`main`**。将配置提交并推送后，每次向 `main` 合入或推送新代码，GitHub 会自动完成：
@@ -14,14 +26,14 @@
 
 | 平台 | 架构 | 安装包 |
 |---|---|---|
-| Windows | x64 | 安装版 `jiazi-vault-<版本>-win-x64.exe`、免安装版 `jiazi-vault-<版本>-win-x64-portable.exe`、压缩包 `jiazi-vault-<版本>-win-x64.zip`，均包含 Windows Hello 组件及 .NET 运行时 |
-| macOS Intel | x64 | `jiazi-vault-<版本>-mac-x64.dmg`、`jiazi-vault-<版本>-mac-x64.zip` |
-| macOS Apple Silicon | arm64 | `jiazi-vault-<版本>-mac-arm64.dmg`、`jiazi-vault-<版本>-mac-arm64.zip` |
-| Linux | x64 | `jiazi-vault-<版本>-linux-x86_64.AppImage`、`jiazi-vault-<版本>-linux-x64.tar.gz` |
+| Windows | x64 | 安装版 `keystill-<版本>-win-x64.exe`、免安装版 `keystill-<版本>-win-x64-portable.exe`、压缩包 `keystill-<版本>-win-x64.zip`，均包含 Windows Hello 组件及 .NET 运行时 |
+| macOS Intel | x64 | `keystill-<版本>-mac-x64.dmg`、`keystill-<版本>-mac-x64.zip` |
+| macOS Apple Silicon | arm64 | `keystill-<版本>-mac-arm64.dmg`、`keystill-<版本>-mac-arm64.zip` |
+| Linux | x64 | `keystill-<版本>-linux-x86_64.AppImage`、`keystill-<版本>-linux-x64.tar.gz` |
 
 同一产品版本共提供 9 个安装或压缩包；不同格式复用对应平台的同一份应用，不区分 Lite/Standard 功能版本。构建器生成的 `.blockmap` 也会上传，它们是差分下载辅助文件，不是独立安装包；当前应用尚未接入自动更新。GitHub 另外提供源码 ZIP 和 tar.gz。
 
-Windows 免安装 EXE 会在运行时解压应用，ZIP 则先完整解压再运行其中的 `Jiazi Vault.exe`。两者继续使用系统用户数据目录保存保险库，不会把保险库随程序写入便携文件所在目录；迁移数据使用应用内的加密备份和恢复。
+Windows 免安装 EXE 会在运行时解压应用，ZIP 则先完整解压再运行其中的 `Keystill.exe`。两者继续使用系统用户数据目录保存保险库，不会把保险库随程序写入便携文件所在目录；迁移数据使用应用内的加密备份和恢复。
 
 下载正式安装包：打开仓库的 [Releases](https://github.com/Darkerhao/jiazi-vault/releases)。各平台的构建包也会保存在 [Actions](https://github.com/Darkerhao/jiazi-vault/actions) → **Build and release desktop apps** → 对应构建记录 → **Artifacts**，保留 30 天，下载需登录 GitHub 并解压。
 

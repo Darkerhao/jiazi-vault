@@ -33,7 +33,7 @@ export function createBiometricProvider(getWindow: () => BrowserWindow | null): 
     },
     async verify() {
       try {
-        if (platform === 'darwin') await systemPreferences.promptTouchID('解锁 Jiazi Vault 保险库')
+        if (platform === 'darwin') await systemPreferences.promptTouchID('解锁 Keystill 保险库')
         else if (platform !== 'win32' || await windowsHello('verify') !== 'verified') throw new Error()
       } catch { throw new Error('BIOMETRIC_CANCELED_OR_FAILED') }
     },

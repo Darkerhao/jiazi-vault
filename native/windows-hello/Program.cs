@@ -17,7 +17,7 @@ try
         return;
     }
     var result = await UserConsentVerifierInterop.RequestVerificationForWindowAsync(
-        new IntPtr(handle), "解锁 Jiazi Vault 保险库");
+        new IntPtr(handle), "解锁 Keystill 保险库");
     Console.WriteLine(result == UserConsentVerificationResult.Verified ? "verified"
         : result == UserConsentVerificationResult.Canceled ? "canceled" : "failed");
 }

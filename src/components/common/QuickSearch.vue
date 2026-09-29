@@ -81,7 +81,7 @@ function subtitle(item: VaultItemSummary) {
 .result { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 6px; cursor: pointer; }
 .result-content { flex: 1; min-width: 0; }
 .result-type { flex-shrink: 0; font-size: 12px; }
-.result[aria-selected=true] { background: rgba(138, 180, 248, .16); }
+.result[aria-selected=true] { background: rgba(108, 140, 58, .16); }
 .subtitle { display: block; margin-top: 4px; font-size: 12px; overflow-wrap: anywhere; }
 .search-state { margin: 20px 0; }
 .search-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
