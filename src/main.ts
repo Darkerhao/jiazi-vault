@@ -14,6 +14,7 @@ const auth = useAuthStore()
 const vault = useVaultStore()
 const desktop = useDesktopStore()
 window.jiaziVault?.onItemsChanged(() => { if (auth.unlocked) void vault.load() })
+window.jiaziVault?.onBackupChanged(() => { if (auth.unlocked) void useBackupStore().load() })
 window.jiaziVault?.onDesktopAction(desktop.request)
 window.jiaziVault?.onLocked(() => {
   auth.markLocked()

@@ -10,6 +10,7 @@ import { ENV_NAME, serializeEnv } from '../../../electron/env'
 import { callCommand } from '../../services/ipc'
 import { useAuthStore } from '../../stores/auth'
 import EnvImport from './EnvImport.vue'
+import ItemHistory from './ItemHistory.vue'
 import PasswordGenerator from '../common/PasswordGenerator.vue'
 import { projectService } from '../../services/project'
 import { validExpiry, expiryState } from '../../../electron/expiry'
@@ -282,6 +283,7 @@ async function save() {
       </div>
       <n-space v-if="isEnv"><n-button :disabled="!!exportError" :loading="exporting" @click="exportEnv('clipboard')">复制完整 .env</n-button><n-button :disabled="!!exportError" :loading="exporting" @click="exportEnv('file')">导出 .env 文件</n-button></n-space>
       <n-text v-if="tags" depth="3">标签：{{ tags }}</n-text>
+      <ItemHistory v-if="item" :item-id="item.id" :can-restore="item.deletedAt === undefined" @restored="emit('close')" />
     </section>
     <n-form v-else label-placement="left" label-width="96" :disabled="saving || exporting">
       <n-form-item label="类型">

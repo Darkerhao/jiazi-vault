@@ -1,5 +1,30 @@
 # 交付与验收
 
+## 数据恢复能力（2026-10-03，源码变更）
+
+- 自动加密备份：默认关闭，用户选择目录后在独立文件夹创建首份；解锁期间每分钟检查、有修改且间隔 15 分钟时备份，保留最近 10 份。缺失文件检测、错误状态、立即重试、停用/更换目录保留原文件。目录属于设备配置，不写入可移植备份。
+- 恢复前快照：正常库在替换前通过 SQLite `VACUUM INTO` 保留一致快照（包含 WAL 已提交内容），失败阻止覆盖。恢复窗口列出本机快照，验证原主密码后复用完整备份校验与事务恢复。锁定状态仍可恢复；损坏数据库沿用原文件保留流程。
+- 快照保存在用户数据目录 `recovery/snapshot-*.db`，沿用原库字段级加密与明文元数据保护范围，不是整体加密导出；不会自动删除。快照恢复仍保留当前库，避免第二次覆盖丢失数据。
+- 凭证历史：更新与保存旧版本同一事务，最多保留 20 份完整加密内容；详情可选版本、逐字段显示及确认恢复，回收站只读。恢复保留当前收藏/使用记录，删除的项目不自动重建；永久删除与到期清理通过外键级联清理历史。
+- `.jvault` 写入 v4，包含历史版本，继续读取 v1/v2/v3；旧应用不能读取 v4。主密码轮换同一事务更新条目与历史，失败整体回滚。文件原子写入由手动、自动、明文导出共用。
+- 新测试：`tests/item-history.test.mjs`、`tests/backup-reliability.test.mjs`；桌面场景 `tests/data-recovery.mjs` 接入 `tests/desktop.mjs`，覆盖历史预览恢复、自动备份文件、缺失重试、停用、锁定拒绝访问、快照恢复及保存失败阻止覆盖。
+- 验证结果：最终 `pnpm test` 67/67 通过（日志 `output/data-recovery-unit-tests.log`），包含新增 12 项数据/文件回归；`pnpm typecheck`、Vite 前端生产构建及 Electron 编译通过，`git diff --check` 与新增桌面脚本语法检查通过。旧 API Key 无效日期修正后，历史保留旧值且不阻断备份恢复。
+- 环境边界：`pnpm build` 在未改动的 Windows Hello 组件 NuGet 还原阶段报 NU1301（网络套接字权限），离线 `--no-restore` 仍受当前失败还原结果影响。桌面测试在启动阶段因 Electron GPU 子进程退出 -1073741515 失败，未到业务断言；未取得界面截图或运行通过证据。正常桌面重试被自动审批服务 404 故障阻断。未打包、暂存、提交或发布。
+
+### 同日续验
+
+- 完整构建已通过：NuGet 失败来自沙箱用户使用空包缓存。将原用户缓存中构建实际需要的 5 个精确版本包复制到工作区 `output/diagnostics/nuget-feed`，使用工作区包缓存完成离线还原，再运行原有 `pnpm build`。没有调整项目版本、依赖、全局配置或产品安全设置；仅保留既有 IL2104 裁剪警告。
+- 离线构建命令（feed 已准备好）：设置当前进程 `NUGET_PACKAGES=output/diagnostics/nuget-packages`、`RestoreSources=output/diagnostics/nuget-feed` 为绝对路径，`NuGetAudit=false` 后执行 `pnpm build`；此设置只用于离线验收，不表示已做在线依赖漏洞检查。日志：`output/data-recovery-build.log`。
+- Electron 44.2.0 自带 Node 24.20.0 下，使用 `ELECTRON_RUN_AS_NODE=1` 运行新增历史/备份可靠性测试，12/12 通过。日志：`output/data-recovery-electron-runtime.log`。这验证了真实运行时的数据逻辑，不代替界面及 IPC 桌面验收。
+- 最小诊断程序仅调用 app.whenReady 可成功；创建空白、保持 sandbox=true 的 BrowserWindow 即 renderer launch-failed（exitCode 49），GPU 子进程 -1073741515。关闭硬件加速的对照仍失败，复现不依赖项目或 Playwright。没有修改产品沙箱与 GPU 配置。
+- 正常桌面重试仍被自动审批服务 404（当前代理不支持审批模型 gpt-5.6-luna）阻断；操作未执行。桌面业务场景继续保留待验收状态。
+
+### 合并前检查配置
+
+- 新增 `.github/workflows/check.yml`，PR 目标为 `main`/`dev`、`dev` 推送及手动触发时执行 `Desktop checks`。沿用现有 Actions 版本、Node 24、.NET 9 和 `pnpm test` / `pnpm build` / `tests/desktop.mjs` 入口，包含新的数据恢复场景。
+- 工作流使用只读仓库权限，不持久化 checkout 凭据，不修改版本号或发布；并发时取消同一引用的旧检查。失败上传测试 PNG 和 JSON 报告，保留 7 天，不上传测试保险库数据库或备份文件。
+- 本地校验 YAML 与工作流约束；未推送、触发远端 Actions 或设置仓库分支保护，不能声称远端检查已通过。强制合并门禁需将 `Desktop checks` 配置为必需状态检查。
+
 ## 新建与取用提效（2026-09-29，源码验收）
 
 - 表单内密码生成：新建与编辑中的密码字段可展开共享生成器，调整规则、预览、重新生成并明确填入；取消生成保留原密码。独立生成器使用同一组件。

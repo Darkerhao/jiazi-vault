@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { decryptValue, encryptValue, type EncryptedValue } from './vault-crypto.js'
 
-import type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from './contracts.js'
+import type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary, ItemHistorySummary } from './contracts.js'
 import { ITEM_TYPES } from './contracts.js'
 import { validateEnvFields } from './env.js'
 export type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from './contracts.js'
@@ -34,7 +34,7 @@ interface SecretPayload {
   fields?: Record<string, string>
 }
 
-export function validateItemInput(value: unknown): asserts value is ItemInput {
+export function validateItemInput(value: unknown, checkExpiry = true): asserts value is ItemInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_DATA')
   const input = value as ItemInput
   if (typeof input.title !== 'string' || !input.title.trim()
@@ -49,7 +49,7 @@ export function validateItemInput(value: unknown): asserts value is ItemInput {
     || (input.tags !== undefined && (!Array.isArray(input.tags) || input.tags.some((tag) => typeof tag !== 'string')))
     || (input.fields !== undefined && (!input.fields || typeof input.fields !== 'object' || Array.isArray(input.fields)
       || Object.values(input.fields).some((field) => typeof field !== 'string')))) throw new Error('INVALID_DATA')
-  if (input.type === 'api-key' && input.fields?.expiresAt && !validExpiry(input.fields.expiresAt)) throw new Error('INVALID_EXPIRY')
+  if (checkExpiry && input.type === 'api-key' && input.fields?.expiresAt && !validExpiry(input.fields.expiresAt)) throw new Error('INVALID_EXPIRY')
   if (input.type === 'env') {
     if (!input.environment) throw new Error('INVALID_DATA')
     validateEnvFields(input.fields)
@@ -66,6 +66,9 @@ function parseTags(raw: string): string[] | undefined {
 }
 
 export interface ItemStore {
+  listHistory(id: string): ItemHistorySummary[]
+  getHistory(id: string, historyId: number): VaultItem
+  restoreHistory(id: string, historyId: number): VaultItemSummary
   create(input: ItemInput): VaultItemSummary
   get(id: string, recordAccess?: boolean): VaultItem | null
   markUsed(id: string): number | null
@@ -144,7 +147,48 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
     return markUsedStmt.run(now, id).changes ? now : null
   }
 
+  function getHistory(id: string, historyId: number): VaultItem {
+    const row = db.prepare('SELECT payload FROM item_history WHERE item_id = ? AND id = ?').get(id, historyId)
+    if (!row) throw new Error('HISTORY_NOT_FOUND')
+    return JSON.parse(decryptValue(getKey(), JSON.parse(String(row.payload)))) as VaultItem
+  }
+
+  function update(item: VaultItem): VaultItemSummary {
+    assertValid(item)
+    const row = selectById.get(item.id) as unknown as ItemRow | undefined
+    if (!row) throw new Error('ITEM_NOT_FOUND')
+    if (row.deleted_at !== null) throw new Error('ITEM_IN_TRASH')
+    const previous = rowToItem(row)
+    const now = Date.now()
+    const { secret, hasSecret } = buildSecret(item)
+    const history = JSON.stringify(encryptValue(getKey(), JSON.stringify(previous)))
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      db.prepare('INSERT INTO item_history (item_id, saved_at, payload) VALUES (?, ?, ?)').run(item.id, now, history)
+      updateStmt.run(
+        item.type, item.title, item.projectId ?? null, item.environment ?? null,
+        item.username ?? null, item.url ?? null, item.host ?? null, item.port ?? null,
+        JSON.stringify(item.tags ?? []), secret, hasSecret ? 1 : 0, now, item.id,
+      )
+      db.prepare('DELETE FROM item_history WHERE item_id = ? AND id NOT IN (SELECT id FROM item_history WHERE item_id = ? ORDER BY id DESC LIMIT 20)').run(item.id, item.id)
+      db.exec('COMMIT')
+    } catch (error) { db.exec('ROLLBACK'); throw error }
+    return rowToSummary(selectById.get(item.id) as unknown as ItemRow)
+  }
+
   return {
+    listHistory(id) {
+      getKey()
+      return db.prepare('SELECT id, saved_at FROM item_history WHERE item_id = ? ORDER BY id DESC').all(id)
+        .map((row) => ({ id: Number(row.id), savedAt: Number(row.saved_at) }))
+    },
+    getHistory,
+    restoreHistory(id, historyId) {
+      const previous = getHistory(id, historyId)
+      if (previous.projectId && !db.prepare('SELECT 1 FROM projects WHERE id = ?').get(previous.projectId)) delete previous.projectId
+      return update({ ...previous, id })
+    },
+    update,
     markUsed,
     create(input) {
       assertValid(input)
@@ -168,17 +212,6 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
     list(trashed = false) {
       const rows = (trashed ? selectTrashed.all() : selectActive.all()) as unknown as ItemRow[]
       return rows.map(rowToSummary)
-    },
-    update(item) {
-      assertValid(item)
-      const now = Date.now()
-      const { secret, hasSecret } = buildSecret(item)
-      updateStmt.run(
-        item.type, item.title, item.projectId ?? null, item.environment ?? null,
-        item.username ?? null, item.url ?? null, item.host ?? null, item.port ?? null,
-        JSON.stringify(item.tags ?? []), secret, hasSecret ? 1 : 0, now, item.id,
-      )
-      return rowToSummary(selectById.get(item.id) as unknown as ItemRow)
     },
     toggleFavorite(id) {
       toggleFavStmt.run(Date.now(), id)

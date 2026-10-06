@@ -33,7 +33,7 @@ async function create() {
     <n-button :loading="backup.busy" :type="detailed ? 'primary' : 'default'" @click="create">创建加密备份</n-button>
   </div>
   <template v-if="detailed">
-    <p><n-text depth="3">备份包含全部凭证、项目、回收站和设置。恢复需要备份创建时的主密码；查看和复制记录不触发内容备份提醒。</n-text></p>
+    <p><n-text depth="3">备份包含全部凭证、历史版本、项目、回收站和偏好设置。恢复需要备份创建时的主密码；查看和复制记录不触发内容备份提醒。</n-text></p>
     <p><n-text depth="3">建议将备份保存到另一块磁盘或外部设备。同一磁盘上的备份不能应对磁盘损坏；此处记录保存时间，不持续检查备份文件是否仍存在。</n-text></p>
     <n-space><slot /></n-space>
   </template>

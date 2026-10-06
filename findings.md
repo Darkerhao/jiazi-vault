@@ -1,5 +1,19 @@
 # Findings
 
+## 2026-10-03 数据恢复能力
+
+续验发现：
+- 最小 Electron 程序在 app.whenReady 阶段成功（Electron 44.2.0 / Node 24.20.0）；添加空白 sandboxed BrowserWindow 后 renderer launch-failed / exitCode 49，GPU 子进程 -1073741515。仅改用 disableHardwareAcceleration 对照仍失败，项目代码及 Playwright 都不是复现前提。未修改产品沙箱或 GPU 设置。
+- NuGet assets 记录实际包目录为 C:\Users\CodexSandboxOffline\.nuget\packages，而原用户缓存具有当前构建精确所需的 5 个包。将这 5 个公开依赖包复制到工作区诊断目录，以本地 feed 和工作区缓存离线还原；不改项目依赖版本或用户全局配置。
+- 正常桌面执行审批本轮仍因代理不支持 gpt-5.6-luna 返回 404，操作没有执行。
+
+- 基线工作树干净；上轮当前代码类型检查和 55 个测试通过。历史计划记载已授权沿用现有任务文件，使用 planning-with-files-zh，不引入第二套状态目录。
+- 当前 update 直接替换密文，备份 v3 无历史记录，修改主密码只遍历 items；三处必须同时更新。
+- restore_backup 支持锁定状态恢复，因此不能依赖当前解锁密钥生成恢复前副本。采用 SQLite 一致性快照，验证原密码后通过现有备份校验恢复；明确元数据沿用本地数据库保护范围。
+- 自动备份配置留在 settings 的独立设备键中，不进入 AppSettings/备份包；定时入口复用 vaultOperationBusy 与 session revision，文件写入复用同一原子写入实现。
+- 历史验证必须保留旧版无效到期日期，否则用户修正日期后，保存的旧版本会使新备份无法恢复。历史读取沿用已有存储记录的宽容日期语义，新写入及历史恢复继续校验日期。
+- 实际 Windows 对父目录被替换成文件的 stat 返回 ENOENT；错误反馈测试基于写入真实失败后的状态，不假设跨平台错误码。自动备份目录状态读取失败仍应允许用户更换/停用。
+
 ## V1.2 实施决策
 
 - 本轮核实已有品牌相关未提交改动，保留原修改；无磁盘 AGENTS.md，遵守用户提供的规则。

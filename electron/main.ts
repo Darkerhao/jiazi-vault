@@ -1,6 +1,6 @@
 import { backupRevision, readBackupStatus, recordBackup } from './backup-status.js'
 import { basename, extname, join } from 'node:path'
-import { readFile, stat, writeFile, rename, rm } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, powerMonitor } from 'electron'
@@ -21,6 +21,9 @@ import { replaceVaultPassword } from './vault-password.js'
 import { BiometricVault } from './biometric-vault.js'
 import { createBiometricProvider } from './biometric-provider.js'
 import { ENV_MAX_BYTES, serializeEnv, validateEnvFields } from './env.js'
+import { writePrivateFile } from './private-file.js'
+import { automaticBackupStatus, runAutomaticBackup, setAutomaticBackupDirectory } from './automatic-backup.js'
+import { createRecoverySnapshot, listRecoverySnapshots, readRecoverySnapshot } from './recovery-snapshot.js'
 
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
@@ -31,6 +34,7 @@ let vaultOperationBusy = false
 let unlockLimiter: UnlockLimiter
 let desktop: ReturnType<typeof createDesktopControls>
 let trashTimer: ReturnType<typeof setInterval> | undefined
+let backupTimer: ReturnType<typeof setInterval> | undefined
 let pendingImport: { token: string; revision: number; records: ImportRecord[] } | null = null
 let biometric: BiometricVault
 let itemStore: ReturnType<typeof createItemStore>
@@ -63,7 +67,7 @@ function isApplicationUrl(value: string) {
   } catch { return false }
 }
 
-const recoveryCommands = new Set(['health_check', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'restore_backup'])
+const recoveryCommands = new Set(['health_check', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'restore_backup', 'list_recovery_snapshots'])
 
 function handleIpc(channel: string, listener: Parameters<typeof ipcMain.handle>[1]) {
   ipcMain.handle(channel, (event, ...args) => {
@@ -284,6 +288,19 @@ function registerIpcHandlers() {
     requireUnlocked()
     return itemStore.update(args?.item)
   })
+  handleIpc('list_item_history', (_event, args: { id: string }) => {
+    requireUnlocked()
+    return itemStore.listHistory(args?.id)
+  })
+  handleIpc('get_item_history', (_event, args: { id: string; historyId: number }) => {
+    requireUnlocked()
+    return itemStore.getHistory(args?.id, args?.historyId)
+  })
+  handleIpc('restore_item_history', (_event, args: { id: string; historyId: number }) => {
+    requireUnlocked()
+    cleanTrash()
+    return itemStore.restoreHistory(args?.id, args?.historyId)
+  })
   handleIpc('toggle_favorite', (_event, args: { id: string }) => {
     requireUnlocked()
     return itemStore.toggleFavorite(args?.id)
@@ -382,13 +399,23 @@ function registerEnvHandlers() {
 }
 
 async function writeExport(path: string, contents: string, revision: number) {
-  const temporaryPath = `${path}.${randomUUID()}.tmp`
+  await writePrivateFile(path, contents, () => { assertRevision(revision); requireUnlocked() })
+}
+
+async function automaticBackup(force = false) {
+  if (!database || !session.unlocked) return
+  if (vaultOperationBusy) { if (force) throw new Error('VAULT_BUSY'); return }
+  vaultOperationBusy = true
+  const revision = session.revision
   try {
-    await writeFile(temporaryPath, contents, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
-    assertRevision(revision)
-    requireUnlocked()
-    await rename(temporaryPath, path)
-  } finally { await rm(temporaryPath, { force: true }).catch(() => {}) }
+    await runAutomaticBackup(database.connection,
+      () => createBackup(requireDatabase().connection, readVaultMetadata()!, requireUnlocked()),
+      () => { assertRevision(revision); requireUnlocked() }, force)
+  } catch { if (force) throw new Error('AUTOMATIC_BACKUP_FAILED') }
+  finally {
+    vaultOperationBusy = false
+    if (mainWindow && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('backup_changed')
+  }
 }
 
 function registerTransferHandlers() {
@@ -469,6 +496,33 @@ function registerTransferHandlers() {
 function registerBackupHandlers() {
   const filters = [{ name: 'Keystill 加密备份', extensions: ['jvault'] }]
   handleIpc('get_backup_status', () => { requireUnlocked(); return readBackupStatus(requireDatabase().connection) })
+  handleIpc('get_automatic_backup_status', async () => {
+    requireUnlocked()
+    const revision = session.revision
+    const status = await automaticBackupStatus(requireDatabase().connection)
+    assertRevision(revision)
+    return status
+  })
+  handleIpc('run_automatic_backup', async () => { requireUnlocked(); await automaticBackup(true) })
+  handleIpc('configure_automatic_backup', async (_event, args: { enabled: boolean }) => {
+    requireUnlocked()
+    if (typeof args?.enabled !== 'boolean') throw new Error('INVALID_DATA')
+    if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
+    vaultOperationBusy = true
+    const revision = session.revision
+    try {
+      let path: string | null = null
+      if (args.enabled) {
+        const choice = await dialog.showOpenDialog(mainWindow, { title: '选择自动备份位置', properties: ['openDirectory', 'createDirectory'] })
+        assertRevision(revision)
+        if (choice.canceled || !choice.filePaths[0]) return
+        path = join(choice.filePaths[0], `keystill-backups-${randomUUID()}`)
+      }
+      await setAutomaticBackupDirectory(requireDatabase().connection, path, () => { assertRevision(revision); requireUnlocked() })
+    } finally { vaultOperationBusy = false }
+    if (args.enabled) await automaticBackup(true)
+  })
+  handleIpc('list_recovery_snapshots', () => listRecoverySnapshots(app.getPath('userData')))
   handleIpc('create_backup', async () => {
     requireUnlocked()
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
@@ -494,29 +548,37 @@ function registerBackupHandlers() {
       vaultOperationBusy = false
     }
   })
-  handleIpc('restore_backup', async (_event, args: { password: string }) => {
+  handleIpc('restore_backup', async (_event, args: { password: string; snapshotId?: string }) => {
     assertPassword(args?.password)
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
     vaultOperationBusy = true
     const revision = session.revision
     try {
-      const choice = await dialog.showOpenDialog(mainWindow, { title: '选择加密备份', filters, properties: ['openFile'] })
-      if (choice.canceled || !choice.filePaths[0]) return false
-      const path = choice.filePaths[0]
-      assertBackupSize((await stat(path)).size)
-      const backup = await readBackup(await readFile(path, 'utf8'), args.password)
+      let backup
+      if (args.snapshotId !== undefined) {
+        backup = await readRecoverySnapshot(app.getPath('userData'), args.snapshotId, args.password)
+      } else {
+        const choice = await dialog.showOpenDialog(mainWindow, { title: '选择加密备份', filters, properties: ['openFile'] })
+        if (choice.canceled || !choice.filePaths[0]) return false
+        const path = choice.filePaths[0]
+        assertBackupSize((await stat(path)).size)
+        backup = await readBackup(await readFile(path, 'utf8'), args.password)
+      }
       assertRevision(revision)
       if (database && hasVault()) {
         const confirmation = await dialog.showMessageBox(mainWindow, {
           type: 'warning', title: '替换当前保险库',
           message: '恢复将替换当前全部凭证、项目、回收站和设置。',
-          detail: '此操作无法撤销。请确认已保存当前保险库的备份。恢复后使用备份的主密码解锁。',
+          detail: '覆盖前将保留当前库的本机恢复快照，保存失败则停止恢复。恢复后使用所选备份或快照的主密码解锁。',
           buttons: ['取消', '替换并恢复'], defaultId: 0, cancelId: 0, noLink: true,
         })
         if (confirmation.response !== 1) return false
       }
       assertRevision(revision)
-      if (database) restoreBackup(database.connection, backup)
+      if (database) {
+        if (hasVault()) createRecoverySnapshot(database.connection, app.getPath('userData'))
+        restoreBackup(database.connection, backup)
+      }
       else {
         recoverDatabase(app.getPath('userData'), backup)
         initializeDatabase()
@@ -526,7 +588,7 @@ function registerBackupHandlers() {
       session.lock()
       return true
     } catch (error) {
-      if (error instanceof Error && error.message === 'BACKUP_TOO_LARGE') throw error
+      if (error instanceof Error && ['BACKUP_TOO_LARGE', 'RECOVERY_SNAPSHOT_FAILED'].includes(error.message)) throw error
       throw new Error('BACKUP_RESTORE_FAILED')
     } finally { vaultOperationBusy = false }
   })
@@ -548,6 +610,8 @@ else app.whenReady().then(() => {
   powerMonitor.on('resume', () => { session.checkExpiry(); cleanTrash() })
   trashTimer = setInterval(cleanTrash, 60_000)
   trashTimer.unref()
+  backupTimer = setInterval(() => { void automaticBackup() }, 60_000)
+  backupTimer.unref()
   registerIpcHandlers()
   createWindow()
   desktop = createDesktopControls(() => mainWindow ?? createWindow(), () => session.lock())
@@ -568,6 +632,7 @@ app.on('before-quit', (event) => {
   if (quitting) return
   quitting = true
   clearInterval(trashTimer)
+  clearInterval(backupTimer)
   session.dispose()
   void clipboardManager.clearOnLock().catch(() => {}).finally(() => {
     desktop?.dispose()

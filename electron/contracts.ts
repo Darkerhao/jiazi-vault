@@ -26,6 +26,14 @@ export interface VaultItem {
 
 export type VaultItemSummary = Omit<VaultItem, 'password' | 'fields' | 'notes'> & { hasSensitiveData?: boolean; expiresAt?: string }
 export type ItemInput = Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt' | 'lastAccessedAt' | 'deletedAt'>
+export interface ItemHistorySummary { id: number; savedAt: number }
+export interface AutomaticBackupStatus {
+  directory: string | null
+  lastBackupAt: number | null
+  fileExists: boolean
+  error: boolean
+}
+export interface RecoverySnapshot { id: string; createdAt: number }
 export interface BiometricStatus {
   label: 'Windows Hello' | 'Touch ID' | '生物识别'
   available: boolean
