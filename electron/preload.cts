@@ -16,6 +16,9 @@ const allowedCommands = new Set([
   'is_vault_unlocked',
   'create_item',
   'update_item',
+  'list_item_history',
+  'get_item_history',
+  'restore_item_history',
   'delete_item',
   'restore_item',
   'get_item',
@@ -30,6 +33,10 @@ const allowedCommands = new Set([
   'get_backup_status',
   'create_backup',
   'restore_backup',
+  'get_automatic_backup_status',
+  'configure_automatic_backup',
+  'run_automatic_backup',
+  'list_recovery_snapshots',
   'export_plaintext',
   'preview_import',
   'confirm_import',
@@ -42,6 +49,11 @@ const allowedCommands = new Set([
 ])
 
 contextBridge.exposeInMainWorld('jiaziVault', {
+  onBackupChanged(callback: () => void) {
+    const listener = () => callback()
+    ipcRenderer.on('backup_changed', listener)
+    return () => ipcRenderer.removeListener('backup_changed', listener)
+  },
   onItemsChanged(callback: () => void) {
     const listener = () => callback()
     ipcRenderer.on('items_changed', listener)

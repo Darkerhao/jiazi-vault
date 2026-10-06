@@ -71,7 +71,7 @@ test('existing database migrates idempotently without inventing historical usage
   assert.equal(f.store.list().length, 1)
 })
 
-test('backup v3 preserves usage, v1/v2 accept missing usage, restore cannot resurrect expired trash', async (t) => {
+test('backup v4 preserves usage, v1/v2/v3 remain readable, restore cannot resurrect expired trash', async (t) => {
   const f = fixture(t)
   const credential = await createVaultCredential('lifecycle-backup-password')
   t.after(() => clearKey(credential.masterKey))
@@ -82,17 +82,19 @@ test('backup v3 preserves usage, v1/v2 accept missing usage, restore cannot resu
   f.db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run(Date.now() - TRASH_RETENTION_MS - 1, trash.id)
   const contents = createBackup(f.db, credential.metadata, credential.masterKey)
   const envelope = JSON.parse(contents)
-  assert.equal(envelope.version, 3)
+  assert.equal(envelope.version, 4)
   const backup = await readBackup(contents, 'lifecycle-backup-password')
   restoreBackup(f.db, backup)
   assert.equal(store.get(active.id).lastAccessedAt, usedAt)
   assert.equal(store.get(trash.id), null)
-  for (const version of [1, 2]) {
+  for (const version of [1, 2, 3]) {
     const payload = JSON.parse(decryptValue(credential.masterKey, envelope.payload))
-    for (const row of payload.items) delete row.last_accessed_at
+    if (version < 3) for (const row of payload.items) delete row.last_accessed_at
+    delete payload.history
     if (version === 1) delete payload.projects
     const old = await readBackup(JSON.stringify({ ...envelope, version, payload: encryptValue(credential.masterKey, JSON.stringify(payload)) }), 'lifecycle-backup-password')
     restoreBackup(f.db, old)
-    assert.equal(store.get(active.id).lastAccessedAt, undefined)
+    assert.equal(store.get(active.id).lastAccessedAt, version < 3 ? undefined : usedAt)
+    assert.deepEqual(old.history, [])
   }
 })

@@ -11,6 +11,11 @@ export function replaceVaultPassword(db: DatabaseSync, oldKey: Buffer, credentia
       const plaintext = decryptValue(oldKey, JSON.parse(String(item.secret)))
       update.run(JSON.stringify(encryptValue(credential.masterKey, plaintext)), item.id)
     }
+    const updateHistory = db.prepare('UPDATE item_history SET payload = ? WHERE id = ?')
+    for (const row of db.prepare('SELECT id, payload FROM item_history').all()) {
+      const plaintext = decryptValue(oldKey, JSON.parse(String(row.payload)))
+      updateHistory.run(JSON.stringify(encryptValue(credential.masterKey, plaintext)), row.id)
+    }
     db.prepare('UPDATE vault_metadata SET value = ? WHERE key = ?').run(JSON.stringify(credential.metadata), 'vault')
     db.prepare('DELETE FROM vault_metadata WHERE key = ?').run('biometric')
     db.exec('DELETE FROM unlock_attempts; COMMIT')

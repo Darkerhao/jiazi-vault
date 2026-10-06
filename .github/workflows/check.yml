@@ -1,0 +1,67 @@
+name: Check desktop changes
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  desktop-checks:
+    name: Desktop checks
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Electron runtime
+        run: pnpm exec install-electron
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Typecheck and build application
+        run: pnpm build
+
+      - name: Verify desktop flows
+        timeout-minutes: 10
+        run: node tests/desktop.mjs
+
+      - name: Upload failure screenshots and reports
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-check-failure
+          path: |
+            output/playwright/**/*.png
+            output/playwright/**/*report*.json
+          if-no-files-found: ignore
+          retention-days: 7

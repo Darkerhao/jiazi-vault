@@ -7,6 +7,7 @@ import PlaintextTransfer from '../components/common/PlaintextTransfer.vue'
 import VaultSecurity from '../components/common/VaultSecurity.vue'
 import { useSettingsStore } from '../stores/settings'
 import BackupStatus from '../components/common/BackupStatus.vue'
+import AutomaticBackup from '../components/common/AutomaticBackup.vue'
 import { callCommand } from '../services/ipc'
 import type { AppSettings } from '../../electron/settings'
 
@@ -52,6 +53,7 @@ function updateAutoLock(value: number) {
     </n-card>
     <n-card title="加密备份与恢复" class="settings-card backup-card" bordered>
       <BackupStatus detailed><BackupRestore /></BackupStatus>
+      <AutomaticBackup />
     </n-card>
     <PlaintextTransfer />
     <n-card title="快捷键与托盘" class="settings-card backup-card" bordered>

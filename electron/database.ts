@@ -68,6 +68,13 @@ export function openDatabase(userDataPath: string): DatabaseState {
       connection.exec('ALTER TABLE items ADD COLUMN last_accessed_at INTEGER')
     }
     connection.exec('CREATE INDEX IF NOT EXISTS items_deleted_at ON items(deleted_at)')
+    connection.exec(`CREATE TABLE IF NOT EXISTS item_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      saved_at INTEGER NOT NULL,
+      payload TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS history_item ON item_history(item_id, id);`)
     initializeBackupTracking(connection)
     purgeExpiredItems(connection)
 
