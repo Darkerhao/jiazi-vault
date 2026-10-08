@@ -1,5 +1,13 @@
 # 交付与验收
 
+## 记住系统解锁偏好（2026-10-08，源码验收）
+
+- 成功通过 Windows Hello / Touch ID 解锁后，将偏好保存在当前本机保险库；再次启动或锁定后默认显示并聚焦系统解锁按钮，点击或回车发起认证。主密码可随时切换，临时使用主密码不覆盖偏好。
+- 启用登记、认证取消或失败不记录成功偏好；锁定期间尚未完成的认证不能写入偏好。系统认证不可用时显示主密码。关闭快捷解锁、重新登记、修改主密码或恢复备份清除偏好；设备偏好不进入加密备份。
+- `pnpm test` 78/78 通过；`pnpm build` 通过，包含类型检查、Vite、Electron 与 Windows Hello 构建，保留已有 IL2104 裁剪警告。`node tests/desktop.mjs unlock-preference access-smoke data-recovery` 三组桌面回归通过；`git diff --check` 通过。
+- 新交互报告：`output/playwright/unlock-preference-report.json`；已检查默认入口和不可用状态截图：`unlock-preference-hello.png`、`unlock-preference-password.png`（同目录）。
+- 验证使用隔离测试保险库、真实 Electron UI / IPC / SQLite / 密钥校验；新交互测试只替换操作系统认证与密钥保护边界，未重新进行真实指纹 / PIN / Touch ID 验收。未打包安装、暂存、提交或发布。
+
 ## 操作体验完善（2026-10-08，源码验收）
 
 - 快捷搜索保留普通文本复制；Ctrl/Cmd+Shift+C 复制所选凭证字段。名称完全匹配和前缀匹配优先，超过 50 条可打开全部分页结果。

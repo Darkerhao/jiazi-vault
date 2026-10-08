@@ -17,7 +17,7 @@ export function replaceVaultPassword(db: DatabaseSync, oldKey: Buffer, credentia
       updateHistory.run(JSON.stringify(encryptValue(credential.masterKey, plaintext)), row.id)
     }
     db.prepare('UPDATE vault_metadata SET value = ? WHERE key = ?').run(JSON.stringify(credential.metadata), 'vault')
-    db.prepare('DELETE FROM vault_metadata WHERE key = ?').run('biometric')
+    db.prepare("DELETE FROM vault_metadata WHERE key IN ('biometric', 'biometric-preferred')").run()
     db.exec('DELETE FROM unlock_attempts; COMMIT')
   } catch {
     db.exec('ROLLBACK')

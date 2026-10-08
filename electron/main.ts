@@ -260,7 +260,10 @@ function registerIpcHandlers() {
     if (!metadata) throw new Error('VAULT_NOT_FOUND')
     vaultOperationBusy = true
     try {
-      await session.authenticate(() => biometric.unlock(metadata), () => unlockLimiter.reset())
+      await session.authenticate(() => biometric.unlock(metadata), () => {
+        biometric.rememberPreference()
+        unlockLimiter.reset()
+      })
     } finally { vaultOperationBusy = false }
   })
   handleIpc('change_master_password', async (_event, args: { currentPassword: string; newPassword: string }) => {

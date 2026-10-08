@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NAlert, NButton, NCard, NCheckbox, NForm, NFormItem, NInput, NLayout, NSpin, NText } from 'naive-ui'
+import type { InputInst } from 'naive-ui'
 import { useAuthStore } from '../stores/auth'
 import { vaultService } from '../services/vault'
 import type { BiometricStatus } from '../../electron/contracts'
@@ -14,17 +15,38 @@ const confirmation = ref('')
 const step = ref<'welcome' | 'password' | 'confirm' | 'security'>('welcome')
 const acknowledged = ref(false)
 const biometric = ref<BiometricStatus | null>(null)
+const loadingBiometric = ref(true)
+const passwordMode = ref(false)
+const passwordInput = ref<InputInst | null>(null)
+const biometricButton = ref<InstanceType<typeof NButton> | null>(null)
 const localError = ref<string | null>(null)
 const isCreating = computed(() => auth.hasVault === false)
+const canUseBiometric = computed(() => !isCreating.value && biometric.value?.enabled && biometric.value.available)
+const biometricMode = computed(() => canUseBiometric.value && biometric.value?.preferred && !passwordMode.value)
 const titles = { welcome: '欢迎使用 Keystill', password: '设置主密码', confirm: '确认主密码', security: '安全须知' }
 const now = ref(Date.now())
 const remaining = computed(() => Math.max(0, Math.ceil((auth.retryAt - now.value) / 1000)))
 const clock = setInterval(() => { now.value = Date.now() }, 250)
-onMounted(async () => {
-  void auth.checkStatus()
-  if (auth.databaseError) return
-  try { biometric.value = await vaultService.biometricStatus() } catch { /* Master password remains available. */ }
-})
+watch(() => auth.sessionRevision, async (_revision, _previous, onCleanup) => {
+  let canceled = false
+  onCleanup(() => { canceled = true })
+  loadingBiometric.value = true
+  passwordMode.value = false
+  biometric.value = null
+  await auth.checkStatus()
+  if (!canceled && auth.hasVault && !auth.databaseError) {
+    try {
+      const status = await vaultService.biometricStatus()
+      if (!canceled) biometric.value = status
+    } catch { /* Master password remains available. */ }
+  }
+  if (!canceled) loadingBiometric.value = false
+}, { immediate: true })
+watch([loadingBiometric, biometricMode], () => {
+  if (loadingBiometric.value) return
+  if (biometricMode.value) biometricButton.value?.$el.focus()
+  else passwordInput.value?.focus()
+}, { flush: 'post' })
 onUnmounted(() => clearInterval(clock))
 
 function back() {
@@ -35,6 +57,7 @@ function back() {
 }
 
 async function unlockBiometric() {
+  if (auth.busy) return
   password.value = ''
   localError.value = null
   auth.notice = null
@@ -42,7 +65,9 @@ async function unlockBiometric() {
 }
 
 async function submit() {
-  if (auth.busy || remaining.value) return
+  if (auth.busy) return
+  if (biometricMode.value) { await unlockBiometric(); return }
+  if (remaining.value) return
   auth.notice = null
   localError.value = null
   if (isCreating.value) {
@@ -77,7 +102,7 @@ async function submit() {
     <n-card class="unlock-card" bordered>
       <img class="unlock-icon" src="/brand/icon.svg" alt="" width="64" height="64">
       <n-text depth="1" class="unlock-brand">Keystill <span>密序</span></n-text>
-      <n-spin v-if="!auth.isReady" class="loading" />
+      <n-spin v-if="!auth.isReady || loadingBiometric" class="loading" />
       <template v-else-if="auth.databaseError">
         <h1>无法打开保险库</h1>
         <n-alert type="error" :show-icon="false" class="security-note">数据文件可能损坏或暂时无法访问。请检查文件权限后重新启动，或从加密备份恢复。恢复前会保留原文件。</n-alert>
@@ -90,8 +115,14 @@ async function submit() {
       <n-text v-else-if="isCreating && step === 'password'" depth="3" class="intro">设置至少 8 个字符的主密码，建议使用较长且独有的密码短语。</n-text>
       <n-text v-else-if="isCreating && step === 'confirm'" depth="3" class="intro">再次输入主密码，确认你已记住它。</n-text>
       <n-form class="unlock-form" :disabled="auth.busy" @submit.prevent="submit">
+        <template v-if="biometricMode">
+          <n-text depth="3" class="intro biometric-intro">使用 {{ biometric?.label }} 验证身份，即可解锁保险库。</n-text>
+          <n-button ref="biometricButton" type="primary" block :loading="auth.busy" attr-type="submit">使用 {{ biometric?.label }} 解锁</n-button>
+          <n-button block class="secondary-action" :disabled="auth.busy" @click="passwordMode = true">使用主密码解锁</n-button>
+        </template>
+        <template v-else>
         <n-form-item v-if="!isCreating || step === 'password'" :show-label="false">
-          <n-input v-model:value="password" type="password" show-password-on="click" placeholder="主密码" autofocus :input-props="{ autocomplete: isCreating ? 'new-password' : 'current-password' }" />
+          <n-input ref="passwordInput" v-model:value="password" type="password" show-password-on="click" placeholder="主密码" autofocus :input-props="{ autocomplete: isCreating ? 'new-password' : 'current-password' }" />
         </n-form-item>
         <n-form-item v-if="isCreating && step === 'confirm'" :show-label="false">
           <n-input v-model:value="confirmation" type="password" show-password-on="click" placeholder="确认主密码" autofocus :input-props="{ autocomplete: 'new-password' }" />
@@ -102,10 +133,11 @@ async function submit() {
         </template>
         <n-button type="primary" block :loading="auth.busy" :disabled="remaining > 0 || (isCreating && step === 'security' && !acknowledged)" attr-type="submit">{{ remaining ? `${remaining} 秒后重试` : !isCreating ? '解锁' : step === 'welcome' ? '开始创建' : step === 'security' ? '创建保险库' : '下一步' }}</n-button>
         <n-button v-if="isCreating && step !== 'welcome'" block text class="secondary-action" :disabled="auth.busy" @click="back">上一步</n-button>
+        <n-button v-if="canUseBiometric" block class="secondary-action" :disabled="auth.busy" @click="unlockBiometric">使用 {{ biometric?.label }} 解锁</n-button>
+        </template>
       </n-form>
-      <n-button v-if="!isCreating && biometric?.enabled && biometric.available" block class="secondary-action" :disabled="auth.busy" @click="unlockBiometric">使用 {{ biometric.label }} 解锁</n-button>
       <n-text v-if="!isCreating && biometric?.enabled && !biometric.available" depth="3" class="secondary-action">{{ biometric.label }} 当前不可用，请使用主密码解锁。</n-text>
-      <n-alert v-if="remaining" type="warning" :show-icon="false" class="unlock-error" role="status">尝试次数过多，请在 {{ remaining }} 秒后重试。</n-alert>
+      <n-alert v-if="remaining && !biometricMode" type="warning" :show-icon="false" class="unlock-error" role="status">尝试次数过多，请在 {{ remaining }} 秒后重试。</n-alert>
       <n-alert v-if="localError || auth.error" type="error" :show-icon="false" class="unlock-error">{{ localError || auth.error }}</n-alert>
       <n-alert v-if="auth.notice" type="success" :show-icon="false" class="unlock-error">{{ auth.notice }}</n-alert>
       <div v-if="!isCreating || step === 'welcome'" class="restore-action"><BackupRestore /></div>
@@ -123,6 +155,7 @@ async function submit() {
 h1 { margin: 8px 0 24px; font-size: 24px; }
 .loading { margin: 28px 0 18px; }
 .intro { display: block; margin: -12px 0 20px; line-height: 1.7; }
+.biometric-intro { text-align: center; }
 .unlock-form { text-align: left; }
 .unlock-error { margin-top: 16px; text-align: left; }
 .security-note { margin-top: 16px; text-align: left; line-height: 1.6; }
