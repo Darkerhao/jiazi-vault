@@ -9,7 +9,7 @@ import { replaceVaultPassword } from '../dist-electron/vault-password.js'
 import { BiometricVault } from '../dist-electron/biometric-vault.js'
 import { VaultSession } from '../dist-electron/vault-session.js'
 import { createItemStore } from '../dist-electron/item-store.js'
-import { createBackup, readBackup } from '../dist-electron/backup.js'
+import { createBackup, readBackup, restoreBackup } from '../dist-electron/backup.js'
 
 async function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), 'jiazi-access-'))
@@ -22,7 +22,7 @@ async function fixture(t) {
   store.markUsed(active.id)
   store.remove(trash.id)
   t.after(() => { clearKey(old.masterKey); db.close(); rmSync(directory, { recursive: true, force: true }) })
-  return { db, old, active, trash, store }
+  return { db, directory, old, active, trash, store }
 }
 
 test('password replacement preserves every field, access timestamp and trash; old password fails and old backups remain readable', async (t) => {
@@ -30,6 +30,7 @@ test('password replacement preserves every field, access timestamp and trash; ol
   const before = [store.get(active.id), store.get(trash.id)]
   const backup = createBackup(db, old.metadata, old.masterKey)
   db.prepare('INSERT INTO vault_metadata VALUES (?, ?)').run('biometric', 'old-enrollment')
+  db.prepare('INSERT INTO vault_metadata VALUES (?, ?)').run('biometric-preferred', 'true')
   db.exec('INSERT INTO unlock_attempts VALUES (1, 4, 0)')
   const next = await createVaultCredential('new-master-password')
   t.after(() => clearKey(next.masterKey))
@@ -40,6 +41,7 @@ test('password replacement preserves every field, access timestamp and trash; ol
   const updated = createItemStore(db, () => unlocked)
   assert.deepEqual([updated.get(active.id), updated.get(trash.id)], before)
   assert.equal(db.prepare('SELECT 1 FROM vault_metadata WHERE key = ?').get('biometric'), undefined)
+  assert.equal(db.prepare('SELECT 1 FROM vault_metadata WHERE key = ?').get('biometric-preferred'), undefined)
   assert.equal(db.prepare('SELECT 1 FROM unlock_attempts').get(), undefined)
   assert.equal((await readBackup(backup, 'old-master-password')).items.length, 2)
   await assert.rejects(readBackup(backup, 'new-master-password'), /BACKUP_PASSWORD_OR_DATA_INVALID/)
@@ -115,6 +117,42 @@ test('device enrollment from another vault cannot unlock the current vault and t
   assert.deepEqual(wrongKey, Buffer.alloc(32))
 })
 
+test('only successful biometric sessions persist a local preference; password fallback preserves it and enrollment changes reset it', async (t) => {
+  const { db, directory, old } = await fixture(t)
+  const backup = await readBackup(createBackup(db, old.metadata, old.masterKey), 'old-master-password')
+  let canceled = true
+  const provider = {
+    label: 'Windows Hello', available: async () => true,
+    verify: async () => { if (canceled) throw new Error('canceled') },
+    protect: async (key) => Buffer.from(key), unprotect: async () => Buffer.from(old.masterKey),
+  }
+  const biometric = new BiometricVault(db, provider)
+  const session = new VaultSession(() => 15, () => {})
+  t.after(() => session.dispose())
+  // An enrollment created by an older app has no preference metadata.
+  db.prepare('INSERT INTO vault_metadata VALUES (?, ?)').run('biometric', 'legacy-enrollment')
+  const authenticate = () => session.authenticate(() => biometric.unlock(old.metadata), () => biometric.rememberPreference())
+  assert.equal((await biometric.status()).preferred, false)
+  await assert.rejects(authenticate(), /canceled/)
+  assert.equal((await biometric.status()).preferred, false)
+  canceled = false
+  await authenticate()
+  const reopened = openDatabase(directory).connection
+  try { assert.equal((await new BiometricVault(reopened, provider).status()).preferred, true) }
+  finally { reopened.close() }
+  session.lock()
+  await session.authenticate(() => unlockVaultCredential('old-master-password', old.metadata))
+  assert.equal((await biometric.status()).preferred, true)
+  biometric.disable()
+  assert.equal((await biometric.status()).preferred, false)
+  biometric.save(await biometric.prepare(old.masterKey))
+  assert.equal((await biometric.status()).preferred, false)
+  await authenticate()
+  restoreBackup(db, backup)
+  assert.equal((await biometric.status()).enabled, false)
+  assert.equal((await biometric.status()).preferred, false)
+})
+
 test('lock while biometric dialog is pending discards its key and never restores the session', async (t) => {
   const { db, old } = await fixture(t)
   let consent
@@ -127,12 +165,13 @@ test('lock while biometric dialog is pending discards its key and never restores
     protect: async () => Buffer.from('fixture'), unprotect: async () => key,
   })
   biometric.save('fixture')
-  const pending = session.authenticate(() => biometric.unlock(old.metadata))
+  const pending = session.authenticate(() => biometric.unlock(old.metadata), () => biometric.rememberPreference())
   while (!consent) await Promise.resolve()
   session.lock()
   consent()
   await assert.rejects(pending, /VAULT_LOCKED/)
   assert.equal(session.unlocked, false)
+  assert.equal((await biometric.status()).preferred, false)
   assert.deepEqual(key, Buffer.alloc(32))
 })
 

@@ -42,6 +42,7 @@ export interface BiometricStatus {
   label: 'Windows Hello' | 'Touch ID' | '生物识别'
   available: boolean
   enabled: boolean
+  preferred: boolean
 }
 
 export interface ImportPreviewRow { row: number; title: string; type: string; duplicate: boolean; error?: string }

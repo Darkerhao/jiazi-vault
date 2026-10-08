@@ -56,6 +56,8 @@ try {
     pass('canceling the real OS dialog keeps the vault locked and sensitive IPC denied')
   }
   await page.getByRole('heading', { name: '解锁保险库' }).waitFor()
+  const fallback = page.getByRole('button', { name: '使用主密码解锁', exact: true })
+  if (await fallback.isVisible()) await fallback.click()
   await page.getByPlaceholder('主密码', { exact: true }).fill(password)
   await page.getByRole('button', { name: '解锁', exact: true }).click()
   await page.getByRole('heading', { name: '全部条目' }).waitFor()

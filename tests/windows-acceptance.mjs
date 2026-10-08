@@ -25,6 +25,9 @@ async function launch() {
 async function unlock() {
   if (!(await call('get_vault_status')).exists) await createVaultThroughUI(page, password)
   else {
+    await page.getByRole('heading', { name: '解锁保险库', exact: true }).waitFor()
+    const fallback = page.getByRole('button', { name: '使用主密码解锁', exact: true })
+    if (await fallback.isVisible()) await fallback.click()
     await page.getByPlaceholder('主密码', { exact: true }).fill(password)
     await page.getByRole('button', { name: '解锁', exact: true }).click()
     await page.getByRole('heading', { name: '全部条目', exact: true }).waitFor()

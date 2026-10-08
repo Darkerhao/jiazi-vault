@@ -19,6 +19,7 @@ export class BiometricVault {
       label: this.provider.label,
       available: await this.provider.available(),
       enabled: Boolean(this.db.prepare('SELECT 1 FROM vault_metadata WHERE key = ?').get('biometric')),
+      preferred: this.db.prepare('SELECT value FROM vault_metadata WHERE key = ?').get('biometric-preferred')?.value === 'true',
     }
   }
 
@@ -29,10 +30,14 @@ export class BiometricVault {
   }
 
   save(encrypted: string) {
-    this.db.prepare('INSERT OR REPLACE INTO vault_metadata (key, value) VALUES (?, ?)').run('biometric', encrypted)
+    this.db.prepare("INSERT OR REPLACE INTO vault_metadata (key, value) VALUES ('biometric', ?), ('biometric-preferred', 'false')").run(encrypted)
   }
 
-  disable() { this.db.prepare('DELETE FROM vault_metadata WHERE key = ?').run('biometric') }
+  rememberPreference() {
+    this.db.prepare("INSERT OR REPLACE INTO vault_metadata (key, value) VALUES ('biometric-preferred', 'true')").run()
+  }
+
+  disable() { this.db.prepare("DELETE FROM vault_metadata WHERE key IN ('biometric', 'biometric-preferred')").run() }
 
   async unlock(metadata: VaultMetadata): Promise<Buffer> {
     const row = this.db.prepare('SELECT value FROM vault_metadata WHERE key = ?').get('biometric')
