@@ -63,7 +63,7 @@ try {
   await page.getByRole('heading', { name: '全部条目' }).waitFor()
   assert.equal((await call('get_item', { id: item.id, recordAccess: false })).password, 'installed-secret')
   await page.getByRole('link', { name: '设置', exact: true }).click()
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).scrollIntoViewIfNeeded()
+  await page.getByRole('button', { name: '导出 JSON / CSV', exact: true }).scrollIntoViewIfNeeded()
   await page.screenshot({ path: resolve(output, 'installed-transfer.png') })
   assert.deepEqual(errors, [])
   pass('installed app restart unlocks persisted data and displays transfer controls without renderer errors')

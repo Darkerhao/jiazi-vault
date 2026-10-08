@@ -2,6 +2,10 @@ export const ITEM_TYPES = ['login', 'password', 'server', 'database', 'api-key',
 export type ItemType = typeof ITEM_TYPES[number]
 export type Environment = 'development' | 'testing' | 'staging' | 'production' | 'other'
 export type TransferFormat = 'json' | 'csv'
+export type ExportScope = { kind: 'all' } | { kind: 'project'; projectId: string } | { kind: 'items'; ids: string[] }
+export type ItemBatchAction = { type: 'project'; projectId: string | null } | { type: 'environment'; environment: Environment | null } | { type: 'trash' } | { type: 'restore' }
+export interface BackupSource { token: string; name: string }
+export interface BackupPreview extends BackupSource { itemCount: number; trashedCount: number; projectCount: number; historyCount: number }
 
 export interface VaultItem {
   id: string

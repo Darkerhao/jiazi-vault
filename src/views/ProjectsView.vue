@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
+import { useDiscardChanges } from '../composables/useDiscardChanges'
 import { NAlert, NButton, NEmpty, NForm, NFormItem, NInput, NList, NListItem, NModal, NSelect, NSpace, NSpin, NText, useDialog, useMessage } from 'naive-ui'
 import AppShell from '../components/common/AppShell.vue'
 import { projectService } from '../services/project'
@@ -17,6 +18,11 @@ const editingId = ref<string | null>(null)
 const saving = ref(false)
 const error = ref('')
 const form = reactive<ProjectInput>({ name: '', icon: '📁', color: '#c7ef68', description: '' })
+const initial = ref('')
+const confirmDiscard = useDiscardChanges(() => show.value && JSON.stringify(form) !== initial.value, () => saving.value)
+async function close() { if (await confirmDiscard()) show.value = false }
+onBeforeRouteLeave(() => confirmDiscard())
+onBeforeRouteUpdate((to, from) => to.query.new && to.query.new !== from.query.new ? confirmDiscard() : true)
 const icons = ['📁', '💻', '🌐', '🔧', '📦', '🚀', '🎓', '🔒'].map((icon) => ({ label: icon, value: icon }))
 const query = computed(() => typeof route.query.q === 'string' ? route.query.q : '')
 const visibleProjects = computed(() => vault.projects.filter((p) => `${p.name} ${p.description ?? ''}`.toLowerCase().includes(query.value.trim().toLowerCase())))
@@ -25,6 +31,7 @@ function edit(project?: Project) {
   editingId.value = project?.id ?? null
   Object.assign(form, { name: project?.name ?? '', icon: project?.icon ?? '📁', color: project?.color ?? '#c7ef68', description: project?.description ?? '' })
   error.value = ''
+  initial.value = JSON.stringify(form)
   show.value = true
 }
 
@@ -79,15 +86,15 @@ function remove(project: Project) {
         </n-list-item>
       </n-list>
     </n-spin>
-    <n-modal v-model:show="show" preset="card" :title="editingId ? '编辑项目' : '新建项目'" style="width: 520px">
-      <n-form @submit.prevent="save">
+    <n-modal :show="show" preset="card" :title="editingId ? '编辑项目' : '新建项目'" style="width: 520px" :closable="!saving" :mask-closable="!saving" :close-on-esc="!saving" @update:show="(value) => !value && close()">
+      <n-form :disabled="saving" @submit.prevent="save">
         <n-form-item label="项目名称" required :validation-status="error ? 'error' : undefined" :feedback="error"><n-input v-model:value="form.name" placeholder="项目名称" :maxlength="80" autofocus /></n-form-item>
         <div class="appearance">
           <n-form-item label="图标"><n-select v-model:value="form.icon" :options="icons" /></n-form-item>
           <n-form-item label="颜色"><input v-model="form.color" type="color" aria-label="项目颜色" /></n-form-item>
         </div>
         <n-form-item label="描述"><n-input v-model:value="form.description" type="textarea" placeholder="项目描述（可选）" :maxlength="500" /></n-form-item>
-        <n-space justify="end"><n-button @click="show = false">取消</n-button><n-button type="primary" attr-type="submit" :loading="saving">保存项目</n-button></n-space>
+        <n-space justify="end"><n-button :disabled="saving" @click="close">取消</n-button><n-button type="primary" attr-type="submit" :loading="saving">保存项目</n-button></n-space>
       </n-form>
     </n-modal>
   </AppShell>

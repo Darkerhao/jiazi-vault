@@ -1,4 +1,4 @@
-import type { ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot } from '../../electron/contracts'
+import type { ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot, ItemBatchAction, ExportScope, BackupSource, BackupPreview } from '../../electron/contracts'
 import type { BackupStatus } from '../../electron/backup-status'
 import type { AppUpdate } from '../../electron/app-update'
 import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
@@ -36,7 +36,8 @@ export interface IpcCommands {
   get_app_version: { args: undefined; result: string }
   check_for_updates: { args: undefined; result: AppUpdate | null }
   open_release_page: { args: undefined; result: void }
-  get_desktop_status: { args: undefined; result: { shortcut: string; shortcutRegistered: boolean } }
+  get_desktop_status: { args: undefined; result: { shortcut: string | null; shortcutRegistered: boolean } }
+  set_search_shortcut: { args: { shortcut: string | null }; result: { shortcut: string | null; shortcutRegistered: boolean } }
   database_info: { args: undefined; result: { initialized: boolean; path: string } }
   get_vault_status: { args: undefined; result: VaultStatus }
   create_vault: { args: { password: string }; result: void }
@@ -50,6 +51,7 @@ export interface IpcCommands {
   is_vault_unlocked: { args: undefined; result: boolean }
   create_item: { args: { item: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'> }; result: VaultItemSummary }
   update_item: { args: { item: VaultItem }; result: VaultItemSummary }
+  batch_items: { args: { ids: string[]; action: ItemBatchAction }; result: number }
   list_item_history: { args: { id: string }; result: ItemHistorySummary[] }
   get_item_history: { args: { id: string; historyId: number }; result: VaultItem }
   restore_item_history: { args: { id: string; historyId: number }; result: VaultItemSummary }
@@ -69,12 +71,15 @@ export interface IpcCommands {
   copy_to_clipboard: { args: { text: string; itemId?: string }; result: number | null }
   get_backup_status: { args: undefined; result: BackupStatus }
   create_backup: { args: undefined; result: string | null }
-  restore_backup: { args: { password: string; snapshotId?: string }; result: boolean }
+  select_backup_source: { args: { snapshotId?: string }; result: BackupSource | null }
+  preview_backup: { args: { token: string; password: string }; result: BackupPreview }
+  cancel_backup_restore: { args: { token: string }; result: void }
+  restore_backup: { args: { token: string }; result: boolean }
   get_automatic_backup_status: { args: undefined; result: AutomaticBackupStatus }
   configure_automatic_backup: { args: { enabled: boolean }; result: void }
   run_automatic_backup: { args: undefined; result: void }
   list_recovery_snapshots: { args: undefined; result: RecoverySnapshot[] }
-  export_plaintext: { args: { format: TransferFormat }; result: string | null }
+  export_plaintext: { args: { format: TransferFormat; scope?: ExportScope }; result: string | null }
   preview_import: { args: undefined; result: ImportPreview | null }
   confirm_import: { args: { token: string; skipDuplicates: boolean }; result: number }
   cancel_import: { args: { token: string }; result: void }

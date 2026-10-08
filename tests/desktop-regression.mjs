@@ -1,3 +1,4 @@
+import { restoreFromBackup } from './backup-restore.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mkdir, mkdtemp, readFile, readdir, writeFile, open } from 'node:fs/promises'
@@ -59,11 +60,13 @@ test('damaged database opens recovery, rejects a wrong password, preserves origi
   await application.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
   }, backupPath)
-  await assert.rejects(call('restore_backup', { password: 'wrong-backup-password' }), /BACKUP_RESTORE_FAILED/)
+  await assert.rejects(restoreFromBackup(call, { password: 'wrong-backup-password' }), /BACKUP_RESTORE_FAILED/)
   assert.deepEqual(await readFile(join(data, 'vault.db')), original)
   await page.getByRole('button', { name: '从加密备份恢复' }).click()
+  await page.getByRole('button', { name: '选择备份文件', exact: true }).click()
   await page.getByPlaceholder('备份创建时使用的主密码').fill(password)
-  await page.getByRole('button', { name: '选择文件并恢复' }).click()
+  await page.getByRole('button', { name: '验证并预览', exact: true }).click()
+  await page.getByRole('button', { name: '确认替换并恢复', exact: true }).click()
   await page.getByRole('heading', { name: '解锁保险库' }).waitFor()
   const saved = await readdir(join(data, 'recovery'))
   assert.equal(saved.length, 1)
@@ -85,12 +88,12 @@ test('a backup larger than 64 MiB exports and restores; files beyond 256 MiB are
   }, backupPath)
   assert.equal(await call('create_backup'), 'large.jvault')
   assert.ok((await readFile(backupPath)).length > 64 * 1024 * 1024)
-  assert.equal(await call('restore_backup', { password }), true)
+  assert.equal(await restoreFromBackup(call, { password }), true)
   await unlock()
   assert.equal((await call('list_items', {})).length, 10000)
   const oversized = await open(backupPath, 'w')
   try { await oversized.truncate(256 * 1024 * 1024 + 1) } finally { await oversized.close() }
-  await assert.rejects(call('restore_backup', { password }), /BACKUP_TOO_LARGE/)
+  await assert.rejects(restoreFromBackup(call, { password }), /BACKUP_TOO_LARGE/)
   assert.equal((await call('list_items', {})).length, 10000)
 })
 

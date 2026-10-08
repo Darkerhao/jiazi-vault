@@ -7,7 +7,7 @@ import { useAuthStore } from '../../stores/auth'
 import type { ImportPreview } from '../../../electron/contracts'
 import { ITEM_TYPE_LABELS } from '../../utils/item-fields'
 import type { ItemType } from '../../types/vault'
-import type { TransferFormat } from '../../../electron/contracts'
+import PlaintextExport from './PlaintextExport.vue'
 
 const busy = ref(false)
 const message = useMessage()
@@ -25,16 +25,6 @@ function closePreview() {
   if (token && auth.unlocked) void callCommand('cancel_import', { token }).catch(() => {})
 }
 onBeforeUnmount(() => { disposed = true; closePreview() })
-
-async function exportFile(format: TransferFormat) {
-  if (busy.value) return
-  busy.value = true
-  try {
-    const name = await callCommand('export_plaintext', { format })
-    if (name) message.success(`明文文件已保存：${name}`)
-  } catch { message.error('导出失败，请检查目标位置权限，或重新解锁后重试。') }
-  finally { busy.value = false }
-}
 
 async function importFile() {
   if (busy.value) return
@@ -85,8 +75,7 @@ async function confirmImport() {
     </details>
     <n-space class="transfer-actions">
       <n-button :disabled="busy" @click="importFile">导入 JSON / CSV</n-button>
-      <n-button :disabled="busy" @click="exportFile('json')">导出 JSON</n-button>
-      <n-button :disabled="busy" @click="exportFile('csv')">导出 CSV</n-button>
+      <PlaintextExport :disabled="busy" />
       <n-text v-if="busy" depth="3">正在处理…</n-text>
     </n-space>
   </n-card>

@@ -176,3 +176,15 @@
 - 原生 WindowsHello.exe status 执行退出码 0，在沙箱用户下返回 unavailable；未调用实际系统认证。
 - 询问下一项优先级后，在用户未补充偏好的情况下按已说明的推荐方向增加独立 check.yml。PR 目标 main/dev、dev 推送与手动执行时复用既有检查入口；只读权限、取消过时检查、失败保留 PNG/JSON，不发版。使用现有 PyYAML 检查语法、触发、权限、步骤和版本复用均通过，无新依赖。
 - 续验完成：完整离线构建通过、Electron Node 24 的 12 项新增数据测试通过、工作流本地校验及 git diff --check 通过。未重跑无变化的 67 项 Node 基线（上轮已通过），未提交/推送/发布；桌面仍由同一环境及审批故障阻断。
+## 2026-10-08 操作体验完善
+
+- 已核对 8 项当前调用链，工作区开始时无未提交改动。
+- 已读取文件规划与 Playwright 技能；沿用仓库 Electron/Playwright 测试，测试数据使用独立目录。
+- 当前进入实现：局部交互与搜索、批量整理、定向导出、备份预览。
+- 已实现八项主流程，进入测试。首次 typecheck 发现项目 ES 目标不支持 replaceAll，已使用正则 replace；一次补丁末尾样式锚点不匹配未写入，已拆分准确应用。
+- 官方 Electron v44.5.1 globalShortcut 文档和本地 Naive UI checkbox/modal 源码已核对。备份保留设备快捷键，与自动备份目录采用相同设备本地原则。
+- 77 项单元测试和完整构建通过。桌面初验已通过项目脏表单、文本/凭证复制、搜索排序、创建副本和批量项目/环境/回收站。
+- 桌面定向导出抓到真实 IPC 序列化错误：普通数组 health_check 返回 ok，Proxy 数组返回 An object could not be cloned。已在导出 IPC 边界展开 selected 数组。测试关闭等待改为等待确认框动画完成；文本选择使用 Playwright selectText 后验证真实 Ctrl+C。
+- 已有桌面回归抓到详情切编辑的双保存按钮；核对 Naive UI Space 当前源码后，动态按钮区使用 wrap-item=false，完整回归通过。快捷键输入的可访问名称通过 input-props 传到原生输入框。
+- 最终完成：`pnpm test` 77/77；`pnpm build`；全部 10 组桌面回归（新增组 9 个场景）；900×600 截图检查；`git diff --check`。README/DELIVERY 已同步，日志保存在 output/operation-*.log。
+- 未新增依赖、未更改保险库文件格式、未修改用户实际数据、未暂存/提交/发布。本轮未构建安装器，未做 macOS/Linux 和物理全局快捷键验收。

@@ -1,3 +1,4 @@
+import { restoreFromBackup } from './backup-restore.mjs'
 // Seed with the previous installed release, then verify with the new installer at the same path.
 import assert from 'node:assert/strict'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -56,12 +57,12 @@ try {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
       dialog.showMessageBox = async () => ({ response: 1 })
     }, backup)
-    assert.equal(await call('restore_backup', { password }), true)
+    assert.equal(await restoreFromBackup(call, { password }), true)
     await unlock()
     assert.equal((await call('get_item', { id: previous.itemId })).password, 'old-version-secret')
     const snapshots = await call('list_recovery_snapshots')
     assert.equal(snapshots.length, 1)
-    assert.equal(await call('restore_backup', { password, snapshotId: snapshots[0].id }), true)
+    assert.equal(await restoreFromBackup(call, { password, snapshotId: snapshots[0].id }), true)
     await unlock()
     assert.equal((await call('get_item', { id: previous.itemId })).password, 'new-version-secret')
     pass('old backup restores successfully and the pre-restore snapshot recovers the new data')
