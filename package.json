@@ -42,6 +42,12 @@
     "vue-tsc": "^3.3.12",
     "wait-on": "^9.5.1"
   },
+  "pnpm": {
+    "overrides": {
+      "@electron/get>global-agent": "4.1.3",
+      "concurrently>shell-quote": "1.12.0"
+    }
+  },
   "build": {
     "appId": "com.jiazi.vault",
     "productName": "Keystill",
