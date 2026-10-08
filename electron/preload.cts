@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 const allowedCommands = new Set([
   'health_check',
+  'get_app_version',
+  'check_for_updates',
+  'open_release_page',
   'get_desktop_status',
   'database_info',
   'get_vault_status',

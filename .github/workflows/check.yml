@@ -37,10 +37,13 @@ jobs:
 
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit:ci
 
       - name: Install Electron runtime
         run: pnpm exec install-electron

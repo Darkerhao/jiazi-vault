@@ -8,7 +8,8 @@ import { createVaultThroughUI } from './onboarding.mjs'
 const root = process.cwd(), output = resolve(root, 'output/playwright/data-recovery')
 const data = join(output, `data-${Date.now()}`), target = join(data, 'external-backups')
 await mkdir(target, { recursive: true })
-const app = await _electron.launch({ executablePath: electron, args: [resolve('tests/electron-launch.cjs')], cwd: root, timeout: 30000, env: { ...process.env, JIAZI_TEST_DATA: data } })
+const installed = process.env.JIAZI_INSTALLED_EXE
+const app = await _electron.launch({ executablePath: installed || electron, args: installed ? [`--user-data-dir=${data}`] : [resolve('tests/electron-launch.cjs')], cwd: root, timeout: 30000, env: { ...process.env, JIAZI_TEST_DATA: data } })
 const page = await app.firstWindow()
 page.setDefaultTimeout(15000)
 const errors = [], passed = []

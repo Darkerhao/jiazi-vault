@@ -3,7 +3,8 @@ import { basename, extname, join } from 'node:path'
 import { readFile, stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, powerMonitor } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, net, powerMonitor, shell } from 'electron'
+import { checkForUpdates, RELEASE_PAGE } from './app-update.js'
 import { openDatabase, purgeExpiredItems, type DatabaseState } from './database.js'
 import { clearKey, createVaultCredential, isVaultMetadata, type CreatedVaultCredential, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
 import { createItemStore, type ItemInput, type VaultItem } from './item-store.js'
@@ -67,7 +68,7 @@ function isApplicationUrl(value: string) {
   } catch { return false }
 }
 
-const recoveryCommands = new Set(['health_check', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'restore_backup', 'list_recovery_snapshots'])
+const recoveryCommands = new Set(['health_check', 'get_app_version', 'check_for_updates', 'open_release_page', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'restore_backup', 'list_recovery_snapshots'])
 
 function handleIpc(channel: string, listener: Parameters<typeof ipcMain.handle>[1]) {
   ipcMain.handle(channel, (event, ...args) => {
@@ -169,6 +170,9 @@ function createWindow() {
 
 function registerIpcHandlers() {
   handleIpc('health_check', () => 'ok')
+  handleIpc('get_app_version', () => app.getVersion())
+  handleIpc('check_for_updates', () => checkForUpdates(app.getVersion(), net.fetch))
+  handleIpc('open_release_page', () => shell.openExternal(RELEASE_PAGE))
   handleIpc('get_desktop_status', () => desktop.status)
   handleIpc('database_info', () => {
     const currentDatabase = requireDatabase()

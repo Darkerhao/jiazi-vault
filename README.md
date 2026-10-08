@@ -29,6 +29,8 @@
 
 当前应用用于保存、整理和复制凭证。尚未实现 SSH 连接、浏览器自动填充、云同步、团队共享、移动端和应用内自动更新。
 
+设置页的“关于与更新”显示当前版本；点击“检查更新”查询 GitHub 正式发布，可查看说明并打开官方下载页。只在点击时联网，不上传保险库数据。更新前创建加密备份，退出应用后手动运行新安装包。
+
 ## 下载与安装
 
 在 [GitHub Releases](https://github.com/Darkerhao/jiazi-vault/releases) 中选择对应平台和架构的附件。仓库配置的构建产物如下，实际可下载版本以发布页为准：
@@ -127,7 +129,7 @@ API Key 的过期时间使用 YYYY-MM-DD，并继续保存在加密字段中；�
 
 - Node.js：建议使用 **24**，与 CI 保持一致。
 - pnpm：**9.12.1**，由 `package.json` 的 `packageManager` 固定。
-- Windows 开发或构建还需 **.NET 9 SDK**，用于编译 Windows Hello 组件；macOS / Linux 会跳过该组件。
+- Windows 开发或构建还需 **.NET 10 SDK**，用于编译 Windows Hello 组件；安装包内置运行时，用户无需安装 SDK。macOS / Linux 会跳过该组件。
 
 ### 安装与启动
 
@@ -151,6 +153,8 @@ pnpm electron:dev
 | `pnpm typecheck` | Vue / TypeScript 类型检查 |
 | `pnpm test` | 编译 Electron 代码并运行 Node 测试 |
 | `pnpm test:desktop` | 完成构建后，顺序运行桌面自动化测试 |
+| `pnpm audit:ci` | 阻断生产依赖中危及以上、全量依赖高危及以上告警 |
+| `pnpm test:package:win` | 构建后验证真实 NSIS 安装、启动、恢复并卸载；使用隔离测试库 |
 | `pnpm build` | 类型检查、前端生产构建、Electron 编译及平台原生组件构建 |
 | `pnpm electron:build --publish never` | 构建当前平台安装包，不发布到 GitHub |
 | `pnpm electron:build:win --publish never` | 构建 Windows x64 安装版、免安装版和 ZIP |
@@ -164,7 +168,7 @@ pnpm electron:dev
 node tests/desktop.mjs desktop-regression
 ```
 
-真实系统认证、物理锁屏 / 休眠以及安装卸载需要单独验收，常规测试和构建不覆盖这些操作。
+发布 CI 额外验证 Windows NSIS 安装包：安装上一正式版并创建测试库，再覆盖安装当前版，检查旧库和备份可读，执行安装后的启动、主密码、恢复和更新入口测试，最后卸载。首次发布没有上一版时只验证新装；下载上一版失败会阻断发布。报告保留 7 天。本地跨版本验证使用 `powershell -NoProfile -File scripts/verify-windows-package.ps1 -BaselineInstaller <旧版安装包绝对路径>`，个人正式安装存在时脚本会拒绝执行，应使用干净测试机。真实系统认证、物理锁屏 / 休眠仍需人工验收。
 
 ## 项目结构
 

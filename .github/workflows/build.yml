@@ -39,6 +39,11 @@ jobs:
         with:
           node-version: '24'
 
+      - uses: pnpm/action-setup@v5
+
+      - name: Audit dependencies before preparing a release
+        run: pnpm audit:ci
+
       - name: Bump version and push release commit
         id: version
         run: node scripts/prepare-release.mjs
@@ -85,7 +90,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -108,6 +113,38 @@ jobs:
         if: runner.os == 'Windows'
         timeout-minutes: 10
         run: node tests/desktop.mjs
+
+      - name: Verify Windows installer and upgrade
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releases = gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot query previous release' }
+          $arguments = @{}
+          if ($releases.Count -gt 0) {
+            gh release download $releases[0].tagName --pattern 'keystill-*-win-x64.exe' --dir output/previous-release
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot download previous Windows installer' }
+            $installers = @(Get-ChildItem output/previous-release -Filter '*.exe')
+            if ($installers.Count -ne 1) { throw 'Expected one previous Windows installer' }
+            $arguments.BaselineInstaller = $installers[0].FullName
+          }
+          ./scripts/verify-windows-package.ps1 @arguments
+
+      - name: Upload verification reports
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-verification
+          path: |
+            output/playwright/**/*.png
+            output/playwright/**/*report*.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload packages
         uses: actions/upload-artifact@v6
