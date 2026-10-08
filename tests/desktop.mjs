@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-// OS authentication, physical lock/suspend and installed-package checks stay manual.
-const scripts = ['electron-smoke', 'credentials-smoke', 'access-smoke', 'env-smoke', 'desktop-regression', 'product-experience', 'creation-shortcuts', 'data-recovery']
+// OS authentication and physical lock/suspend still require user participation.
+const scripts = ['electron-smoke', 'credentials-smoke', 'access-smoke', 'env-smoke', 'desktop-regression', 'product-experience', 'creation-shortcuts', 'data-recovery', 'app-update']
 const requested = process.argv.slice(2)
 if (requested.some((name) => !scripts.includes(name))) throw new Error(`Choose from: ${scripts.join(', ')}`)
 

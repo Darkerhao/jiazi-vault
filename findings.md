@@ -1,5 +1,17 @@
 # Findings
 
+## 2026-10-06 维护与安装验证
+
+- 工作树初始干净，当前 dev 与 main 仅发布配置/说明有差异；main 已负责发版。
+- 重新 pnpm audit：8 high + 6 moderate；prod：1 high。待修复：fast-uri、brace-expansion、source-map-js、joi；http-cache-semantics / sprintf-js 暂无补丁版本。
+- npm registry 确认 Electron 44.5.1 存在，官方发布页列出上游修复；electron-builder latest 26.15.3。
+- Microsoft 10.0 releases.json 返回 SDK 10.0.401、运行时 10.0.12；本机只有 SDK 6.0.425 / 9.0.303，使用工作区独立 SDK 验证。
+- 已有 installed-smoke 只启动固定安装目录；尚无 CI 安装步骤。现有测试使用隔离 user-data-dir，正式应用内部 ID 与数据库格式继续保留。
+- 完整刷新范围内依赖后仅剩 sprintf-js 中危；http-cache-semantics 4.3.0 已由 registry 提供，说明 audit 的 patched_versions 不足以断言上游没有修复版。生产依赖审计为 0。
+- Windows Hello 10.0.401 构建成功，runtime 10.0.12；status 返回 available，仍有 Windows SDK / WinRT.Runtime IL2104 警告。
+- Electron 默认下载器 Node fetch 在本机失败，改用 PowerShell 下载同版官方 ZIP，校验 npm 包内 SHA256 后解压。产品检查更新使用 Electron net.fetch 以遵循系统网络配置；其输入类型比全局 fetch 更窄，注入接口已收窄到实际需要的 string。
+- 当前公网 GitHub API 返回限流；UI 自动化用固定响应验证成功/限流/离线，不把模拟响应宣称为在线查询成功。
+
 ## 2026-10-03 数据恢复能力
 
 续验发现：

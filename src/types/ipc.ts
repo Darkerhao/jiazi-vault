@@ -1,5 +1,6 @@
 import type { ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot } from '../../electron/contracts'
 import type { BackupStatus } from '../../electron/backup-status'
+import type { AppUpdate } from '../../electron/app-update'
 import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
 import type { AppSettings } from '../../electron/settings'
 import type { GeneratedPassword, PasswordOptions } from '../../electron/password-generator'
@@ -32,6 +33,9 @@ export interface VaultStatus {
 
 export interface IpcCommands {
   health_check: { args: undefined; result: string }
+  get_app_version: { args: undefined; result: string }
+  check_for_updates: { args: undefined; result: AppUpdate | null }
+  open_release_page: { args: undefined; result: void }
   get_desktop_status: { args: undefined; result: { shortcut: string; shortcutRegistered: boolean } }
   database_info: { args: undefined; result: { initialized: boolean; path: string } }
   get_vault_status: { args: undefined; result: VaultStatus }

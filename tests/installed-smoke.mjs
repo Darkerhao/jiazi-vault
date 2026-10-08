@@ -6,7 +6,7 @@ import { createVaultThroughUI } from './onboarding.mjs'
 
 const root = process.cwd(), output = resolve(root, 'output/playwright')
 const data = resolve(output, `installed-data-${Date.now()}`)
-const executablePath = resolve(root, 'output/windows-install/Keystill.exe')
+const executablePath = resolve(process.env.JIAZI_INSTALLED_EXE || resolve(root, 'output/windows-install/Keystill.exe'))
 await mkdir(data, { recursive: true })
 const report = [], errors = []
 let application, page

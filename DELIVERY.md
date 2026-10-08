@@ -1,5 +1,26 @@
 # 交付与验收
 
+## 依赖维护、更新入口与安装验证（2026-10-06）
+
+- Electron 更新到 44.5.1；依赖按现有主版本范围刷新，未增加生产依赖、全局 overrides 或审计白名单。审计由 14 条降至 1 条中危，生产依赖为 0。`http-cache-semantics` 的审计建议暂未列出补丁，但 registry 已有 4.3.0，锁文件升级后该告警消失。
+- 剩余 `sprintf-js@1.1.3`（[GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c)）来自 electron-builder → @electron/get → global-agent → roarr；公开问题为不受限精度格式串导致异常。已检查当前 roarr/global-agent 调用：工具链使用固定日志模板，未发现保险库数据进入格式串的路径。该依赖无修复版本，继续保留告警；这不是不存在任何可利用路径的保证。
+- `pnpm audit:ci` 对生产依赖中危及以上、全量依赖高危及以上返回失败；中危工具链问题继续显示，registry 错误也不忽略。PR/dev 检查及 main 版本准备前均执行。
+- Windows Hello 改为 `net10.0-windows10.0.19041.0`；去掉 .NET 9.0.20 固定运行时，随 .NET 10 SDK 发布自包含运行时。CI 使用 10.0.x，本次 SDK 10.0.401 / runtime 10.0.12。辅助程序仅返回 OS 认证结果，接口和密钥存储协议保持一致。
+- 设置页提供版本、主动检查、纯文本更新说明、固定官方下载页。主进程使用 Electron 网络栈，10 秒超时，拒绝重定向，不发送 cookie 或保险库数据；网络失败/限流可重试。不使用自动更新框架。
+- 发布流程在 Windows 打包后下载上一正式版 NSIS，隔离安装 → 用旧程序创建库和备份 → 同目录覆盖安装新版本 → 验证旧库、项目、回收站、历史、旧备份及恢复快照 → 运行现有安装和恢复测试 → 卸载。任一步失败阻断产物发布，截图/报告保留 7 天。首次发布明确跳过跨版本部分，API/下载失败不降级跳过。
+
+本轮已通过：71 项单元测试、类型检查、完整构建、9 组桌面回归、冻结锁文件安装和 CI 审计。工作流 YAML、发布依赖顺序及 PowerShell 语法检查通过；也在未安装 node_modules 的隔离目录验证了版本准备前的审计命令。
+
+Windows 实测：旧 0.1.2 NSIS → 同目录安装当前 0.1.8 本地构建，旧库/项目/回收站、旧备份、恢复前快照、历史、真实一分钟清理、重启、修改主密码、自动备份/恢复界面和更新入口全部通过。最后卸载退出码 0，程序文件和安装登记均已移除。证据：`output/playwright/package-install-report.json`、`output/playwright/upgrade-d347965e1e264bd398d17b033d9540f6/verify-report.json` 及各桌面报告。
+
+用户参与的真实 Windows Hello：打包程序在 .NET 10 下启用登记、重启免主密码解锁、取消后保持锁定、主密码解锁及删除登记后拒绝快捷解锁全部通过；隔离测试登记已清除。证据：`output/playwright/biometric-smoke-report.json`。这是实际打包程序认证，不是锁屏/休眠实测。
+
+本地验证产物：`release/keystill-0.1.8-win-x64.exe`，128,242,642 字节，SHA-256 `D103874C36608479E2C7C1640CC2C386D2FB1A5269362BC8076926A79E0531E2`。同目录也生成便携 EXE 和 ZIP。保持仓库版本 0.1.8，未提交、推送或发布；这份构建不是已发布的同版本文件。
+
+边界：安装包实测仍为 NotSigned；WinRT IL2104 裁剪警告仍在。GitHub Runner、macOS/Linux 实机与正式签名未验收。公共 GitHub API 本机请求受到限流，更新成功/无新版/离线/限流的 UI 用固定响应验证，未宣称真实在线查询成功或浏览器实际打开成功。正式查询采用系统网络栈；外部地址在主进程固定。
+
+官方依据：[Electron 44.5.1](https://releases.electronjs.org/release/v44.5.1)、[.NET 10 发布元数据](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json)、[Electron net.fetch](https://github.com/electron/electron/blob/v44.5.1/docs/api/net.md)。
+
 ## 数据恢复能力（2026-10-03，源码变更）
 
 - 自动加密备份：默认关闭，用户选择目录后在独立文件夹创建首份；解锁期间每分钟检查、有修改且间隔 15 分钟时备份，保留最近 10 份。缺失文件检测、错误状态、立即重试、停用/更换目录保留原文件。目录属于设备配置，不写入可移植备份。
@@ -88,9 +109,9 @@ git pull --ff-only origin dev
 
 仅向 `main` 推送或合入代码时自动运行此工作流；PR 事件、`dev` 等其他分支及标签推送均不触发。配置位于默认分支后，可通过 **Run workflow** 选择 `main` 手动发版；选择其他分支时全部任务跳过。构建必须等待 `main` 版本准备成功，统一检出本次发布提交；不再为其他分支提供测试、打包或 Artifacts。
 
-构建使用 Node.js 24、`packageManager` 固定的 pnpm 9.12.1、仓库锁文件，以及 Windows 上的 .NET 9 SDK；复用现有 `pnpm test` 和 `pnpm electron:build`。版本准备、发布和分支同步任务使用 GitHub 自动提供的 `GITHUB_TOKEN` 并声明 `contents: write`，构建任务保持只读权限，无需个人令牌；仓库规则须允许工作流写入 `main`、`dev` 和版本标签。[GitHub 的令牌触发规则](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)使机器人的版本推送及 `dev` 同步推送不会再次启动工作流，构建、发布和同步直接在本次工作流中继续。建议为 `main` 配置 PR 合并；当前脚本直接回写版本提交，`contents: write` 不会绕过分支保护，启用保护时必须同时配置允许发版身份写入的规则，否则版本准备或分支同步会失败。此工作流仅在合入 `main` 后构建，不应将它设为 PR 合并前的必需检查。本次修改不更改 GitHub 默认分支、分支保护或仓库权限。Runner 架构与目标包一致，使用其本机安装的 Electron 和 Argon2 原生依赖。
+构建使用 Node.js 24、`packageManager` 固定的 pnpm 9.12.1、仓库锁文件，以及 Windows 上的 .NET 10 SDK；复用现有 `pnpm test` 和 `pnpm electron:build`。版本准备、发布和分支同步任务使用 GitHub 自动提供的 `GITHUB_TOKEN` 并声明 `contents: write`，构建任务保持只读权限，无需个人令牌；仓库规则须允许工作流写入 `main`、`dev` 和版本标签。[GitHub 的令牌触发规则](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)使机器人的版本推送及 `dev` 同步推送不会再次启动工作流，构建、发布和同步直接在本次工作流中继续。建议为 `main` 配置 PR 合并；当前脚本直接回写版本提交，`contents: write` 不会绕过分支保护，启用保护时必须同时配置允许发版身份写入的规则，否则版本准备或分支同步会失败。此工作流仅在合入 `main` 后构建，不应将它设为 PR 合并前的必需检查。本次修改不更改 GitHub 默认分支、分支保护或仓库权限。Runner 架构与目标包一致，使用其本机安装的 Electron 和 Argon2 原生依赖。
 
-CI 在安装依赖后执行 `pnpm exec install-electron`，下载锁定版本、当前平台和架构的官方 Electron 二进制，再由打包器复用 `node_modules/electron/dist`。[Electron 44.2.0 的安装说明](https://github.com/electron/electron/blob/v44.2.0/docs/tutorial/installation.md#binary-download-step)明确二进制在首次运行 Electron 时才自动下载，也可用此命令显式安装；仅执行 `pnpm install` 不会生成该目录。缺少这一步会使全新 Runner 的四个平台都在打包时失败。版本提交和标签创建成功仅表示准备完成，所有安装包打包成功后才会公开 Release。
+CI 在安装依赖后执行 `pnpm exec install-electron`，下载锁定版本、当前平台和架构的官方 Electron 二进制，再由打包器复用 `node_modules/electron/dist`。[Electron 44.5.1 的安装说明](https://github.com/electron/electron/blob/v44.5.1/docs/tutorial/installation.md#binary-download-step)明确二进制在首次运行 Electron 时才自动下载，也可用此命令显式安装；仅执行 `pnpm install` 不会生成该目录。缺少这一步会使全新 Runner 的四个平台都在打包时失败。版本提交和标签创建成功仅表示准备完成，所有安装包打包成功后才会公开 Release。
 
 当前产物没有开发者证书签名：Windows 可能显示未知发布者；macOS 只做 ad-hoc 临时签名，关闭 hardened runtime，未做 Apple 公证，系统可能阻止直接打开。面向正式用户分发的证书签名、公证和 Touch ID 实机验收需另行配置、验证。Linux 使用前需赋予 AppImage 执行权限，系统需支持 AppImage/FUSE。现有 Electron 工程只覆盖桌面端，不包含 Android/iOS 安装包。
 
