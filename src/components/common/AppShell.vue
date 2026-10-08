@@ -59,9 +59,9 @@ function newItem() {
 
 <template>
   <n-layout class="app-shell" has-sider>
-    <n-layout-sider v-model:collapsed="collapsed" bordered :width="240" :collapsed-width="64" show-trigger collapse-mode="width" content-style="display: flex; flex-direction: column; min-height: 100%">
+    <n-layout-sider v-model:collapsed="collapsed" bordered :width="240" :collapsed-width="64" show-trigger collapse-mode="width" content-style="display: flex; flex-direction: column; height: 100%">
       <div class="brand"><img class="brand-mark" src="/brand/icon.svg" alt="" width="32" height="32"><div v-if="!collapsed" class="brand-name"><n-text strong>Keystill</n-text><n-text depth="3" class="brand-caption">密序 · 本地凭证管理</n-text></div></div>
-      <n-menu :collapsed="collapsed" :collapsed-width="64" :value="selectedMenu" :options="menuOptions" />
+      <n-menu class="sider-menu" :collapsed="collapsed" :collapsed-width="64" :value="selectedMenu" :options="menuOptions" />
       <div class="sider-footer"><n-button quaternary block aria-label="锁定保险库" @click="lock"><template #icon><n-icon><lock-closed-outline /></n-icon></template><span v-if="!collapsed">锁定保险库</span></n-button></div>
     </n-layout-sider>
     <n-layout>
@@ -79,11 +79,12 @@ function newItem() {
 
 <style scoped>
 .app-shell { height: 100vh; }
-.brand { height: 76px; display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 19px; overflow: hidden; }
+.brand { height: 76px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 19px; overflow: hidden; }
 .brand-mark { display: block; width: 32px; height: 32px; flex-shrink: 0; }
 .brand-name { display: flex; flex-direction: column; white-space: nowrap; line-height: 1.4; }
 .brand-caption { font-size: 10px; letter-spacing: .6px; margin-top: 2px; }
-.sider-footer { margin-top: auto; padding: 14px 12px; }
+.sider-menu { flex: 1; min-height: 0; overflow-y: auto; }
+.sider-footer { flex-shrink: 0; padding: 14px 12px; }
 .topbar { display: flex; align-items: center; gap: 14px; padding: 0 24px; height: 64px; }
 .search-input { max-width: 560px; flex: 1; }
 .global-search { margin-left: auto; }
