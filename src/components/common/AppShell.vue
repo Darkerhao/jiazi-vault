@@ -85,7 +85,7 @@ function newItem() {
 .brand-caption { font-size: 10px; letter-spacing: .6px; margin-top: 2px; }
 .sider-menu { flex: 1; min-height: 0; overflow-y: auto; }
 .sider-footer { flex-shrink: 0; padding: 14px 12px; }
-.topbar { display: flex; align-items: center; gap: 14px; padding: 0 24px; height: 64px; }
+.topbar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 14px; padding: 0 24px; height: 64px; }
 .search-input { max-width: 560px; flex: 1; }
 .global-search { margin-left: auto; }
 .shortcut { margin-left: 8px; font-size: 11px; opacity: .65; }
