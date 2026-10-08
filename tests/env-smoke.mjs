@@ -1,3 +1,4 @@
+import { restoreFromBackup } from './backup-restore.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -154,7 +155,7 @@ try {
   assert.equal((await call('list_items', { trashed: true }))[0].id, summary.id)
   await call('create_backup')
   await call('delete_item', { id: summary.id, permanently: true })
-  await call('restore_backup', { password })
+  await restoreFromBackup(call, { password })
   await unlock()
   assert.equal((await call('list_items', { trashed: true }))[0].id, summary.id)
   await call('restore_item', { id: summary.id })

@@ -50,6 +50,13 @@ async function dialogs(options) {
     dialog.showOpenDialog = async () => ({ canceled: Boolean(values.cancelFile), filePaths: [values.path] })
   }, options)
 }
+async function exportUI(format) {
+  await page.getByRole('button', { name: '导出 JSON / CSV', exact: true }).click()
+  const modal = page.getByRole('dialog')
+  await modal.locator('.n-select').last().click()
+  await page.locator('.n-base-select-option').filter({ hasText: new RegExp(`^${format.toUpperCase()}$`) }).click()
+  await modal.getByRole('button', { name: /^确认导出 \d+ 条$/ }).click()
+}
 async function setDeleted(id, deletedAt) {
   await application.evaluate(async ({ app }, args) => {
     const { DatabaseSync } = process.getBuiltinModule('node:sqlite')
@@ -103,19 +110,19 @@ try {
   await section('设置')
   const jsonPath = resolve(data, 'export.json'), csvPath = resolve(data, 'export.csv')
   await dialogs({ response: 0, path: jsonPath })
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).click()
-  await page.getByRole('button', { name: '导出 JSON', exact: true }).waitFor({ state: 'visible' })
-  await page.waitForFunction(() => !document.body.innerText.includes('正在处理…'))
+  await exportUI('json')
+  await page.waitForFunction(() => !document.querySelector('.n-button--loading'))
   assert.ok(!(await readdir(data)).includes('export.json'))
   const canceled = await application.evaluate(() => globalThis.testDialogs)
   assert.equal(canceled.length, 1)
   assert.equal(canceled[0].defaultId, 0)
   assert.equal(canceled[0].cancelId, 0)
+  await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
   pass('export native warning defaults to cancel; cancellation writes no file')
 
   for (const [format, path] of [['json', jsonPath], ['csv', csvPath]]) {
     await dialogs({ path })
-    await page.getByRole('button', { name: `导出 ${format.toUpperCase()}`, exact: true }).click()
+    await exportUI(format)
     await page.getByText(`明文文件已保存：export.${format}`, { exact: true }).waitFor()
     assert.ok((await readFile(path, 'utf8')).includes('first-secret'))
     const choices = await application.evaluate(() => globalThis.testDialogs)

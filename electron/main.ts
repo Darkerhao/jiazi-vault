@@ -8,16 +8,16 @@ import { checkForUpdates, RELEASE_PAGE } from './app-update.js'
 import { openDatabase, purgeExpiredItems, type DatabaseState } from './database.js'
 import { clearKey, createVaultCredential, isVaultMetadata, type CreatedVaultCredential, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
 import { createItemStore, type ItemInput, type VaultItem } from './item-store.js'
-import { DEFAULT_SETTINGS, readSettings, writeSettings, type AppSettings } from './settings.js'
+import { DEFAULT_SETTINGS, DEFAULT_SEARCH_SHORTCUT, readSearchShortcut, writeSearchShortcut, readSettings, writeSettings, type AppSettings } from './settings.js'
 import { VaultSession } from './vault-session.js'
 import { ClipboardManager } from './clipboard-manager.js'
-import { assertBackupSize, createBackup, readBackup, restoreBackup } from './backup.js'
+import { assertBackupSize, createBackup, readBackup, restoreBackup, type RestoredBackup } from './backup.js'
 import { recoverDatabase } from './database-recovery.js'
 import { UnlockLimiter } from './unlock-limiter.js'
 import { createProjectStore, type ProjectInput } from './project-store.js'
 import { generatePassword, type PasswordOptions } from './password-generator.js'
 import { createDesktopControls } from './desktop.js'
-import { assertTransferFormat, exportPlaintext, parseImport, previewImport, importReviewed, type ImportRecord, type TransferFormat } from './transfer.js'
+import { assertTransferFormat, selectExportItems, exportPlaintext, parseImport, previewImport, importReviewed, type ImportRecord, type TransferFormat } from './transfer.js'
 import { replaceVaultPassword } from './vault-password.js'
 import { BiometricVault } from './biometric-vault.js'
 import { createBiometricProvider } from './biometric-provider.js'
@@ -25,6 +25,7 @@ import { ENV_MAX_BYTES, serializeEnv, validateEnvFields } from './env.js'
 import { writePrivateFile } from './private-file.js'
 import { automaticBackupStatus, runAutomaticBackup, setAutomaticBackupDirectory } from './automatic-backup.js'
 import { createRecoverySnapshot, listRecoverySnapshots, readRecoverySnapshot } from './recovery-snapshot.js'
+import type { ItemBatchAction, ExportScope } from './contracts.js'
 
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
@@ -37,6 +38,7 @@ let desktop: ReturnType<typeof createDesktopControls>
 let trashTimer: ReturnType<typeof setInterval> | undefined
 let backupTimer: ReturnType<typeof setInterval> | undefined
 let pendingImport: { token: string; revision: number; records: ImportRecord[] } | null = null
+let pendingRestore: { token: string; revision: number; name: string; path?: string; snapshotId?: string; backup?: RestoredBackup } | null = null
 let biometric: BiometricVault
 let itemStore: ReturnType<typeof createItemStore>
 let projects: ReturnType<typeof createProjectStore>
@@ -68,7 +70,7 @@ function isApplicationUrl(value: string) {
   } catch { return false }
 }
 
-const recoveryCommands = new Set(['health_check', 'get_app_version', 'check_for_updates', 'open_release_page', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'restore_backup', 'list_recovery_snapshots'])
+const recoveryCommands = new Set(['health_check', 'get_app_version', 'check_for_updates', 'open_release_page', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'select_backup_source', 'preview_backup', 'cancel_backup_restore', 'restore_backup', 'list_recovery_snapshots'])
 
 function handleIpc(channel: string, listener: Parameters<typeof ipcMain.handle>[1]) {
   ipcMain.handle(channel, (event, ...args) => {
@@ -171,6 +173,11 @@ function createWindow() {
 function registerIpcHandlers() {
   handleIpc('health_check', () => 'ok')
   handleIpc('get_app_version', () => app.getVersion())
+  handleIpc('set_search_shortcut', (_event, args: { shortcut: string | null }) => {
+    requireUnlocked()
+    const shortcut = writeSearchShortcut(requireDatabase().connection, args?.shortcut)
+    return desktop.configure(shortcut)
+  })
   handleIpc('check_for_updates', () => checkForUpdates(app.getVersion(), net.fetch))
   handleIpc('open_release_page', () => shell.openExternal(RELEASE_PAGE))
   handleIpc('get_desktop_status', () => desktop.status)
@@ -291,6 +298,11 @@ function registerIpcHandlers() {
   handleIpc('update_item', (_event, args: { item: VaultItem }) => {
     requireUnlocked()
     return itemStore.update(args?.item)
+  })
+  handleIpc('batch_items', (_event, args: { ids: string[]; action: ItemBatchAction }) => {
+    requireUnlocked()
+    cleanTrash()
+    return itemStore.batch(args?.ids, args?.action)
   })
   handleIpc('list_item_history', (_event, args: { id: string }) => {
     requireUnlocked()
@@ -423,16 +435,21 @@ async function automaticBackup(force = false) {
 }
 
 function registerTransferHandlers() {
-  handleIpc('export_plaintext', async (_event, args: { format: TransferFormat }) => {
+  handleIpc('export_plaintext', async (_event, args: { format: TransferFormat; scope?: ExportScope }) => {
     requireUnlocked()
     assertTransferFormat(args?.format)
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
     vaultOperationBusy = true
     const revision = session.revision
     try {
+      cleanTrash()
+      const selected = selectExportItems(itemStore.list(), args.scope)
+      const scope: ExportScope = selected.length ? { kind: 'items', ids: selected.map((item) => item.id) } : args.scope ?? { kind: 'all' }
+      const projectId = args.scope?.kind === 'project' ? args.scope.projectId : undefined
+      const scopeLabel = projectId ? `项目「${projects.list().find((project) => project.id === projectId)?.name ?? '未知项目'}」` : args.scope?.kind === 'items' ? '所选凭证' : '全部有效凭证'
       const confirmation = await dialog.showMessageBox(mainWindow, {
         type: 'warning', title: '导出明文凭证', message: '即将以明文导出密码、私钥及其他敏感信息。',
-        detail: '任何获得此文件的人都可以读取其中的凭证。仅导出有效凭证，不包含回收站。请妥善保管并在使用后删除明文文件。',
+        detail: `范围：${scopeLabel}，共 ${selected.length} 条。任何获得此文件的人都可以读取其中的凭证。仅导出有效凭证，不包含回收站。请妥善保管并在使用后删除明文文件。`,
         buttons: ['取消', '确认导出明文'], defaultId: 0, cancelId: 0, noLink: true,
       })
       if (confirmation.response !== 1) return null
@@ -446,7 +463,7 @@ function registerTransferHandlers() {
       })
       if (choice.canceled || !choice.filePath) return null
       assertRevision(revision)
-      const contents = exportPlaintext(requireDatabase().connection, requireUnlocked(), format)
+      const contents = exportPlaintext(requireDatabase().connection, requireUnlocked(), format, scope)
       const path = choice.filePath.toLowerCase().endsWith(`.${format}`) ? choice.filePath : `${choice.filePath}.${format}`
       await writeExport(path, contents, revision)
       return basename(path)
@@ -552,32 +569,63 @@ function registerBackupHandlers() {
       vaultOperationBusy = false
     }
   })
-  handleIpc('restore_backup', async (_event, args: { password: string; snapshotId?: string }) => {
-    assertPassword(args?.password)
+  handleIpc('select_backup_source', async (_event, args?: { snapshotId?: string }) => {
     if (vaultOperationBusy || !mainWindow) throw new Error('VAULT_BUSY')
     vaultOperationBusy = true
+    pendingRestore = null
     const revision = session.revision
     try {
-      let backup
-      if (args.snapshotId !== undefined) {
-        backup = await readRecoverySnapshot(app.getPath('userData'), args.snapshotId, args.password)
+      if (args?.snapshotId !== undefined) {
+        const snapshot = listRecoverySnapshots(app.getPath('userData')).find((entry) => entry.id === args.snapshotId)
+        if (!snapshot) throw new Error('INVALID_SNAPSHOT')
+        pendingRestore = { token: randomUUID(), revision, snapshotId: snapshot.id, name: `恢复前快照 · ${new Date(snapshot.createdAt).toLocaleString()}` }
       } else {
         const choice = await dialog.showOpenDialog(mainWindow, { title: '选择加密备份', filters, properties: ['openFile'] })
-        if (choice.canceled || !choice.filePaths[0]) return false
+        if (choice.canceled || !choice.filePaths[0]) return null
         const path = choice.filePaths[0]
         assertBackupSize((await stat(path)).size)
-        backup = await readBackup(await readFile(path, 'utf8'), args.password)
+        assertRevision(revision)
+        pendingRestore = { token: randomUUID(), revision, path, name: basename(path) }
       }
-      assertRevision(revision)
-      if (database && hasVault()) {
-        const confirmation = await dialog.showMessageBox(mainWindow, {
-          type: 'warning', title: '替换当前保险库',
-          message: '恢复将替换当前全部凭证、项目、回收站和设置。',
-          detail: '覆盖前将保留当前库的本机恢复快照，保存失败则停止恢复。恢复后使用所选备份或快照的主密码解锁。',
-          buttons: ['取消', '替换并恢复'], defaultId: 0, cancelId: 0, noLink: true,
-        })
-        if (confirmation.response !== 1) return false
+      return { token: pendingRestore.token, name: pendingRestore.name }
+    } finally { vaultOperationBusy = false }
+  })
+  handleIpc('cancel_backup_restore', (_event, args: { token: string }) => {
+    if (pendingRestore?.token === args?.token) pendingRestore = null
+  })
+  handleIpc('preview_backup', async (_event, args: { token: string; password: string }) => {
+    assertPassword(args?.password)
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
+    const source = pendingRestore
+    if (!source || source.token !== args?.token) throw new Error('INVALID_BACKUP_PREVIEW')
+    assertRevision(source.revision)
+    source.backup = undefined
+    vaultOperationBusy = true
+    try {
+      let backup: RestoredBackup
+      if (source.snapshotId) backup = await readRecoverySnapshot(app.getPath('userData'), source.snapshotId, args.password)
+      else {
+        assertBackupSize((await stat(source.path!)).size)
+        backup = await readBackup(await readFile(source.path!, 'utf8'), args.password)
       }
+      assertRevision(source.revision)
+      if (pendingRestore !== source) throw new Error('INVALID_BACKUP_PREVIEW')
+      source.backup = backup
+      const trashedCount = backup.items.filter((item) => item.deleted_at !== null).length
+      return { token: source.token, name: source.name, itemCount: backup.items.length - trashedCount, trashedCount, projectCount: backup.projects.length, historyCount: backup.history.length }
+    } catch (error) {
+      if (error instanceof Error && error.message === 'BACKUP_TOO_LARGE') throw error
+      throw new Error('BACKUP_RESTORE_FAILED')
+    } finally { vaultOperationBusy = false }
+  })
+  handleIpc('restore_backup', (_event, args: { token: string }) => {
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
+    const source = pendingRestore
+    if (!source?.backup || source.token !== args?.token) throw new Error('INVALID_BACKUP_PREVIEW')
+    const backup = source.backup, revision = source.revision
+    pendingRestore = null
+    vaultOperationBusy = true
+    try {
       assertRevision(revision)
       if (database) {
         if (hasVault()) createRecoverySnapshot(database.connection, app.getPath('userData'))
@@ -604,6 +652,7 @@ else app.whenReady().then(() => {
   clipboardManager = new ClipboardManager(clipboard, () => settings.clipboardClearTimeout)
   session = new VaultSession(() => settings.autoLockMinutes, () => {
     pendingImport = null
+    pendingRestore = null
     if (mainWindow && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('vault_locked')
     void clipboardManager.clearOnLock().catch(() => {})
   })
@@ -618,7 +667,7 @@ else app.whenReady().then(() => {
   backupTimer.unref()
   registerIpcHandlers()
   createWindow()
-  desktop = createDesktopControls(() => mainWindow ?? createWindow(), () => session.lock())
+  desktop = createDesktopControls(() => mainWindow ?? createWindow(), () => session.lock(), database ? readSearchShortcut(database.connection) : DEFAULT_SEARCH_SHORTCUT)
 
   app.on('activate', () => {
     desktop.show()

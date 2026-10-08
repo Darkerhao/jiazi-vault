@@ -1,3 +1,4 @@
+import { restoreFromBackup } from './backup-restore.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -129,7 +130,7 @@ try {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
     dialog.showMessageBox = async () => ({ response: 1 })
   }, backupPath)
-  assert.equal(await call('restore_backup', { password: 'experience-fixture-password' }), true)
+  assert.equal(await restoreFromBackup(call, { password: 'experience-fixture-password' }), true)
   await page.getByRole('heading', { name: '解锁保险库', exact: true }).waitFor()
   await page.getByPlaceholder('主密码', { exact: true }).fill('experience-fixture-password')
   await page.getByRole('button', { name: '解锁', exact: true }).click()

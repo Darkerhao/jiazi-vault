@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NAlert, NButton, NCard, NForm, NFormItem, NSelect, NText } from 'naive-ui'
+import { NAlert, NButton, NCard, NForm, NFormItem, NInput, NSelect, NSpace, NText } from 'naive-ui'
 import AppShell from '../components/common/AppShell.vue'
 import BackupRestore from '../components/common/BackupRestore.vue'
 import PlaintextTransfer from '../components/common/PlaintextTransfer.vue'
@@ -10,11 +10,38 @@ import BackupStatus from '../components/common/BackupStatus.vue'
 import AutomaticBackup from '../components/common/AutomaticBackup.vue'
 import AppUpdates from '../components/common/AppUpdates.vue'
 import { callCommand } from '../services/ipc'
-import type { AppSettings } from '../../electron/settings'
+import { DEFAULT_SEARCH_SHORTCUT, validateSearchShortcut, type AppSettings } from '../../electron/settings'
 
 const settings = useSettingsStore()
-const shortcut = ref<{ shortcut: string; shortcutRegistered: boolean } | null>(null)
-onMounted(async () => { shortcut.value = await callCommand('get_desktop_status') })
+const shortcut = ref<{ shortcut: string | null; shortcutRegistered: boolean } | null>(null)
+const shortcutDraft = ref<string | null>(null), shortcutError = ref(''), shortcutBusy = ref(false)
+const shortcutLabel = (value: string | null) => value?.replace('CommandOrControl', navigator.platform.includes('Mac') ? '⌘' : 'Ctrl').replace(/\+/g, ' + ') ?? '已停用'
+onMounted(async () => {
+  try { shortcut.value = await callCommand('get_desktop_status'); shortcutDraft.value = shortcut.value.shortcut }
+  catch { shortcutError.value = '读取快捷键失败，请重新进入设置。' }
+})
+function recordShortcut(event: KeyboardEvent) {
+  if (event.key === 'Tab') return
+  event.preventDefault()
+  event.stopPropagation()
+  if (!(event.ctrlKey || event.metaKey) || !(event.altKey || event.shiftKey) || !/^(Key[A-Z]|Digit[0-9])$/.test(event.code)) {
+    shortcutError.value = '请按 Ctrl（macOS 为 ⌘）+ Alt 或 Shift + 字母/数字。'
+    return
+  }
+  const value = `CommandOrControl+${event.altKey ? 'Alt+' : ''}${event.shiftKey ? 'Shift+' : ''}${event.code.replace(/^(Key|Digit)/, '')}`
+  try { validateSearchShortcut(value) }
+  catch { shortcutError.value = '此组合已用于应用内操作，请使用其他快捷键。'; return }
+  shortcutError.value = ''
+  shortcutDraft.value = value
+}
+async function saveShortcut(value: string | null) {
+  if (shortcutBusy.value) return
+  shortcutBusy.value = true
+  shortcutError.value = ''
+  try { shortcut.value = await callCommand('set_search_shortcut', { shortcut: value }); shortcutDraft.value = shortcut.value.shortcut }
+  catch { shortcutError.value = '保存快捷键失败，请重试。' }
+  finally { shortcutBusy.value = false }
+}
 const themeOptions = [
   { label: '跟随系统', value: 'system' },
   { label: '浅色', value: 'light' },
@@ -58,8 +85,15 @@ function updateAutoLock(value: number) {
     </n-card>
     <PlaintextTransfer />
     <n-card title="快捷键与托盘" class="settings-card backup-card" bordered>
-      <n-alert v-if="shortcut && !shortcut.shortcutRegistered" type="warning">{{ shortcut.shortcut }} 注册失败，可能已被其他应用占用。可使用托盘菜单或应用内 Ctrl K 打开搜索。</n-alert>
-      <n-text v-else-if="shortcut">全局快捷搜索：{{ shortcut.shortcut }}</n-text>
+      <n-alert v-if="shortcutError" type="error">{{ shortcutError }}</n-alert>
+      <n-alert v-if="shortcut?.shortcut && !shortcut.shortcutRegistered" type="warning">{{ shortcutLabel(shortcut.shortcut) }} 注册失败，可能已被其他应用占用。请更换快捷键；也可使用托盘菜单或应用内 Ctrl K。</n-alert>
+      <n-text v-if="shortcut">全局快捷搜索：{{ shortcutLabel(shortcut.shortcut) }}</n-text>
+      <n-input :value="shortcutLabel(shortcutDraft)" readonly placeholder="点击后按下新快捷键" :input-props="{ 'aria-label': '全局搜索快捷键' }" :disabled="shortcutBusy" class="shortcut-input" @keydown="recordShortcut" />
+      <n-space>
+        <n-button :loading="shortcutBusy" :disabled="!shortcut" @click="saveShortcut(shortcutDraft)">保存快捷键</n-button>
+        <n-button :disabled="shortcutBusy || !shortcut" @click="saveShortcut(null)">停用</n-button>
+        <n-button :disabled="shortcutBusy || !shortcut" @click="saveShortcut(DEFAULT_SEARCH_SHORTCUT)">恢复默认</n-button>
+      </n-space>
       <p>应用内：Ctrl K 搜索 · Ctrl N 新建凭证 · Ctrl Shift N 新建项目 · Ctrl G 生成密码 · Ctrl Shift L 锁定（macOS 使用 ⌘）。</p>
       <n-text depth="3">关闭窗口会锁定并留在系统托盘。双击托盘图标可重新打开；使用托盘菜单“退出”结束应用。</n-text>
     </n-card>
@@ -72,4 +106,5 @@ function updateAutoLock(value: number) {
 .settings-card { max-width: 700px; }
 .settings-error { margin-bottom: 16px; }
 .backup-card { margin-top: 24px; }
+.shortcut-input { margin: 12px 0; }
 </style>

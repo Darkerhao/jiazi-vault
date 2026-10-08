@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
-import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, NText, useDialog, useMessage } from 'naive-ui'
+import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, NText, useMessage } from 'naive-ui'
+import { useDiscardChanges } from '../../composables/useDiscardChanges'
 import { useVaultStore } from '../../stores/vault'
 import { useClipboard } from '../../composables/useClipboard'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_OPTIONS, TYPE_FIELDS, type FieldDef } from '../../utils/item-fields'
@@ -15,12 +16,11 @@ import PasswordGenerator from '../common/PasswordGenerator.vue'
 import { projectService } from '../../services/project'
 import { validExpiry, expiryState } from '../../../electron/expiry'
 
-const props = defineProps<{ show: boolean; item: VaultItem | null; draft?: { type?: ItemType; password?: string; projectId?: string; environment?: Environment } }>()
-const emit = defineEmits<{ (event: 'close'): void }>()
+const props = defineProps<{ show: boolean; item: VaultItem | null; draft?: Partial<ItemInput> }>()
+const emit = defineEmits<{ close: []; duplicate: [item: ItemInput] }>()
 
 const vault = useVaultStore()
 const message = useMessage()
-const dialog = useDialog()
 const { copy } = useClipboard()
 const auth = useAuthStore()
 const importing = ref(false), exporting = ref(false)
@@ -50,7 +50,6 @@ async function createProject() {
 let disposed = false
 onBeforeUnmount(() => {
   disposed = true
-  dismissDiscard?.()
   initialSnapshot.value = ''
   extraFields.value = []
   for (const key of Object.keys(values)) delete values[key]
@@ -68,8 +67,6 @@ const revealedFields = reactive(new Set<string>())
 const extraFields = ref<{ id: number; name: string; value: string; visible: boolean }[]>([])
 let nextFieldId = 0
 const initialSnapshot = ref('')
-let discardDecision: Promise<boolean> | null = null
-let dismissDiscard: (() => void) | undefined
 
 function snapshot() {
   return JSON.stringify({ type: type.value, title: title.value, environment: environment.value, projectId: projectId.value,
@@ -77,21 +74,8 @@ function snapshot() {
     projectName: creatingProject.value ? projectName.value : '' })
 }
 
-function confirmDiscard(changed = snapshot() !== initialSnapshot.value): Promise<boolean> {
-  if (!auth.unlocked || viewing.value) return Promise.resolve(true)
-  if (saving.value || exporting.value || projectSaving.value) return Promise.resolve(false)
-  if (!changed) return Promise.resolve(true)
-  if (discardDecision) return discardDecision
-  discardDecision = new Promise<boolean>((resolve) => {
-    const prompt = dialog.warning({
-      title: '放弃未保存的修改？', content: '继续操作将丢弃未保存的内容。',
-      positiveText: '放弃修改', negativeText: '继续编辑',
-      onPositiveClick: () => resolve(true), onAfterLeave: () => resolve(false),
-    })
-    dismissDiscard = () => { prompt.destroy(); resolve(false) }
-  }).finally(() => { discardDecision = null; dismissDiscard = undefined })
-  return discardDecision
-}
+const confirmDiscard = useDiscardChanges(() => !viewing.value && snapshot() !== initialSnapshot.value,
+  () => saving.value || exporting.value || projectSaving.value)
 
 async function requestClose() {
   if (await confirmDiscard() && !disposed) emit('close')
@@ -110,7 +94,7 @@ const fields = computed<FieldDef[]>(() => {
   const result = [...TYPE_FIELDS[type.value]]
   // Imported credentials may contain common fields outside their type's template.
   for (const field of [...TYPE_FIELDS.password, ...TYPE_FIELDS.server]) {
-    if (field.target === 'field' || props.item?.[field.target] === undefined) continue
+    if (field.target === 'field' || (props.item ?? props.draft)?.[field.target] === undefined) continue
     if (!result.some((entry) => entry.target === field.target)) result.push(field)
   }
   return result
@@ -172,31 +156,30 @@ watch(
       tags.value = item.tags?.join(', ') ?? ''
     } else {
       type.value = props.draft?.type ?? 'login'
-      title.value = ''
+      title.value = props.draft?.title ?? ''
       environment.value = props.draft?.environment ?? null
       projectId.value = props.draft?.projectId ?? null
-      tags.value = ''
+      tags.value = props.draft?.tags?.join(', ') ?? ''
     }
-    resetValues(item)
-    if (!item && props.draft?.password) values.password = props.draft.password
+    resetValues(item ?? props.draft ?? null)
     initialSnapshot.value = snapshot()
   },
   { immediate: true },
 )
 
-function resetValues(item: VaultItem | null) {
+function resetValues(item: Partial<ItemInput> | null) {
   revealedFields.clear()
   for (const key of Object.keys(values)) delete values[key]
   for (const field of fields.value) {
     values[field.key] = readField(item, field)
-    if (!item && field.sensitive) revealedFields.add(field.key)
+    if (!props.item && field.sensitive && !values[field.key]) revealedFields.add(field.key)
   }
   const known = new Set(fields.value.filter((field) => field.target === 'field').map((field) => field.key))
   extraFields.value = Object.entries(item?.fields ?? {}).filter(([name]) => !known.has(name))
     .map(([name, value]) => ({ id: nextFieldId++, name, value, visible: false }))
 }
 
-function readField(item: VaultItem | null, field: FieldDef): string | null {
+function readField(item: Partial<ItemInput> | null, field: FieldDef): string | null {
   if (!item) return null
   if (field.target === 'field') return item.fields?.[field.key] ?? null
   if (field.target === 'port') return item.port != null ? String(item.port) : null
@@ -362,9 +345,10 @@ async function save() {
       </n-form-item>
     </n-form>
     <template #footer>
-      <n-space justify="end">
+      <n-space justify="end" :wrap-item="false">
         <n-button :disabled="saving || exporting" @click="requestClose">{{ viewing ? '关闭' : '取消' }}</n-button>
         <n-button v-if="viewing && !item?.deletedAt" type="primary" @click="viewing = false">编辑凭证</n-button>
+        <n-button v-if="viewing && !item?.deletedAt" @click="emit('duplicate', { ...buildItem(), title: `${title}（副本）`, favorite: false })">创建副本</n-button>
         <n-button v-if="!viewing" type="primary" :loading="saving" :disabled="invalid || exporting || creatingProject" @click="save">保存</n-button>
       </n-space>
     </template>

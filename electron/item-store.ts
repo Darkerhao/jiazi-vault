@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { decryptValue, encryptValue, type EncryptedValue } from './vault-crypto.js'
 
-import type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary, ItemHistorySummary } from './contracts.js'
+import type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary, ItemHistorySummary, ItemBatchAction } from './contracts.js'
 import { ITEM_TYPES } from './contracts.js'
 import { validateEnvFields } from './env.js'
 export type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from './contracts.js'
@@ -66,6 +66,7 @@ function parseTags(raw: string): string[] | undefined {
 }
 
 export interface ItemStore {
+  batch(ids: string[], action: ItemBatchAction): number
   listHistory(id: string): ItemHistorySummary[]
   getHistory(id: string, historyId: number): VaultItem
   restoreHistory(id: string, historyId: number): VaultItemSummary
@@ -162,7 +163,7 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
     const now = Date.now()
     const { secret, hasSecret } = buildSecret(item)
     const history = JSON.stringify(encryptValue(getKey(), JSON.stringify(previous)))
-    db.exec('BEGIN IMMEDIATE')
+    db.exec('SAVEPOINT item_update')
     try {
       db.prepare('INSERT INTO item_history (item_id, saved_at, payload) VALUES (?, ?, ?)').run(item.id, now, history)
       updateStmt.run(
@@ -171,12 +172,45 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
         JSON.stringify(item.tags ?? []), secret, hasSecret ? 1 : 0, now, item.id,
       )
       db.prepare('DELETE FROM item_history WHERE item_id = ? AND id NOT IN (SELECT id FROM item_history WHERE item_id = ? ORDER BY id DESC LIMIT 20)').run(item.id, item.id)
-      db.exec('COMMIT')
-    } catch (error) { db.exec('ROLLBACK'); throw error }
+      db.exec('RELEASE item_update')
+    } catch (error) { db.exec('ROLLBACK TO item_update; RELEASE item_update'); throw error }
     return rowToSummary(selectById.get(item.id) as unknown as ItemRow)
   }
 
   return {
+    batch(ids, action) {
+      getKey()
+      if (!Array.isArray(ids) || !ids.length || ids.some((id) => typeof id !== 'string' || !id)
+        || !action || !['project', 'environment', 'trash', 'restore'].includes(action.type)) throw new Error('INVALID_DATA')
+      if (action.type === 'project' && action.projectId !== null && (typeof action.projectId !== 'string' || !action.projectId)) throw new Error('INVALID_DATA')
+      if (action.type === 'environment' && action.environment !== null && !['development', 'testing', 'staging', 'production', 'other'].includes(action.environment)) throw new Error('INVALID_DATA')
+      let changed = 0
+      db.exec('SAVEPOINT item_batch')
+      try {
+        for (const id of new Set(ids)) {
+          const row = selectById.get(id) as unknown as ItemRow | undefined
+          if (!row) throw new Error('ITEM_NOT_FOUND')
+          if ((action.type === 'restore') !== (row.deleted_at !== null)) throw new Error('ITEM_STATE_CHANGED')
+          if (action.type === 'trash') softDeleteStmt.run(Date.now(), id)
+          else if (action.type === 'restore') restoreStmt.run(id)
+          else {
+            const item = rowToItem(row)
+            if (action.type === 'project') {
+              if (item.projectId === (action.projectId ?? undefined)) continue
+              item.projectId = action.projectId ?? undefined
+            } else {
+              if (item.type === 'env' && action.environment === null) throw new Error('ENVIRONMENT_REQUIRED')
+              if (item.environment === (action.environment ?? undefined)) continue
+              item.environment = action.environment ?? undefined
+            }
+            update(item)
+          }
+          changed++
+        }
+        db.exec('RELEASE item_batch')
+        return changed
+      } catch (error) { db.exec('ROLLBACK TO item_batch; RELEASE item_batch'); throw error }
+    },
     listHistory(id) {
       getKey()
       return db.prepare('SELECT id, saved_at FROM item_history WHERE item_id = ? ORDER BY id DESC').all(id)

@@ -106,7 +106,7 @@ try {
   assert.equal(await select.inputValue(), 'primary')
   await select.selectOption('host')
   await search.focus()
-  await page.keyboard.press('Control+c')
+  await page.keyboard.press('Control+Shift+c')
   await page.waitForFunction(() => !document.querySelector('.n-button--loading'))
   assert.equal(await clipboard(), 'server.fixture.test')
   await search.fill('没有匹配项')

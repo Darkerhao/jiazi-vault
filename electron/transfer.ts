@@ -3,7 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { createItemStore, validateItemInput, type ItemInput } from './item-store.js'
 import { createProjectStore, validateProject } from './project-store.js'
 
-import type { TransferFormat, ImportPreviewRow } from './contracts.js'
+import type { TransferFormat, ImportPreviewRow, ExportScope, VaultItemSummary } from './contracts.js'
 export type { TransferFormat } from './contracts.js'
 export type TransferItem = Omit<ItemInput, 'projectId'> & {
   project?: string
@@ -126,10 +126,24 @@ export function readPlaintext(contents: string, format: TransferFormat): Transfe
   return records.map((record) => record.item!)
 }
 
-function transferItems(db: DatabaseSync, key: Buffer): TransferItem[] {
+export function selectExportItems(items: VaultItemSummary[], scope: ExportScope = { kind: 'all' }): VaultItemSummary[] {
+  if (!scope || !['all', 'project', 'items'].includes(scope.kind)) throw new Error('INVALID_EXPORT_SCOPE')
+  if (scope.kind === 'all') return items
+  if (scope.kind === 'project') {
+    if (typeof scope.projectId !== 'string' || !scope.projectId) throw new Error('INVALID_EXPORT_SCOPE')
+    return items.filter((item) => item.projectId === scope.projectId)
+  }
+  if (!Array.isArray(scope.ids) || !scope.ids.length || scope.ids.some((id) => typeof id !== 'string' || !id)) throw new Error('INVALID_EXPORT_SCOPE')
+  const ids = new Set(scope.ids)
+  const selected = items.filter((item) => ids.has(item.id))
+  if (selected.length !== ids.size) throw new Error('EXPORT_ITEMS_CHANGED')
+  return selected
+}
+
+function transferItems(db: DatabaseSync, key: Buffer, scope?: ExportScope): TransferItem[] {
   const store = createItemStore(db, () => key)
   const projects = new Map(createProjectStore(db).list().map((project) => [project.id, project.name]))
-  return store.list().map((summary): TransferItem => {
+  return selectExportItems(store.list(), scope).map((summary): TransferItem => {
     const { id, projectId, deletedAt, ...item } = store.get(summary.id)!
     return { ...item, project: projectId ? projects.get(projectId) : undefined }
   })
@@ -159,9 +173,9 @@ export function importReviewed(db: DatabaseSync, key: Buffer, records: ImportRec
   return importPlaintext(db, key, records.filter((record, i) => record.item && (!skipDuplicates || !preview.rows[i].duplicate)).map((record) => record.item!))
 }
 
-export function exportPlaintext(db: DatabaseSync, key: Buffer, format: TransferFormat): string {
+export function exportPlaintext(db: DatabaseSync, key: Buffer, format: TransferFormat, scope?: ExportScope): string {
   assertTransferFormat(format)
-  const values = transferItems(db, key)
+  const values = transferItems(db, key, scope)
   if (format === 'json') return JSON.stringify(values, null, 2)
   return '\uFEFF' + [COLUMNS.join(','), ...values.map((item) => COLUMNS.map((column) => csvCell(item[column])).join(','))].join('\r\n') + '\r\n'
 }

@@ -150,3 +150,12 @@
 - `vaultService.getItem(id, false)` 可按需获取完整字段而不记录访问；快捷搜索只展示字段标签，成功复制继续调用 useClipboard.copy 更新使用记录与主进程清理计时。
 - `QuickSearch.vue` 原 watch(results) 无条件重置索引；copy 后 applyUsage 更新 items 就会触发。现按原选中 ID 找新索引，新增真实剪贴板测试覆盖非首行连续复制。
 - 未扩展凭证历史和批量整理。当前项目创建是独立持久化操作，取消凭证不撤销已成功创建的项目，符合已有项目生命周期。
+## 2026-10-08 当前实现依据
+
+- QuickSearch 接管输入框 Ctrl+C；原搜索按更新时间顺序截断 50 条，隔离运行已复现完全匹配被排除。
+- 全局 Ctrl+Shift+P 固定注册；采用可更改/关闭的设备设置，默认 Ctrl+Alt+K，设备快捷键不随备份恢复迁移。
+- ProjectsView 没有脏表单确认；凭证编辑已有同类关闭保护。
+- 批量修改复用 item-store.update 和历史记录，使用 SAVEPOINT 允许外层整批事务回滚。
+- JSON/CSV 目前全库导出；备份恢复目前密码先于文件。统一更新现有 IPC，不保留旧恢复路径。
+- Electron 44.5.1 快捷键实现与返回值已核对：官方 docs/api/global-shortcut.md 和 shell/browser/api/electron_api_global_shortcut.cc（https://github.com/electron/electron/tree/v44.5.1）。
+- Naive UI 2.45.3 当前 Space.mjs 为每个包装 div 生成相同 key: 1；详情按钮 3→2 时真实出现双保存按钮。动态操作区设置公开 wrap-item=false，使用其现有 flex gap 分支保留按钮身份，不新增组件或升级依赖。

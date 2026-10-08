@@ -20,7 +20,8 @@ const selected = ref(0)
 const input = ref<InputInst | null>(null)
 const resultsElement = ref<HTMLElement | null>(null)
 const copying = ref(false)
-const results = computed(() => vault.search(vault.items, query.value, 50))
+const matches = computed(() => vault.search(vault.items, query.value))
+const results = computed(() => matches.value.slice(0, 50))
 const active = computed(() => results.value[selected.value])
 const details = ref<VaultItem | null>(null)
 const fieldsLoading = ref(false)
@@ -97,7 +98,7 @@ function keydown(event: KeyboardEvent) {
     event.preventDefault()
     if (results.value.length) selected.value = (selected.value + (event.key === 'ArrowDown' ? 1 : -1) + results.value.length) % results.value.length
   } else if (event.key === 'Enter') { event.preventDefault(); open() }
-  else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') { event.preventDefault(); void copySelected() }
+  else if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'c') { event.preventDefault(); void copySelected() }
 }
 
 function subtitle(item: VaultItemSummary) {
@@ -122,7 +123,7 @@ function subtitle(item: VaultItemSummary) {
       </n-spin>
       <n-alert v-if="fieldsError" type="error">{{ fieldsError }} <n-button text @click="loadFields">重试</n-button></n-alert>
       <div class="search-footer">
-        <n-text depth="3">↑ ↓ 选择 · Enter 打开 · Ctrl C 复制 · Esc 关闭</n-text>
+        <n-text depth="3">↑ ↓ 选择 · Enter 打开 · Ctrl Shift C 复制（macOS 使用 ⌘）· Esc 关闭</n-text>
         <div class="copy-controls">
           <select v-model="selectedField" aria-label="选择复制字段" :disabled="!details || fieldsLoading || copying">
             <option value="primary">{{ active?.type === 'env' ? '完整 .env（需确认）' : '默认内容' }}</option>
@@ -131,6 +132,7 @@ function subtitle(item: VaultItemSummary) {
           <n-button size="small" :disabled="!active || fieldsLoading || !!fieldsError" :loading="copying" @click="copySelected">复制</n-button>
         </div>
       </div>
+      <n-button v-if="matches.length > 50" text class="all-results" @click="emit('close'); router.push({ name: 'vault', query: { q: query || undefined } })">查看全部 {{ matches.length }} 条结果</n-button>
     </div>
   </n-modal>
 </template>
@@ -145,5 +147,6 @@ function subtitle(item: VaultItemSummary) {
 .search-state { margin: 20px 0; }
 .search-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
 .copy-controls { display: flex; align-items: center; gap: 8px; }
+.all-results { margin-top: 16px; }
 .copy-controls select { max-width: 220px; min-width: 120px; height: 30px; border-radius: 6px; padding: 0 8px; color: inherit; background: var(--n-color); border: 1px solid var(--n-border-color); color-scheme: light dark; }
 </style>

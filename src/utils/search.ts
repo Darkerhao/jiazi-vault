@@ -12,10 +12,12 @@ export function createSearchIndex(items: VaultItemSummary[], projects: Project[]
 
 export function searchItems(items: VaultItemSummary[], query: string, index: Map<string, string>, limit = Infinity) {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
-  const results: VaultItemSummary[] = []
+  const normalized = query.trim().toLowerCase()
+  const results: { item: VaultItemSummary; rank: number }[] = []
   for (const item of items) {
-    if (terms.every((term) => index.get(item.id)?.includes(term))) results.push(item)
-    if (results.length >= limit) break
+    if (!terms.every((term) => index.get(item.id)?.includes(term))) continue
+    const title = item.title.trim().toLowerCase()
+    results.push({ item, rank: title === normalized ? 0 : title.startsWith(normalized) ? 1 : terms.every((term) => title.includes(term)) ? 2 : 3 })
   }
-  return results
+  return results.sort((a, b) => a.rank - b.rank).slice(0, limit).map(({ item }) => item)
 }

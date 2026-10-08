@@ -1,3 +1,4 @@
+import { restoreFromBackup } from './backup-restore.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -88,7 +89,7 @@ try {
   await assert.rejects(call('get_item_history', { id: item.id, historyId: 1 }), /VAULT_LOCKED/)
   await assert.rejects(call('restore_item_history', { id: item.id, historyId: 1 }), /VAULT_LOCKED/)
   await assert.rejects(call('run_automatic_backup'), /VAULT_LOCKED/)
-  assert.equal(await call('restore_backup', { password }), true)
+  assert.equal(await restoreFromBackup(call, { password }), true)
   const snapshots = await call('list_recovery_snapshots')
   assert.equal(snapshots.length, version + 1)
   await unlock()
@@ -100,9 +101,11 @@ try {
   const restore = page.getByRole('dialog')
   await restore.locator('.n-select').click()
   await page.locator('.n-base-select-option').filter({ hasText: '恢复前快照' }).first().click()
+  await restore.getByRole('button', { name: '选择此快照', exact: true }).click()
   await restore.getByPlaceholder('备份创建时使用的主密码').fill(password)
   await page.screenshot({ path: join(output, 'recovery-snapshot.png') })
-  await restore.getByRole('button', { name: '恢复所选快照', exact: true }).click()
+  await restore.getByRole('button', { name: '验证并预览', exact: true }).click()
+  await restore.getByRole('button', { name: '确认替换并恢复', exact: true }).click()
   await page.getByRole('heading', { name: '解锁保险库', exact: true }).waitFor()
   await unlock()
   assert.equal((await call('get_item', { id: item.id })).password, 'keep-in-snapshot')
@@ -111,7 +114,7 @@ try {
   const recoveryPath = join(data, 'recovery'), kept = join(data, 'recovery-kept')
   await rename(recoveryPath, kept)
   await writeFile(recoveryPath, 'fixture blocks recovery directory')
-  await assert.rejects(call('restore_backup', { password }), /RECOVERY_SNAPSHOT_FAILED/)
+  await assert.rejects(restoreFromBackup(call, { password }), /RECOVERY_SNAPSHOT_FAILED/)
   assert.equal((await call('get_item', { id: item.id })).password, 'keep-in-snapshot')
   await unlink(recoveryPath)
   await rename(kept, recoveryPath)

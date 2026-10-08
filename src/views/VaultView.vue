@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NAlert, NButton, NEmpty, NIcon, NList, NListItem, NPagination, NSelect, NSpin, NTag, NText, useDialog, useMessage } from 'naive-ui'
+import { NAlert, NButton, NCheckbox, NEmpty, NIcon, NList, NListItem, NModal, NPagination, NSelect, NSpace, NSpin, NTag, NText, useDialog, useMessage } from 'naive-ui'
+import PlaintextExport from '../components/common/PlaintextExport.vue'
+import { callCommand } from '../services/ipc'
+import type { ItemBatchAction, ItemInput } from '../../electron/contracts'
 import { CopyOutline, KeyOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
 import { expiryState } from '../../electron/expiry'
 import AppShell from '../components/common/AppShell.vue'
@@ -22,6 +25,7 @@ const message = useMessage()
 const modalShow = ref(false)
 const editing = ref<VaultItem | null>(null)
 const newEditorKey = ref(0)
+const duplicateDraft = ref<ItemInput | null>(null)
 const projectId = computed(() => typeof route.query.project === 'string' ? route.query.project : undefined)
 const environment = computed(() => ENVIRONMENT_OPTIONS.some((o) => o.value === route.query.environment) ? route.query.environment as Environment : undefined)
 const currentProject = computed(() => vault.projects.find((p) => p.id === projectId.value))
@@ -36,6 +40,37 @@ const displayedItems = computed(() => vault.search(vault.filteredItems, query.va
 const page = ref(1)
 const pageSize = 25
 const pageItems = computed(() => displayedItems.value.slice((page.value - 1) * pageSize, page.value * pageSize))
+const selected = ref<string[]>([])
+const batchBusy = ref(false), batchChange = ref<'project' | 'environment' | null>(null)
+const batchValue = ref<string | null>(null)
+const pageSelected = computed(() => pageItems.value.filter((item) => selected.value.includes(item.id)).length)
+watch(displayedItems, (items) => {
+  const ids = new Set(items.map((item) => item.id))
+  selected.value = selected.value.filter((id) => ids.has(id))
+})
+watch([query, () => vault.filter, projectId, environment, itemType, expiry], () => { selected.value = [] })
+function selectPage(checked: boolean) {
+  const ids = new Set(pageItems.value.map((item) => item.id))
+  selected.value = checked ? [...new Set([...selected.value, ...ids])] : selected.value.filter((id) => !ids.has(id))
+}
+async function batch(action: ItemBatchAction) {
+  if (batchBusy.value || !selected.value.length) return false
+  batchBusy.value = true
+  try {
+    const count = await callCommand('batch_items', { ids: [...selected.value], action })
+    selected.value = []
+    batchChange.value = null
+    await vault.load()
+    message.success(`已处理 ${count} 条凭证`)
+    return true
+  } catch (error) {
+    message.error(String(error).includes('ENVIRONMENT_REQUIRED') ? '环境变量集必须指定环境，本次整批修改未保存。' : '批量操作失败，未修改任何凭证。请刷新列表后重试。')
+    return false
+  } finally { batchBusy.value = false }
+}
+function batchTrash() {
+  dialog.warning({ title: '批量删除凭证', content: `将所选 ${selected.value.length} 条凭证移入回收站？30 天内可以恢复。`, positiveText: '移入回收站', negativeText: '取消', onPositiveClick: () => batch({ type: 'trash' }) })
+}
 watch([query, () => vault.filter, projectId, environment, itemType, expiry], () => { page.value = 1 })
 watch(() => displayedItems.value.length, (count) => { page.value = Math.min(page.value, Math.max(1, Math.ceil(count / pageSize))) })
 
@@ -79,6 +114,7 @@ watch(
   (value) => {
     if (!value) return
     editing.value = null
+    duplicateDraft.value = null
     newEditorKey.value++
     modalShow.value = true
     const query = { ...route.query }
@@ -99,7 +135,13 @@ watch(() => route.query.item, async (id) => {
 }, { immediate: true })
 onMounted(() => vault.load())
 
-function closeEditor() { modalShow.value = false; editing.value = null }
+function closeEditor() { modalShow.value = false; editing.value = null; duplicateDraft.value = null }
+function duplicate(item: ItemInput) {
+  duplicateDraft.value = item
+  editing.value = null
+  newEditorKey.value++
+  modalShow.value = true
+}
 
 function subtitle(item: VaultItemSummary) {
   return item.username || item.url || item.host || ITEM_TYPE_LABELS[item.type]
@@ -168,6 +210,20 @@ async function restore(item: VaultItemSummary) {
       <n-select :value="expiry" :options="expiryOptions" clearable placeholder="全部有效期" aria-label="有效期筛选" @update:value="(value) => setFilter('expiry', value)" />
     </div>
     <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text @click="vault.load">重试</n-button></n-alert>
+    <div v-if="displayedItems.length" class="batch-toolbar">
+      <n-checkbox :checked="pageSelected === pageItems.length" :indeterminate="pageSelected > 0 && pageSelected < pageItems.length" :disabled="batchBusy" @update:checked="selectPage">本页全选</n-checkbox>
+      <n-text>已选 {{ selected.length }} 条</n-text>
+      <template v-if="selected.length">
+        <n-button size="small" :disabled="batchBusy" @click="selected = []">取消选择</n-button>
+        <n-button v-if="vault.filter === 'trash'" size="small" :loading="batchBusy" @click="batch({ type: 'restore' })">恢复所选</n-button>
+        <template v-else>
+          <n-button size="small" :disabled="batchBusy" @click="batchChange = 'project'; batchValue = null">修改项目</n-button>
+          <n-button size="small" :disabled="batchBusy" @click="batchChange = 'environment'; batchValue = null">修改环境</n-button>
+          <n-button size="small" :disabled="batchBusy" @click="batchTrash">删除所选</n-button>
+          <PlaintextExport :ids="selected" :disabled="batchBusy" />
+        </template>
+      </template>
+    </div>
 
     <n-spin :show="vault.loading">
       <n-empty v-if="!vault.loading && displayedItems.length === 0" :description="query || projectId || environment || itemType || expiry ? '没有匹配的凭证' : emptyDescription" class="empty">
@@ -181,6 +237,7 @@ async function restore(item: VaultItemSummary) {
       <n-list v-else bordered class="item-list">
         <n-list-item v-for="item in pageItems" :key="item.id">
           <div class="item-row">
+            <n-checkbox :checked="selected.includes(item.id)" :disabled="batchBusy" :aria-label="`选择${item.title}`" @update:checked="(checked) => selected = checked ? [...selected, item.id] : selected.filter((id) => id !== item.id)" />
             <n-icon :size="24" aria-hidden="true"><component :is="ITEM_TYPE_ICONS[item.type]" /></n-icon>
             <div class="item-main">
               <n-button text class="item-title" @click="openEdit(item)">{{ item.title }}</n-button>
@@ -215,12 +272,19 @@ async function restore(item: VaultItemSummary) {
       </div>
     </n-spin>
 
-    <ItemFormModal v-if="modalShow" :key="editing?.id ?? `new-${newEditorKey}`" :show="modalShow" :item="editing" :draft="{ type: itemType, projectId, environment }" @close="closeEditor" />
+    <ItemFormModal v-if="modalShow" :key="editing?.id ?? `new-${newEditorKey}`" :show="modalShow" :item="editing" :draft="duplicateDraft ?? { type: itemType, projectId, environment }" @close="closeEditor" @duplicate="duplicate" />
+    <n-modal :show="!!batchChange" preset="card" :title="batchChange === 'project' ? '批量修改项目' : '批量修改环境'" style="width: 460px; max-width: calc(100vw - 40px)" :closable="!batchBusy" :mask-closable="!batchBusy" :close-on-esc="!batchBusy" @update:show="(show) => !show && (batchChange = null)">
+      <p>修改所选 {{ selected.length }} 条凭证，原内容会保留在各自历史版本中。</p>
+      <n-select v-model:value="batchValue" :disabled="batchBusy" clearable :filterable="batchChange === 'project'" :placeholder="batchChange === 'project' ? '未分配项目' : '未设置环境'" :options="batchChange === 'project' ? vault.projects.map((project) => ({ label: project.name, value: project.id })) : ENVIRONMENT_OPTIONS" />
+      <p v-if="batchChange === 'environment'"><n-text depth="3">环境变量集必须指定环境。</n-text></p>
+      <template #footer><n-space justify="end"><n-button :disabled="batchBusy" @click="batchChange = null">取消</n-button><n-button type="primary" :loading="batchBusy" @click="batch(batchChange === 'project' ? { type: 'project', projectId: batchValue } : { type: 'environment', environment: batchValue as Environment | null })">保存修改</n-button></n-space></template>
+    </n-modal>
   </AppShell>
 </template>
 
 <style scoped>
 .page-heading h1 { margin: 4px 0 24px; font-size: 26px; }
+.batch-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; max-width: 860px; margin-bottom: 16px; }
 .filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 860px; margin-bottom: 20px; }
 .retention-notice { max-width: 860px; margin-bottom: 20px; }
 .item-list { max-width: 860px; }

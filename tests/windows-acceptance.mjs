@@ -74,7 +74,7 @@ try {
     } else if (step === 'hotkey') {
       assert.equal((await call('get_desktop_status')).shortcutRegistered, true)
       await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide())
-      console.log('ACTION: physically press Ctrl + Shift + P to show the app and quick search.')
+      console.log('ACTION: physically press Ctrl + Alt + K to show the app and quick search.')
       await page.getByRole('dialog').getByText('快捷搜索', { exact: true }).waitFor({ timeout: 180_000 })
       assert.equal(await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), true)
       pass('physical OS hotkey shows the hidden application and opens quick search')

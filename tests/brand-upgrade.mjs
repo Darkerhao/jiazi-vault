@@ -1,3 +1,4 @@
+import { restoreFromBackup } from './backup-restore.mjs'
 // Usage: node tests/brand-upgrade.mjs <legacy executable> <new executable>
 // Both applications use an isolated fixture, never the user's actual vault.
 import assert from 'node:assert/strict'
@@ -80,7 +81,7 @@ try {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [backup] })
     dialog.showMessageBox = async () => ({ response: 1 })
   }, backup)
-  assert.equal(await call('restore_backup', { password }), true)
+  assert.equal(await restoreFromBackup(call, { password }), true)
   await unlock()
   assert.equal((await call('get_item', { id: item.id })).password, 'fixture-secret')
   pass('new packaged app restores the legacy encrypted backup and decrypts its credentials')

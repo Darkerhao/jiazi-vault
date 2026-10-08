@@ -3,7 +3,7 @@ import { app, globalShortcut, Menu, nativeImage, Tray, type BrowserWindow } from
 
 export type DesktopAction = 'open' | 'quick-search' | 'generator' | 'new-item' | 'new-project'
 
-export function createDesktopControls(getWindow: () => BrowserWindow, lock: () => void) {
+export function createDesktopControls(getWindow: () => BrowserWindow, lock: () => void, initialShortcut: string | null) {
   app.setAboutPanelOptions({ applicationName: 'Keystill · 密序' })
   // Keep the internal app name stable for storage; brand the macOS menu explicitly.
   if (process.platform === 'darwin') {
@@ -53,11 +53,18 @@ export function createDesktopControls(getWindow: () => BrowserWindow, lock: () =
   ])
   tray.setContextMenu(menu)
   tray.on('double-click', () => show())
-  const shortcut = 'CommandOrControl+Shift+P'
-  const shortcutRegistered = globalShortcut.register(shortcut, () => show('quick-search'))
+  const status = { shortcut: null as string | null, shortcutRegistered: false }
+  function configure(shortcut: string | null) {
+    if (status.shortcut && status.shortcutRegistered) globalShortcut.unregister(status.shortcut)
+    status.shortcut = shortcut
+    status.shortcutRegistered = shortcut !== null && globalShortcut.register(shortcut, () => show('quick-search'))
+    return status
+  }
+  configure(initialShortcut)
   return {
     show,
-    status: { shortcut: process.platform === 'darwin' ? '⌘ Shift P' : 'Ctrl + Shift + P', shortcutRegistered },
+    configure,
+    status,
     dispose() { globalShortcut.unregisterAll(); tray.destroy() },
   }
 }
