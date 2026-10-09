@@ -3,6 +3,24 @@ import { app, globalShortcut, Menu, nativeImage, Tray, type BrowserWindow } from
 
 export type DesktopAction = 'open' | 'quick-search' | 'generator' | 'new-item' | 'new-project'
 
+function loginItemOptions() {
+  // Electron parses this path as a command line when checking Windows startup approval.
+  return process.platform === 'win32' ? { path: `"${process.env.PORTABLE_EXECUTABLE_FILE || process.execPath}"`, args: [] } : {}
+}
+
+export function readLoginStartup() {
+  const startupSupported = app.isPackaged && (process.platform === 'win32' || process.platform === 'darwin')
+  if (!startupSupported) return { startupSupported, openAtLogin: false }
+  const state = app.getLoginItemSettings(loginItemOptions())
+  return { startupSupported, openAtLogin: state.openAtLogin && (process.platform !== 'win32' || state.executableWillLaunchAtLogin) }
+}
+
+export function setLoginStartup(enabled: boolean) {
+  if (!readLoginStartup().startupSupported) throw new Error('LOGIN_ITEM_UNSUPPORTED')
+  app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: enabled, enabled })
+  if (readLoginStartup().openAtLogin !== enabled) throw new Error('LOGIN_ITEM_UPDATE_FAILED')
+}
+
 export function createDesktopControls(getWindow: () => BrowserWindow, lock: () => void, initialShortcut: string | null) {
   app.setAboutPanelOptions({ applicationName: 'Keystill · 密序' })
   // Keep the internal app name stable for storage; brand the macOS menu explicitly.

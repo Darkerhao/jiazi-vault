@@ -1,5 +1,14 @@
 # 交付与验收
 
+## 启动与窗口设置（2026-10-09，源码验收）
+
+- 三项桌面偏好集中在「设置 → 启动与窗口」，沿用 Naive UI 和现有主题，不新增导航。默认开机自启关闭、静默启动关闭、关闭时最小化到托盘开启；开关自动保存，成功后更新显示，失败显示错误。
+- 开机自启使用系统登录项，状态读取操作系统，不在数据库重复保存。支持 Windows/macOS 打包应用；开发环境与 Linux 显示禁用说明。Windows 便携版注册原始 EXE，含空格路径经过实际启动项验证。静默启动从创建窗口时隐藏，不闪现；首次使用及数据库损坏时保持创建/恢复界面可见。
+- 关闭进托盘仍锁定保险库；关闭此选项后，关闭窗口走正常退出、剪贴板清理与数据库关闭流程。托盘菜单“退出”始终退出；托盘打开和重复启动均可唤回隐藏窗口。静默与关闭偏好属于本机配置，不进入备份，正常恢复保留本机配置。
+- `pnpm test` 87/87、`pnpm build`、`node tests/desktop.mjs` 全部 12 组桌面回归、`git diff --check` 通过。构建首次因 NuGet TLS 下载失败，重试成功；Windows Hello 原有 IL2104 裁剪警告仍在。回归日志：`output/startup-desktop-regression.log`；最终构建日志：`output/startup-build.log`。
+- 新增 `startup-settings` 回归使用独立保险库、独立 Windows AppUserModelId 和真实系统启动项；验证启用/移除、系统禁用状态回读、带空格的便携路径、设置失败、锁定时拒绝修改、重启持久化、零窗口显示事件的静默启动、托盘/第二进程恢复、两种退出路径及首次使用/损坏恢复。浅色、深色与 900×600 布局截图：`output/playwright/startup-settings-{light,dark,900}.png`。
+- API 与实现依据：[Electron 44.5.1 登录项文档](https://github.com/electron/electron/blob/v44.5.1/docs/api/app.md#appgetloginitemsettingsoptions-macos-windows)、[Windows 登录项源码](https://github.com/electron/electron/blob/v44.5.1/shell/browser/browser_win.cc)、[窗口显示文档](https://github.com/electron/electron/blob/v44.5.1/docs/api/browser-window.md#using-the-ready-to-show-event)及 [Naive UI 2.45.3 Switch 文档](https://github.com/tusen-ai/naive-ui/blob/v2.45.3/src/switch/demos/zhCN/index.demo-entry.md)。未重启电脑验证真实登录触发、未做 macOS/Linux 实机验收，也未重新打包安装、提交或发布。
+
 ## Windows 应用内更新（2026-10-09）
 
 - Windows 非便携版点击“检查更新”后，通过 `electron-updater 6.8.9` 检查正式发布、自动下载并校验安装包，随后启动交互式安装向导。启动应用本身不联网检查；主进程统一保存更新状态，切换设置页不重复下载。失败可重试，保险库操作进行中不启动安装。

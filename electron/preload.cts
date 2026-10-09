@@ -7,6 +7,8 @@ const allowedCommands = new Set([
   'check_for_updates',
   'open_release_page',
   'get_desktop_status',
+  'get_desktop_preferences',
+  'set_desktop_preference',
   'set_search_shortcut',
   'database_info',
   'get_vault_status',

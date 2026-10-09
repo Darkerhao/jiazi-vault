@@ -10,6 +10,7 @@ import { openDatabase, purgeExpiredItems, type DatabaseState } from './database.
 import { clearKey, createVaultCredential, isVaultMetadata, type CreatedVaultCredential, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
 import { createItemStore, type ItemInput, type VaultItem } from './item-store.js'
 import { DEFAULT_SETTINGS, DEFAULT_SEARCH_SHORTCUT, readSearchShortcut, writeSearchShortcut, readSettings, writeSettings, type AppSettings } from './settings.js'
+import { DEFAULT_DESKTOP_PREFERENCES, readDesktopPreferences, writeDesktopPreferences, type DesktopSetting } from './settings.js'
 import { VaultSession } from './vault-session.js'
 import { ClipboardManager } from './clipboard-manager.js'
 import { assertBackupSize, createBackup, readBackup, restoreBackup, type RestoredBackup } from './backup.js'
@@ -17,7 +18,7 @@ import { recoverDatabase } from './database-recovery.js'
 import { UnlockLimiter } from './unlock-limiter.js'
 import { createProjectStore, type ProjectInput } from './project-store.js'
 import { generatePassword, type PasswordOptions } from './password-generator.js'
-import { createDesktopControls } from './desktop.js'
+import { createDesktopControls, readLoginStartup, setLoginStartup } from './desktop.js'
 import { assertTransferFormat, selectExportItems, exportPlaintext, parseImport, previewImport, importReviewed, type ImportRecord, type TransferFormat } from './transfer.js'
 import { replaceVaultPassword } from './vault-password.js'
 import { BiometricVault } from './biometric-vault.js'
@@ -31,6 +32,7 @@ import type { ItemBatchAction, ExportScope } from './contracts.js'
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
 let settings: AppSettings = { ...DEFAULT_SETTINGS }
+let desktopPreferences = { ...DEFAULT_DESKTOP_PREFERENCES }
 let session: VaultSession
 let clipboardManager: ClipboardManager
 let vaultOperationBusy = false
@@ -49,6 +51,7 @@ function initializeDatabase() {
   const opened = openDatabase(app.getPath('userData'))
   try {
     settings = readSettings(opened.connection)
+    desktopPreferences = readDesktopPreferences(opened.connection)
     unlockLimiter = new UnlockLimiter(opened.connection)
     itemStore = createItemStore(opened.connection, requireUnlocked)
     projects = createProjectStore(opened.connection)
@@ -131,7 +134,7 @@ function assertRevision(revision: number) {
   if (session.revision !== revision) throw new Error('VAULT_LOCKED')
 }
 
-function createWindow() {
+function createWindow(show = true) {
   mainWindow = new BrowserWindow({
     title: 'Keystill',
     icon: join(app.getAppPath(), app.isPackaged ? 'dist' : 'public', 'brand', 'icon.png'),
@@ -139,6 +142,7 @@ function createWindow() {
     height: 760,
     minWidth: 900,
     minHeight: 600,
+    show: false,
     backgroundColor: '#20251f',
     webPreferences: {
       preload: join(import.meta.dirname, 'preload.cjs'),
@@ -160,9 +164,13 @@ function createWindow() {
   })
   mainWindow.on('close', (event) => {
     session.lock()
-    if (!quitting) { event.preventDefault(); mainWindow?.hide() }
+    if (quitting) return
+    event.preventDefault()
+    if (desktopPreferences.closeToTray) mainWindow?.hide()
+    else app.quit()
   })
   mainWindow.on('closed', () => { mainWindow = null })
+  if (show) mainWindow.once('ready-to-show', () => desktop.show())
 
   if (app.isPackaged) {
     void mainWindow.loadFile(join(app.getAppPath(), 'dist', 'index.html'))
@@ -187,6 +195,14 @@ function registerIpcHandlers() {
   })
   handleIpc('open_release_page', () => shell.openExternal(RELEASE_PAGE))
   handleIpc('get_desktop_status', () => desktop.status)
+  handleIpc('get_desktop_preferences', () => ({ ...desktopPreferences, ...readLoginStartup() }))
+  handleIpc('set_desktop_preference', (_event, args: { key: DesktopSetting; value: boolean }) => {
+    requireUnlocked()
+    if (!args || !['openAtLogin', 'silentStart', 'closeToTray'].includes(args.key) || typeof args.value !== 'boolean') throw new Error('INVALID_SETTINGS')
+    if (args.key === 'openAtLogin') setLoginStartup(args.value)
+    else desktopPreferences = writeDesktopPreferences(requireDatabase().connection, { ...desktopPreferences, [args.key]: args.value })
+    return { ...desktopPreferences, ...readLoginStartup() }
+  })
   handleIpc('database_info', () => {
     const currentDatabase = requireDatabase()
     currentDatabase.connection.prepare('SELECT 1').get()
@@ -655,6 +671,7 @@ function registerBackupHandlers() {
   })
 }
 
+if (process.platform === 'win32') app.setAppUserModelId('com.jiazi.vault')
 const primaryInstance = app.requestSingleInstanceLock()
 if (!primaryInstance) app.quit()
 else app.whenReady().then(() => {
@@ -680,8 +697,8 @@ else app.whenReady().then(() => {
     (state) => mainWindow?.webContents.send('update_state', state),
     () => { if (vaultOperationBusy) throw new Error('VAULT_BUSY') })
   registerIpcHandlers()
-  createWindow()
   desktop = createDesktopControls(() => mainWindow ?? createWindow(), () => session.lock(), database ? readSearchShortcut(database.connection) : DEFAULT_SEARCH_SHORTCUT)
+  createWindow(!database || !hasVault() || !desktopPreferences.silentStart)
 
   app.on('activate', () => {
     desktop.show()
