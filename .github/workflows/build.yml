@@ -46,6 +46,18 @@ jobs:
         id: version
         run: node scripts/prepare-release.mjs
 
+      - name: Generate release notes from commits
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: node scripts/release-notes.mjs "$RELEASE_TAG" output/release-notes.md
+
+      - name: Share release notes
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-notes
+          path: output/release-notes.md
+          if-no-files-found: error
+
   build:
     name: Build ${{ matrix.platform }}-${{ matrix.arch }}
     needs: prepare
@@ -98,12 +110,19 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Download release notes
+        uses: actions/download-artifact@v7
+        with:
+          name: release-notes
+          path: output
+
       - name: Build packages
         run: >-
           pnpm electron:build
           --${{ matrix.platform }} --${{ matrix.arch }}
           --publish never
           --config.electronDist=node_modules/electron/dist
+          --config.releaseInfo.releaseNotesFile=output/release-notes.md
           ${{ matrix.extra_args }}
 
       - name: Verify Windows desktop flows
@@ -167,6 +186,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Download release notes
+        uses: actions/download-artifact@v7
+        with:
+          name: release-notes
+          path: output
+
       - uses: actions/download-artifact@v7
         with:
           pattern: keystill-*
@@ -180,10 +205,10 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Keystill $RELEASE_TAG" --generate-notes
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Keystill $RELEASE_TAG" --notes-file output/release-notes.md
           fi
           gh release upload "$RELEASE_TAG" release/* --clobber
-          gh release edit "$RELEASE_TAG" --draft=false
+          gh release edit "$RELEASE_TAG" --notes-file output/release-notes.md --draft=false
 
   sync-dev:
     name: Sync release version to dev

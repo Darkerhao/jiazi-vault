@@ -13,7 +13,7 @@ await mkdir(data, { recursive: true })
 const installed = process.env.JIAZI_INSTALLED_EXE
 const payload = Buffer.alloc(2 * 1024 * 1024, 42)
 const checksum = createHash('sha512').update(payload).digest('base64')
-const notes = '<script>window.releaseInjected = true</script>\nFixture release notes'
+let notes = 'v0.1.13 → v0.1.14\n\n更新内容（2 条提交）：\n\n- feat(desktop): 添加启动与窗口设置功能 (ec04d82)\n\n  支持开机自启、静默启动和关闭后最小化到托盘。\n\n- chore(release): v0.1.14 (1f2b6f9)'
 let mode = 'offline', version, finishDownload
 const requests = []
 const server = createServer((request, response) => {
@@ -73,7 +73,15 @@ try {
   assert.equal(requests.some(url => url.startsWith('/setup.exe')), false)
   pass('no startup requests; real updater handles network errors, rate limits, retry and current version without downloading')
 
+  await card.locator('summary').click()
+  assert.equal(await card.locator('pre').innerText(), notes)
+  await card.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: resolve(output, 'app-update-notes.png') })
+  await card.locator('summary').click()
+  pass('release notes show the version range, every commit, and multiline descriptions from update metadata')
+
   mode = 'corrupt'
+  notes += '\n<script>window.releaseInjected = true</script>'
   await card.getByRole('button', { name: '检查更新', exact: true }).click()
   await card.getByText(/安装包校验失败/).waitFor()
   assert.deepEqual(await application.evaluate(() => globalThis.installRequests), [])
