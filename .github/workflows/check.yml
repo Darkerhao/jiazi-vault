@@ -2,9 +2,7 @@ name: Check desktop changes
 
 on:
   pull_request:
-    branches: [main, dev]
-  push:
-    branches: [dev]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
