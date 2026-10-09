@@ -9,6 +9,7 @@ import { useSettingsStore } from '../stores/settings'
 import BackupStatus from '../components/common/BackupStatus.vue'
 import AutomaticBackup from '../components/common/AutomaticBackup.vue'
 import AppUpdates from '../components/common/AppUpdates.vue'
+import StartupSettings from '../components/common/StartupSettings.vue'
 import { callCommand } from '../services/ipc'
 import { DEFAULT_SEARCH_SHORTCUT, validateSearchShortcut, type AppSettings } from '../../electron/settings'
 
@@ -73,6 +74,7 @@ function updateAutoLock(value: number) {
       </n-form>
       <n-text depth="3">设置自动保存。无操作或切换应用后按所选时间锁定；系统锁屏、休眠时立即锁定。锁定和退出时也会清理本应用复制的内容。</n-text>
     </n-card>
+    <StartupSettings />
     <VaultSecurity />
     <n-card title="本地加密的保护范围" class="settings-card backup-card" bordered>
       <p>密码、备注和自定义字段（包括私钥、API Key、环境变量）经过加密保存。主密码不以明文保存。</p>
@@ -95,7 +97,7 @@ function updateAutoLock(value: number) {
         <n-button :disabled="shortcutBusy || !shortcut" @click="saveShortcut(DEFAULT_SEARCH_SHORTCUT)">恢复默认</n-button>
       </n-space>
       <p>应用内：Ctrl K 搜索 · Ctrl N 新建凭证 · Ctrl Shift N 新建项目 · Ctrl G 生成密码 · Ctrl Shift L 锁定（macOS 使用 ⌘）。</p>
-      <n-text depth="3">关闭窗口会锁定并留在系统托盘。双击托盘图标可重新打开；使用托盘菜单“退出”结束应用。</n-text>
+      <n-text depth="3">双击托盘图标可重新打开窗口；使用托盘菜单“退出”结束应用。关闭窗口的行为可在“启动与窗口”中设置。</n-text>
     </n-card>
     <AppUpdates />
   </AppShell>

@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { openDatabase } from '../dist-electron/database.js'
 import { createVaultCredential, unlockVaultCredential, clearKey, encryptValue, decryptValue } from '../dist-electron/vault-crypto.js'
 import { createItemStore } from '../dist-electron/item-store.js'
-import { readSettings, writeSettings } from '../dist-electron/settings.js'
+import { readSettings, writeSettings, readDesktopPreferences, writeDesktopPreferences } from '../dist-electron/settings.js'
 import { createBackup, readBackup, restoreBackup } from '../dist-electron/backup.js'
 import { VaultSession } from '../dist-electron/vault-session.js'
 import { ClipboardManager } from '../dist-electron/clipboard-manager.js'
@@ -69,6 +69,20 @@ test('inactivity locks, wipes the key and cannot be undone by a late input event
   assert.equal(locks, 1)
   assert.deepEqual(key, Buffer.alloc(32))
   assert.throws(() => session.requireKey(), /VAULT_LOCKED/)
+})
+
+test('desktop preferences preserve existing close behavior, persist and reject non-boolean input', (t) => {
+  const state = database(t)
+  assert.deepEqual(readDesktopPreferences(state.connection), { silentStart: false, closeToTray: true })
+  const expected = { silentStart: true, closeToTray: false }
+  writeDesktopPreferences(state.connection, expected)
+  state.connection.close()
+  state.connection = openDatabase(join(state.path, '..')).connection
+  assert.deepEqual(readDesktopPreferences(state.connection), expected)
+  for (const value of [null, {}, { ...expected, silentStart: 'true' }, { ...expected, closeToTray: 0 }]) {
+    assert.throws(() => writeDesktopPreferences(state.connection, value), /INVALID_SETTINGS/)
+    assert.deepEqual(readDesktopPreferences(state.connection), expected)
+  }
 })
 
 test('never disables the idle timer, while explicit lock still wipes the key', async (t) => {
@@ -193,6 +207,9 @@ test('encrypted backup restores secrets, metadata, favorites, trash and settings
   sourceItems.remove(trash.id)
   const settings = { themeMode: 'light', clipboardClearTimeout: 10, autoLockMinutes: 30 }
   writeSettings(source.connection, settings)
+  writeDesktopPreferences(source.connection, { silentStart: false, closeToTray: true })
+  const devicePreferences = { silentStart: true, closeToTray: false }
+  writeDesktopPreferences(destination.connection, devicePreferences)
   const contents = createBackup(source.connection, credential.metadata, credential.masterKey)
   assert.notEqual(contents, createBackup(source.connection, credential.metadata, credential.masterKey))
   for (const secret of ['private-project', 'project-description', 'private-test-title', 'test-user', 'private-test-secret', 'private-test-note', 'private-test-token', 'private-ssh-key', password]) {
@@ -214,6 +231,7 @@ test('encrypted backup restores secrets, metadata, favorites, trash and settings
   assert.deepEqual(restored.list(), sourceItems.list())
   assert.deepEqual(restored.list(true), sourceItems.list(true))
   assert.deepEqual(readSettings(destination.connection), settings)
+  assert.deepEqual(readDesktopPreferences(destination.connection), devicePreferences)
   assert.deepEqual(createProjectStore(destination.connection).list(), projects.list())
 })
 

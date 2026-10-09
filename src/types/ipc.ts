@@ -2,7 +2,7 @@ import type { ImportPreview, ItemHistorySummary, AutomaticBackupStatus, Recovery
 import type { BackupStatus } from '../../electron/backup-status'
 import type { UpdateState } from '../../electron/app-update'
 import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
-import type { AppSettings } from '../../electron/settings'
+import type { AppSettings, DesktopSetting, DesktopSettings } from '../../electron/settings'
 import type { GeneratedPassword, PasswordOptions } from '../../electron/password-generator'
 import type { DesktopAction } from '../../electron/desktop'
 import type { TransferFormat, BiometricStatus } from '../../electron/contracts'
@@ -38,6 +38,8 @@ export interface IpcCommands {
   check_for_updates: { args: undefined; result: UpdateState }
   open_release_page: { args: undefined; result: void }
   get_desktop_status: { args: undefined; result: { shortcut: string | null; shortcutRegistered: boolean } }
+  get_desktop_preferences: { args: undefined; result: DesktopSettings }
+  set_desktop_preference: { args: { key: DesktopSetting; value: boolean }; result: DesktopSettings }
   set_search_shortcut: { args: { shortcut: string | null }; result: { shortcut: string | null; shortcutRegistered: boolean } }
   database_info: { args: undefined; result: { initialized: boolean; path: string } }
   get_vault_status: { args: undefined; result: VaultStatus }

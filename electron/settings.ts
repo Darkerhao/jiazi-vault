@@ -50,3 +50,27 @@ export function writeSettings(db: DatabaseSync, value: unknown): AppSettings {
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('preferences', JSON.stringify(settings))
   return settings
 }
+
+// Device preferences stay on this computer when a vault backup is restored.
+export interface DesktopPreferences { silentStart: boolean; closeToTray: boolean }
+export interface DesktopSettings extends DesktopPreferences { openAtLogin: boolean; startupSupported: boolean }
+export type DesktopSetting = keyof DesktopPreferences | 'openAtLogin'
+export const DEFAULT_DESKTOP_PREFERENCES: Readonly<DesktopPreferences> = { silentStart: false, closeToTray: true }
+
+export function readDesktopPreferences(db: DatabaseSync): DesktopPreferences {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('desktop-preferences')
+  return row ? validateDesktopPreferences(JSON.parse(String(row.value))) : { ...DEFAULT_DESKTOP_PREFERENCES }
+}
+
+function validateDesktopPreferences(value: unknown): DesktopPreferences {
+  if (!value || typeof value !== 'object') throw new Error('INVALID_SETTINGS')
+  const preferences = value as DesktopPreferences
+  if (typeof preferences.silentStart !== 'boolean' || typeof preferences.closeToTray !== 'boolean') throw new Error('INVALID_SETTINGS')
+  return { silentStart: preferences.silentStart, closeToTray: preferences.closeToTray }
+}
+
+export function writeDesktopPreferences(db: DatabaseSync, value: unknown): DesktopPreferences {
+  const preferences = validateDesktopPreferences(value)
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('desktop-preferences', JSON.stringify(preferences))
+  return preferences
+}

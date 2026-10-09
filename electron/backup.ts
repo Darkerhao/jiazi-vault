@@ -151,7 +151,7 @@ function validateProjects(value: unknown): ProjectRow[] {
 export function restoreBackup(db: DatabaseSync, backup: RestoredBackup) {
   db.exec('BEGIN IMMEDIATE')
   try {
-    db.exec("DELETE FROM items; DELETE FROM projects; DELETE FROM vault_metadata; DELETE FROM settings WHERE key NOT IN ('automatic_backup', 'search-shortcut');")
+    db.exec("DELETE FROM items; DELETE FROM projects; DELETE FROM vault_metadata; DELETE FROM settings WHERE key NOT IN ('automatic_backup', 'search-shortcut', 'desktop-preferences');")
     db.prepare('INSERT INTO vault_metadata (key, value) VALUES (?, ?)').run('vault', JSON.stringify(backup.metadata))
     const insertProject = db.prepare(`INSERT INTO projects (${PROJECT_COLUMNS.join(', ')}) VALUES (${PROJECT_COLUMNS.map(() => '?').join(', ')})`)
     for (const row of backup.projects) insertProject.run(...PROJECT_COLUMNS.map((field) => row[field]))
