@@ -1,5 +1,14 @@
 # 交付与验收
 
+## Windows 应用内更新（2026-10-09）
+
+- Windows 非便携版点击“检查更新”后，通过 `electron-updater 6.8.9` 检查正式发布、自动下载并校验安装包，随后启动交互式安装向导。启动应用本身不联网检查；主进程统一保存更新状态，切换设置页不重复下载。失败可重试，保险库操作进行中不启动安装。
+- NSIS 保留现有安装向导，启用默认勾选的“打开应用（Keystill）”。点击“完成”时按勾选状态决定是否启动；更新器关闭强制启动和退出时静默安装。配置基于当前安装的 `electron-updater` 公共 API、`BaseUpdater` / `NsisUpdater` 实现，以及 `app-builder-lib 26.15.3` 的 `assistedInstaller.nsh`。
+- Windows 发布配置固定官方 GitHub 仓库，CI 上传 `latest.yml`。macOS/Linux 和 Windows 便携版保留手动下载入口。旧版需先手动安装包含本功能的版本，后续正式发布才能通过应用内升级。
+- `pnpm test` 86/86、`pnpm build`、`pnpm audit:ci` 通过；审计无已知漏洞，构建保留原有 Windows Hello IL2104 裁剪警告。Windows NSIS 安装包已生成：`release/auto-update/keystill-0.1.11-win-x64.exe`，并核对更新清单中的文件大小和 SHA-512。
+- 使用本次打包的 `win-unpacked/Keystill.exe`、隔离测试保险库与本地 HTTP 服务，验证真实下载、SHA-512 拒绝损坏文件、进度、切页恢复、网络错误/限流/重试/无新版，以及下载后只调用一次交互式安装。报告：`output/playwright/app-update-report.json`；截图：`output/playwright/app-update-download.png`。
+- 安装启动调用和打开浏览器在测试中拦截；当前用户应用仍在运行，未覆盖安装、实点完成页或关闭用户应用。未验证真实 GitHub 发布后的在线升级，未提交或发布。
+
 ## 记住系统解锁偏好（2026-10-08，源码验收）
 
 - 成功通过 Windows Hello / Touch ID 解锁后，将偏好保存在当前本机保险库；再次启动或锁定后默认显示并聚焦系统解锁按钮，点击或回车发起认证。主密码可随时切换，临时使用主密码不覆盖偏好。
@@ -109,7 +118,7 @@ Windows 实测：旧 0.1.2 NSIS → 同目录安装当前 0.1.8 本地构建，�
 | macOS Apple Silicon | arm64 | `keystill-<版本>-mac-arm64.dmg`、`keystill-<版本>-mac-arm64.zip` |
 | Linux | x64 | `keystill-<版本>-linux-x86_64.AppImage`、`keystill-<版本>-linux-x64.tar.gz` |
 
-同一产品版本共提供 9 个安装或压缩包；不同格式复用对应平台的同一份应用，不区分 Lite/Standard 功能版本。构建器生成的 `.blockmap` 也会上传，它们是差分下载辅助文件，不是独立安装包；当前应用尚未接入自动更新。GitHub 另外提供源码 ZIP 和 tar.gz。
+同一产品版本共提供 9 个安装或压缩包；不同格式复用对应平台的同一份应用，不区分 Lite/Standard 功能版本。构建器生成的 `.blockmap` 和 Windows `latest.yml` 也会上传，用于应用内更新和校验，不是独立安装包。GitHub 另外提供源码 ZIP 和 tar.gz。
 
 Windows 免安装 EXE 会在运行时解压应用，ZIP 则先完整解压再运行其中的 `Keystill.exe`。两者继续使用系统用户数据目录保存保险库，不会把保险库随程序写入便携文件所在目录；迁移数据使用应用内的加密备份和恢复。
 

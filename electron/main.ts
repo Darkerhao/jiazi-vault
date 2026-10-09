@@ -4,7 +4,8 @@ import { readFile, stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, powerMonitor, shell } from 'electron'
-import { checkForUpdates, RELEASE_PAGE } from './app-update.js'
+import electronUpdater from 'electron-updater'
+import { checkForUpdates, createAppUpdates, RELEASE_PAGE } from './app-update.js'
 import { openDatabase, purgeExpiredItems, type DatabaseState } from './database.js'
 import { clearKey, createVaultCredential, isVaultMetadata, type CreatedVaultCredential, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
 import { createItemStore, type ItemInput, type VaultItem } from './item-store.js'
@@ -42,6 +43,7 @@ let pendingRestore: { token: string; revision: number; name: string; path?: stri
 let biometric: BiometricVault
 let itemStore: ReturnType<typeof createItemStore>
 let projects: ReturnType<typeof createProjectStore>
+let updates: ReturnType<typeof createAppUpdates>
 
 function initializeDatabase() {
   const opened = openDatabase(app.getPath('userData'))
@@ -70,7 +72,7 @@ function isApplicationUrl(value: string) {
   } catch { return false }
 }
 
-const recoveryCommands = new Set(['health_check', 'get_app_version', 'check_for_updates', 'open_release_page', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'select_backup_source', 'preview_backup', 'cancel_backup_restore', 'restore_backup', 'list_recovery_snapshots'])
+const recoveryCommands = new Set(['health_check', 'get_app_version', 'get_update_state', 'check_for_updates', 'open_release_page', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'select_backup_source', 'preview_backup', 'cancel_backup_restore', 'restore_backup', 'list_recovery_snapshots'])
 
 function handleIpc(channel: string, listener: Parameters<typeof ipcMain.handle>[1]) {
   ipcMain.handle(channel, (event, ...args) => {
@@ -178,7 +180,11 @@ function registerIpcHandlers() {
     const shortcut = writeSearchShortcut(requireDatabase().connection, args?.shortcut)
     return desktop.configure(shortcut)
   })
-  handleIpc('check_for_updates', () => checkForUpdates(app.getVersion(), net.fetch))
+  handleIpc('get_update_state', () => updates.state)
+  handleIpc('check_for_updates', () => {
+    if (vaultOperationBusy) throw new Error('VAULT_BUSY')
+    return updates.check()
+  })
   handleIpc('open_release_page', () => shell.openExternal(RELEASE_PAGE))
   handleIpc('get_desktop_status', () => desktop.status)
   handleIpc('database_info', () => {
@@ -668,6 +674,11 @@ else app.whenReady().then(() => {
   trashTimer.unref()
   backupTimer = setInterval(() => { void automaticBackup() }, 60_000)
   backupTimer.unref()
+  const updater = process.platform === 'win32' && app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE
+    ? electronUpdater.autoUpdater : null
+  updates = createAppUpdates(updater, () => checkForUpdates(app.getVersion(), net.fetch),
+    (state) => mainWindow?.webContents.send('update_state', state),
+    () => { if (vaultOperationBusy) throw new Error('VAULT_BUSY') })
   registerIpcHandlers()
   createWindow()
   desktop = createDesktopControls(() => mainWindow ?? createWindow(), () => session.lock(), database ? readSearchShortcut(database.connection) : DEFAULT_SEARCH_SHORTCUT)
