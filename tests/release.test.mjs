@@ -3,9 +3,18 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import { createRequire } from 'node:module'
 import { test } from 'node:test'
+import { GitHubProvider } from 'electron-updater/out/providers/GitHubProvider.js'
+
+const require = createRequire(import.meta.url)
+const builderRequire = createRequire(require.resolve('electron-builder'))
+const { createUpdateInfoTasks, writeUpdateInfoFiles } = builderRequire('app-builder-lib/out/publish/updateInfoBuilder.js')
+const { PlatformPackager } = builderRequire('app-builder-lib/out/platformPackager.js')
+const { Platform } = builderRequire('app-builder-lib/out/core.js')
 
 const script = resolve('scripts/prepare-release.mjs')
+const notesScript = resolve('scripts/release-notes.mjs')
 const testRoot = resolve('output/release-tests')
 const manifest = '{\n  "name": "release-test",\n  "version": "0.1.2",\n  "type": "module",\n  "main": "dist-electron/main.js",\n  "build": { "files": ["dist/**"] }\n}\n'
 
@@ -57,6 +66,96 @@ function syncVersion(repo, commit) {
     env: { ...process.env, RELEASE_COMMIT: commit },
   })
 }
+
+function releaseNotes(f, tag) {
+  const file = join(f.root, 'release-notes.md')
+  const result = spawnSync(process.execPath, [notesScript, tag, file], {
+    cwd: f.repo, encoding: 'utf8', windowsHide: true,
+  })
+  assert.equal(result.status, 0, result.stderr)
+  return readFileSync(file, 'utf8')
+}
+
+test('release notes list every commit and body between stable tags, including merged branch commits', (t) => {
+  const f = fixture(t)
+  git(f.repo, 'tag', 'v0.1.2')
+  git(f.repo, 'switch', '-c', 'feature')
+  git(f.repo, 'commit', '--allow-empty', '-m', 'feat: 添加启动设置', '-m', '支持开机启动。\n支持关闭后驻留托盘。')
+  const feature = git(f.repo, 'rev-parse', '--short=7', 'HEAD')
+  git(f.repo, 'switch', 'main')
+  git(f.repo, 'merge', '--no-ff', 'feature', '-m', 'Merge startup settings')
+  git(f.repo, 'tag', 'v0.1.3-beta')
+  git(f.repo, 'commit', '--allow-empty', '-m', 'fix: 修复窗口显示')
+  assert.equal(f.run().status, 0)
+  const notes = releaseNotes(f, 'v0.1.3')
+  assert.match(notes, /v0\.1\.2 → v0\.1\.3/)
+  assert.ok(notes.includes(`- feat: 添加启动设置 (${feature})`))
+  assert.match(notes, /  支持开机启动。\n  支持关闭后驻留托盘。/)
+  assert.match(notes, /- Merge startup settings/)
+  assert.match(notes, /- fix: 修复窗口显示/)
+  assert.match(notes, /- chore\(release\): v0\.1\.3/)
+  assert.equal(notes.split('\n').filter(line => line.startsWith('- ')).length, 4)
+  assert.doesNotMatch(notes, /Initial source|Full Changelog|<p>|<a /)
+  git(f.repo, 'commit', '--allow-empty', '-m', 'Future unreleased change')
+  assert.equal(releaseNotes(f, 'v0.1.3'), notes)
+})
+
+test('first release notes contain the complete history and numeric version order selects the previous tag', (t) => {
+  const f = fixture(t)
+  git(f.repo, 'tag', 'v0.1.9')
+  assert.match(releaseNotes(f, 'v0.1.9'), /首次发布[\s\S]*Initial source/)
+  git(f.repo, 'commit', '--allow-empty', '-m', 'Version ten change')
+  git(f.repo, 'tag', 'v0.1.10')
+  git(f.repo, 'commit', '--allow-empty', '-m', 'Version eleven change')
+  git(f.repo, 'tag', 'v0.1.11')
+  const notes = releaseNotes(f, 'v0.1.11')
+  assert.match(notes, /v0\.1\.10 → v0\.1\.11/)
+  assert.match(notes, /Version eleven change/)
+  assert.doesNotMatch(notes, /Version ten change|Initial source/)
+})
+
+test('build metadata carries the commit notes and the real GitHub updater prefers them over Atom HTML', async (t) => {
+  const f = fixture(t)
+  git(f.repo, 'tag', 'v0.1.2')
+  const notes = releaseNotes(f, 'v0.1.2')
+  const workflow = readFileSync(resolve('.github/workflows/build.yml'), 'utf8')
+  const notesFile = workflow.match(/--config\.releaseInfo\.releaseNotesFile=(\S+)/)?.[1]
+  assert.ok(notesFile, 'Packaging must embed the generated release notes')
+  assert.doesNotMatch(workflow, /--generate-notes/)
+  const destination = resolve(f.repo, notesFile)
+  mkdirSync(dirname(destination), { recursive: true })
+  writeFileSync(destination, notes)
+  const packager = {
+    projectDir: f.repo,
+    info: { buildResourcesDir: join(f.repo, 'build') },
+    resourceList: Promise.resolve([]),
+    getResource: PlatformPackager.prototype.getResource,
+    platform: Platform.WINDOWS,
+    platformSpecificBuildOptions: {},
+    config: { releaseInfo: { releaseNotesFile: notesFile } },
+    appInfo: { version: '0.1.2' },
+  }
+  const tasks = await createUpdateInfoTasks({ packager, target: { outDir: f.root },
+    file: join(f.root, 'setup.exe'), arch: 1, updateInfo: { sha512: 'fixture-checksum' },
+  }, [{ provider: 'github', owner: 'Darkerhao', repo: 'jiazi-vault' }])
+  await writeUpdateInfoFiles(tasks, { emitArtifactCreated: async () => {} })
+  const metadata = readFileSync(join(f.root, 'latest.yml'), 'utf8')
+  const html = '<p><strong>Full Changelog</strong>: <a href="https://github.com/Darkerhao/jiazi-vault/compare/v0.1.1...v0.1.2">v0.1.1...v0.1.2</a></p>'
+  let channel = metadata
+  const provider = new GitHubProvider({ provider: 'github', owner: 'Darkerhao', repo: 'jiazi-vault' }, {}, {
+    platform: 'win32', executor: { request: async ({ path }) => {
+      if (path.endsWith('.atom')) return `<feed><entry><title>Release</title><link href="https://github.com/Darkerhao/jiazi-vault/releases/tag/v0.1.2"/><content type="html"><![CDATA[${html}]]></content></entry></feed>`
+      if (path.endsWith('/latest')) return JSON.stringify({ tag_name: 'v0.1.2' })
+      assert.ok(path.endsWith('/latest.yml'))
+      return channel
+    } },
+  })
+  // Without embedded notes the previous pipeline reproduces the screenshot's HTML.
+  channel = JSON.stringify({ version: '0.1.2', files: [] })
+  assert.equal((await provider.getLatestVersion()).releaseNotes, html)
+  channel = metadata
+  assert.equal((await provider.getLatestVersion()).releaseNotes, notes)
+})
 
 test('release sync applies only the bot version commit to divergent dev and is safe to retry', (t) => {
   const f = fixture(t)
