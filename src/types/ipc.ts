@@ -1,6 +1,6 @@
 import type { ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot, ItemBatchAction, ExportScope, BackupSource, BackupPreview } from '../../electron/contracts'
 import type { BackupStatus } from '../../electron/backup-status'
-import type { AppUpdate } from '../../electron/app-update'
+import type { UpdateState } from '../../electron/app-update'
 import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
 import type { AppSettings } from '../../electron/settings'
 import type { GeneratedPassword, PasswordOptions } from '../../electron/password-generator'
@@ -34,7 +34,8 @@ export interface VaultStatus {
 export interface IpcCommands {
   health_check: { args: undefined; result: string }
   get_app_version: { args: undefined; result: string }
-  check_for_updates: { args: undefined; result: AppUpdate | null }
+  get_update_state: { args: undefined; result: UpdateState }
+  check_for_updates: { args: undefined; result: UpdateState }
   open_release_page: { args: undefined; result: void }
   get_desktop_status: { args: undefined; result: { shortcut: string | null; shortcutRegistered: boolean } }
   set_search_shortcut: { args: { shortcut: string | null }; result: { shortcut: string | null; shortcutRegistered: boolean } }
@@ -88,6 +89,7 @@ export interface IpcCommands {
 }
 
 export interface DesktopBridge {
+  onUpdateState(callback: (state: UpdateState) => void): () => void
   onBackupChanged(callback: () => void): () => void
   onItemsChanged(callback: () => void): () => void
   onDesktopAction(callback: (action: DesktopAction) => void): () => void

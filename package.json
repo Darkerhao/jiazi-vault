@@ -25,6 +25,7 @@
   "dependencies": {
     "@node-rs/argon2": "2.2.0",
     "@vicons/ionicons5": "^0.13.0",
+    "electron-updater": "6.8.9",
     "naive-ui": "^2.45.3",
     "pinia": "^3.0.4",
     "vue": "^3.5.43",
@@ -62,6 +63,7 @@
     ],
     "win": {
       "icon": "build/icon.ico",
+      "publish": { "provider": "github", "owner": "Darkerhao", "repo": "jiazi-vault" },
       "extraResources": [{ "from": "output/windows-hello", "to": "windows-hello", "filter": ["**/*"] }],
       "target": [
         { "target": "nsis", "arch": ["x64"] },
@@ -72,7 +74,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "runAfterFinish": false
+      "runAfterFinish": true
     },
     "portable": {
       "artifactName": "keystill-${version}-${os}-${arch}-portable.${ext}"
