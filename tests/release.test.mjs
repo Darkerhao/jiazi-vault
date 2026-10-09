@@ -7,7 +7,7 @@ import { test } from 'node:test'
 
 const script = resolve('scripts/prepare-release.mjs')
 const testRoot = resolve('output/release-tests')
-const manifest = '{\n  "name": "release-test",\n  "version": "0.1.2",\n  "build": { "files": ["dist/**"] }\n}\n'
+const manifest = '{\n  "name": "release-test",\n  "version": "0.1.2",\n  "type": "module",\n  "main": "dist-electron/main.js",\n  "build": { "files": ["dist/**"] }\n}\n'
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true }).trim()
@@ -46,6 +46,56 @@ function fixture(t) {
     },
   }
 }
+
+function syncVersion(repo, commit) {
+  const workflow = readFileSync(resolve('.github/workflows/build.yml'), 'utf8').replace(/\r\n/g, '\n')
+  const job = workflow.split('\n  sync-dev:')[1]
+  const commands = job.match(/        run: \|\r?\n((?:          [^\n]*(?:\n|$))+)/)[1].replace(/^          /gm, '')
+  const bash = process.platform === 'win32' ? resolve(git(repo, '--exec-path'), '../../../bin/bash.exe') : 'bash'
+  return spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', commands], {
+    cwd: repo, encoding: 'utf8', windowsHide: true,
+    env: { ...process.env, RELEASE_COMMIT: commit },
+  })
+}
+
+test('release sync applies only the bot version commit to divergent dev and is safe to retry', (t) => {
+  const f = fixture(t)
+  git(f.repo, 'switch', '-c', 'dev')
+  const devManifest = manifest.replace('dist/**', 'dev/**')
+  writeFileSync(join(f.repo, 'package.json'), devManifest)
+  writeFileSync(join(f.repo, 'feature.txt'), 'unreleased dev feature')
+  git(f.repo, 'add', '.')
+  git(f.repo, 'commit', '-m', 'Unreleased development')
+  git(f.repo, 'push', '-u', 'origin', 'dev')
+  const devHead = git(f.repo, 'rev-parse', 'HEAD')
+
+  git(f.repo, 'switch', 'main')
+  writeFileSync(join(f.repo, 'package.json'), manifest.replace('dist/**', 'main/**'))
+  writeFileSync(join(f.repo, 'feature.txt'), 'different main feature')
+  writeFileSync(join(f.repo, 'main-only.txt'), 'main only')
+  git(f.repo, 'add', '.')
+  git(f.repo, 'commit', '-m', 'Main source with conflicts against dev')
+  const prepared = f.run()
+  assert.equal(prepared.status, 0, prepared.stderr)
+  const releaseCommit = git(f.repo, 'rev-parse', 'HEAD')
+
+  git(f.repo, 'switch', 'dev')
+  const result = syncVersion(f.repo, releaseCommit)
+  assert.equal(result.status, 0, result.stderr)
+  const syncedHead = git(f.remote, 'rev-parse', 'refs/heads/dev')
+  assert.equal(git(f.repo, 'show', '-s', '--format=%P', syncedHead), devHead)
+  assert.equal(git(f.repo, 'show', '-s', '--format=%an', syncedHead), 'github-actions[bot]')
+  assert.equal(git(f.repo, 'show', '-s', '--format=%s', syncedHead), 'chore(release): v0.1.3')
+  assert.equal(git(f.repo, 'diff', '--name-only', devHead, syncedHead), 'package.json')
+  assert.equal(git(f.remote, 'show', 'refs/heads/dev:package.json'), devManifest.replace('0.1.2', '0.1.3').trim())
+  assert.equal(git(f.remote, 'rev-parse', 'refs/heads/main'), releaseCommit)
+
+  const retry = syncVersion(f.repo, releaseCommit)
+  assert.equal(retry.status, 0, retry.stderr)
+  assert.equal(git(f.remote, 'rev-parse', 'refs/heads/dev'), syncedHead)
+  assert.equal(git(f.repo, 'rev-parse', 'HEAD'), syncedHead)
+  assert.equal(git(f.repo, 'status', '--porcelain'), '')
+})
 
 test('dev cannot prepare a release or change the version, remote branch, or tags', (t) => {
   const f = fixture(t)

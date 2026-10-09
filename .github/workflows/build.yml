@@ -189,8 +189,7 @@ jobs:
           gh release edit "$RELEASE_TAG" --draft=false
 
   sync-dev:
-    name: Sync release back to dev
-    if: github.ref_type == 'branch' && github.ref_name == 'main'
+    name: Sync release version to dev
     needs: [prepare, release]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -202,11 +201,11 @@ jobs:
           ref: dev
           fetch-depth: 0
 
-      - name: Merge released main into dev
+      - name: Cherry-pick release version commit into dev
         env:
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git merge --no-edit "$RELEASE_COMMIT"
+          git cherry-pick --empty=drop "$RELEASE_COMMIT"
           git push origin HEAD:refs/heads/dev

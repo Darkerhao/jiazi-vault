@@ -197,6 +197,6 @@ jiazi-vault/
 
 ## 开发与发布流程
 
-日常开发使用 `dev` 分支，发布时合入 `main`。当前 [GitHub Actions 工作流](./.github/workflows/build.yml) 在代码推送到 `main` 后自动递增补丁版本、提交版本号并创建标签，随后运行测试和多平台打包；全部构建成功后发布 Release，再将本次发布提交合并回 `dev`。
+日常开发使用 `dev` 分支，发布时合入 `main`。当前 [GitHub Actions 工作流](./.github/workflows/build.yml) 在代码推送到 `main` 后自动递增补丁版本、提交版本号并创建标签，随后运行测试和多平台打包；全部构建成功后发布 Release，再将 bot 本次仅修改 `package.json` 版本号的提交 cherry-pick 到 `dev`，不回合并 `main` 的业务代码或分支历史。版本提交已同步时自动跳过。
 
 `dev` 推送和 PR 事件不会触发该工作流，合入 `main` 前需自行完成相关验证。分支权限、失败重试及发布产物说明见 [DELIVERY.md](./DELIVERY.md)，品牌资源维护方式见 [BRAND.md](./BRAND.md)。
