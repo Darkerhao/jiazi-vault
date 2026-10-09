@@ -34,7 +34,7 @@
 
 - Electron 更新到 44.5.1；依赖按现有主版本范围刷新，未增加生产依赖、全局 overrides 或审计白名单。审计由 14 条降至 1 条中危，生产依赖为 0。`http-cache-semantics` 的审计建议暂未列出补丁，但 registry 已有 4.3.0，锁文件升级后该告警消失。
 - 剩余 `sprintf-js@1.1.3`（[GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c)）来自 electron-builder → @electron/get → global-agent → roarr；公开问题为不受限精度格式串导致异常。已检查当前 roarr/global-agent 调用：工具链使用固定日志模板，未发现保险库数据进入格式串的路径。该依赖无修复版本，继续保留告警；这不是不存在任何可利用路径的保证。
-- `pnpm audit:ci` 对生产依赖中危及以上、全量依赖高危及以上返回失败；中危工具链问题继续显示，registry 错误也不忽略。PR/dev 检查及 main 版本准备前均执行。
+- `pnpm audit:ci` 对生产依赖中危及以上、全量依赖高危及以上返回失败；中危工具链问题继续显示，registry 错误也不忽略。合入 main 的 PR 检查、手动检查及 main 版本准备前均执行。
 - Windows Hello 改为 `net10.0-windows10.0.19041.0`；去掉 .NET 9.0.20 固定运行时，随 .NET 10 SDK 发布自包含运行时。CI 使用 10.0.x，本次 SDK 10.0.401 / runtime 10.0.12。辅助程序仅返回 OS 认证结果，接口和密钥存储协议保持一致。
 - 设置页提供版本、主动检查、纯文本更新说明、固定官方下载页。主进程使用 Electron 网络栈，10 秒超时，拒绝重定向，不发送 cookie 或保险库数据；网络失败/限流可重试。不使用自动更新框架。
 - 发布流程在 Windows 打包后下载上一正式版 NSIS，隔离安装 → 用旧程序创建库和备份 → 同目录覆盖安装新版本 → 验证旧库、项目、回收站、历史、旧备份及恢复快照 → 运行现有安装和恢复测试 → 卸载。任一步失败阻断产物发布，截图/报告保留 7 天。首次发布明确跳过跨版本部分，API/下载失败不降级跳过。
@@ -72,7 +72,7 @@ Windows 实测：旧 0.1.2 NSIS → 同目录安装当前 0.1.8 本地构建，�
 
 ### 合并前检查配置
 
-- 新增 `.github/workflows/check.yml`，PR 目标为 `main`/`dev`、`dev` 推送及手动触发时执行 `Desktop checks`。沿用现有 Actions 版本、Node 24、.NET 9 和 `pnpm test` / `pnpm build` / `tests/desktop.mjs` 入口，包含新的数据恢复场景。
+- `.github/workflows/check.yml` 仅在 PR 目标为 `main` 或手动触发时执行 `Desktop checks`。普通 `dev` 推送不触发检查；已有合入 `main` 的 PR 时，后续提交仍会触发 PR 检查。沿用现有 Actions 版本、Node 24、.NET 10 和 `pnpm test` / `pnpm build` / `tests/desktop.mjs` 入口，包含新的数据恢复场景。
 - 工作流使用只读仓库权限，不持久化 checkout 凭据，不修改版本号或发布；并发时取消同一引用的旧检查。失败上传测试 PNG 和 JSON 报告，保留 7 天，不上传测试保险库数据库或备份文件。
 - 本地校验 YAML 与工作流约束；未推送、触发远端 Actions 或设置仓库分支保护，不能声称远端检查已通过。强制合并门禁需将 `Desktop checks` 配置为必需状态检查。
 

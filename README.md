@@ -127,7 +127,7 @@ API Key 的过期时间使用 YYYY-MM-DD，并继续保存在加密字段中；�
 
 ## 本地开发
 
-仓库包含独立的 `Check desktop changes / Desktop checks` 工作流：向 `main` 或 `dev` 提交 PR、推送 `dev` 时运行单测、类型检查、完整构建和 Windows 桌面回归；失败时保留 7 天的测试截图与 JSON 报告。它不打包发布或递增版本号。需要在仓库分支保护中将 `Desktop checks` 设置为必需检查，才能强制阻止未通过检查的合并。
+仓库包含独立的 `Check desktop changes / Desktop checks` 工作流：仅在目标分支为 `main` 的 PR 或手动触发时运行单测、类型检查、完整构建和 Windows 桌面回归；普通 `dev` 推送不触发检查，已有合入 `main` 的 PR 时，后续提交仍会触发 PR 检查。失败时保留 7 天的测试截图与 JSON 报告。它不打包发布或递增版本号。需要在仓库分支保护中将 `Desktop checks` 设置为必需检查，才能强制阻止未通过检查的合并。
 
 技术栈：**Electron + Vue 3 + TypeScript + Vite + Naive UI + Pinia + SQLite**。Windows Hello 辅助程序使用 C# / .NET。
 
