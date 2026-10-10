@@ -124,9 +124,12 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
   }
 
   function rowToItem(row: ItemRow): VaultItem {
-    const secret = JSON.parse(row.secret) as EncryptedValue
-    const payload = JSON.parse(decryptValue(getKey(), secret)) as SecretPayload
-    return { ...rowToBase(row), password: payload.password, notes: payload.notes, fields: payload.fields }
+    const key = getKey()
+    try {
+      const secret = JSON.parse(row.secret) as EncryptedValue
+      const payload = JSON.parse(decryptValue(key, secret)) as SecretPayload
+      return { ...rowToBase(row), password: payload.password, notes: payload.notes, fields: payload.fields }
+    } catch { throw new Error('DECRYPT_FAILED') }
   }
 
   function buildSecret(input: ItemInput) {

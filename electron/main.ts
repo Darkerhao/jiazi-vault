@@ -26,6 +26,7 @@ import { createBiometricProvider } from './biometric-provider.js'
 import { ENV_MAX_BYTES, serializeEnv, validateEnvFields } from './env.js'
 import { writePrivateFile } from './private-file.js'
 import { automaticBackupStatus, runAutomaticBackup, setAutomaticBackupDirectory } from './automatic-backup.js'
+import { createBackupQueue } from './backup-queue.js'
 import { createRecoverySnapshot, listRecoverySnapshots, readRecoverySnapshot } from './recovery-snapshot.js'
 import type { ItemBatchAction, ExportScope } from './contracts.js'
 
@@ -46,6 +47,29 @@ let biometric: BiometricVault
 let itemStore: ReturnType<typeof createItemStore>
 let projects: ReturnType<typeof createProjectStore>
 let updates: ReturnType<typeof createAppUpdates>
+const backupQueue = createBackupQueue(() => automaticBackup())
+let closeRequest: { token: string; resolve: (allowed: boolean) => void } | null = null
+let preparingClose = false
+
+async function prepareWindowClose() {
+  if (preparingClose) return false
+  preparingClose = true
+  try {
+    if (session.unlocked && mainWindow && !mainWindow.webContents.isDestroyed()) {
+      const allowed = await new Promise<boolean>(resolve => {
+        const token = randomUUID()
+        closeRequest = { token, resolve }
+        desktop.show()
+        mainWindow!.webContents.send('close_requested', token)
+      })
+      if (!allowed) return false
+    }
+    await backupQueue.drain()
+    if (vaultOperationBusy) return false
+    session.lock()
+    return true
+  } finally { closeRequest = null; preparingClose = false }
+}
 
 function initializeDatabase() {
   const opened = openDatabase(app.getPath('userData'))
@@ -78,12 +102,16 @@ function isApplicationUrl(value: string) {
 const recoveryCommands = new Set(['health_check', 'get_app_version', 'get_update_state', 'check_for_updates', 'open_release_page', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'select_backup_source', 'preview_backup', 'cancel_backup_restore', 'restore_backup', 'list_recovery_snapshots'])
 
 function handleIpc(channel: string, listener: Parameters<typeof ipcMain.handle>[1]) {
-  ipcMain.handle(channel, (event, ...args) => {
+  ipcMain.handle(channel, async (event, ...args) => {
     const contents = mainWindow?.webContents
     if (!contents || event.sender !== contents || event.senderFrame !== contents.mainFrame
       || !isApplicationUrl(event.senderFrame.url)) throw new Error('INVALID_IPC_SENDER')
     if (!database && !recoveryCommands.has(channel)) throw new Error('DATABASE_ERROR')
-    return listener(event, ...args)
+    const opened = database
+    const revision = opened ? backupRevision(opened.connection) : 0
+    const result = await listener(event, ...args)
+    if (opened && database === opened && backupRevision(opened.connection) !== revision) await backupQueue.request()
+    return result
   })
 }
 
@@ -163,11 +191,13 @@ function createWindow(show = true) {
     if (isMainFrame && !isInPlace) session.lock()
   })
   mainWindow.on('close', (event) => {
-    session.lock()
     if (quitting) return
     event.preventDefault()
-    if (desktopPreferences.closeToTray) mainWindow?.hide()
-    else app.quit()
+    void prepareWindowClose().then(allowed => {
+      if (!allowed) return
+      if (desktopPreferences.closeToTray) mainWindow?.hide()
+      else app.quit()
+    })
   })
   mainWindow.on('closed', () => { mainWindow = null })
   if (show) mainWindow.once('ready-to-show', () => desktop.show())
@@ -182,6 +212,10 @@ function createWindow(show = true) {
 
 function registerIpcHandlers() {
   handleIpc('health_check', () => 'ok')
+  handleIpc('respond_close_request', (_event, args: { token: string; allowed: boolean }) => {
+    if (typeof args?.allowed !== 'boolean' || typeof args.token !== 'string') throw new Error('INVALID_DATA')
+    if (closeRequest?.token === args.token) closeRequest.resolve(args.allowed)
+  })
   handleIpc('get_app_version', () => app.getVersion())
   handleIpc('set_search_shortcut', (_event, args: { shortcut: string | null }) => {
     requireUnlocked()
@@ -677,6 +711,8 @@ if (!primaryInstance) app.quit()
 else app.whenReady().then(() => {
   clipboardManager = new ClipboardManager(clipboard, () => settings.clipboardClearTimeout)
   session = new VaultSession(() => settings.autoLockMinutes, () => {
+    closeRequest?.resolve(false)
+    closeRequest = null
     pendingImport = null
     pendingRestore = null
     if (mainWindow && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send('vault_locked')
@@ -695,7 +731,10 @@ else app.whenReady().then(() => {
     ? electronUpdater.autoUpdater : null
   updates = createAppUpdates(updater, () => checkForUpdates(app.getVersion(), net.fetch),
     (state) => mainWindow?.webContents.send('update_state', state),
-    () => { if (vaultOperationBusy) throw new Error('VAULT_BUSY') })
+    async () => {
+      if (vaultOperationBusy) throw new Error('VAULT_BUSY')
+      return prepareWindowClose()
+    })
   registerIpcHandlers()
   desktop = createDesktopControls(() => mainWindow ?? createWindow(), () => session.lock(), database ? readSearchShortcut(database.connection) : DEFAULT_SEARCH_SHORTCUT)
   createWindow(!database || !hasVault() || !desktopPreferences.silentStart)
@@ -714,11 +753,13 @@ app.on('before-quit', (event) => {
   if (quitReady || !session) return
   event.preventDefault()
   if (quitting) return
-  quitting = true
-  clearInterval(trashTimer)
-  clearInterval(backupTimer)
-  session.dispose()
-  void clipboardManager.clearOnLock().catch(() => {}).finally(() => {
+  void prepareWindowClose().then(async allowed => {
+    if (!allowed) return
+    quitting = true
+    clearInterval(trashTimer)
+    clearInterval(backupTimer)
+    session.dispose()
+    await clipboardManager.clearOnLock().catch(() => {})
     desktop?.dispose()
     database?.connection.close()
     database = null

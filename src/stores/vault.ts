@@ -4,6 +4,7 @@ import { useBackupStore } from './backup'
 import { vaultService } from '../services/vault'
 import { projectService } from '../services/project'
 import { createSearchIndex, searchItems } from '../utils/search'
+import { vaultErrorMessage } from '../utils/vault-error'
 import type { Project, VaultItem, VaultItemSummary } from '../types/vault'
 
 export type VaultFilter = 'all' | 'categories' | 'favorites' | 'recent' | 'trash'
@@ -53,12 +54,12 @@ export const useVaultStore = defineStore('vault', () => {
       items.value = active
       trashed.value = deleted
       projects.value = groups
-    } catch {
+    } catch (cause) {
       if (requestRevision === revision) {
         items.value = []
         trashed.value = []
         projects.value = []
-        error.value = '加载失败，请重试。'
+        error.value = vaultErrorMessage(cause, '加载失败，请重试。')
       }
     } finally {
       if (requestRevision === revision) loading.value = false
@@ -71,67 +72,40 @@ export const useVaultStore = defineStore('vault', () => {
 
   async function get(id: string, recordAccess = true): Promise<VaultItem | null> {
     const requestRevision = revision
-    try {
-      const item = await vaultService.getItem(id, recordAccess)
-      if (requestRevision !== revision) return null
-      if (item?.lastAccessedAt !== undefined) applyUsage(id, item.lastAccessedAt)
-      return item
-    } catch {
-      return null
-    }
+    const item = await vaultService.getItem(id, recordAccess)
+    if (requestRevision !== revision) return null
+    if (!item) throw new Error('ITEM_NOT_FOUND')
+    if (item.lastAccessedAt !== undefined) applyUsage(id, item.lastAccessedAt)
+    return item
   }
 
   async function createItem(input: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'>) {
-    try {
-      await vaultService.createItem(input)
-      await load()
-      return true
-    } catch {
-      return false
-    }
+    await vaultService.createItem(input)
+    await load()
   }
 
   async function updateItem(item: VaultItem) {
-    try {
-      await vaultService.updateItem(item)
-      await load()
-      return true
-    } catch {
-      return false
-    }
+    await vaultService.updateItem(item)
+    await load()
   }
 
   async function removeItem(id: string, permanently = false) {
-    try {
-      await vaultService.deleteItem(id, permanently)
-      await load()
-      return true
-    } catch {
-      return false
-    }
+    await vaultService.deleteItem(id, permanently)
+    await load()
   }
 
   async function restoreItem(id: string) {
-    try {
-      await vaultService.restoreItem(id)
-      await load()
-      return true
-    } catch {
-      return false
-    }
+    await vaultService.restoreItem(id)
+    await load()
   }
 
   async function toggleFavorite(id: string) {
     const requestRevision = revision
-    try {
-      const updated = await vaultService.toggleFavorite(id)
-      if (requestRevision !== revision) return false
-      items.value = items.value.map((item) => item.id === id ? updated : item)
-      void useBackupStore().load()
-      return true
-    } catch {
-      return false
-    }
+    const updated = await vaultService.toggleFavorite(id)
+    if (requestRevision !== revision) return
+    if (!updated) throw new Error('ITEM_NOT_FOUND')
+    items.value = items.value.map((item) => item.id === id ? updated : item)
+    void useBackupStore().load()
   }
 
   return { items, trashed, projects, error, filter, loading, filteredItems, search, clear, load, get, applyUsage, createItem, updateItem, removeItem, restoreItem, toggleFavorite }

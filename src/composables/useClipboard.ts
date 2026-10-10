@@ -3,6 +3,7 @@ import { clipboardService } from '../services/clipboard'
 import { useVaultStore } from '../stores/vault'
 import { useAuthStore } from '../stores/auth'
 import { primarySecret } from '../utils/item-fields'
+import { vaultErrorMessage } from '../utils/vault-error'
 
 export function useClipboard() {
   const message = useMessage()
@@ -23,9 +24,14 @@ export function useClipboard() {
   /** One-click copy of an item's main value without opening the editor. */
   async function copyItem(id: string) {
     const revision = auth.sessionRevision
-    const item = await vault.get(id, false)
+    let item
+    try { item = await vault.get(id, false) }
+    catch (cause) {
+      if (revision === auth.sessionRevision) message.error(vaultErrorMessage(cause, '读取凭证失败，请重试。'))
+      return
+    }
     if (revision !== auth.sessionRevision) return
-    if (!item) { message.error('无法读取凭证'); return }
+    if (!item) return
     if (item.type !== 'env') {
       const secret = primarySecret(item)
       if (secret) await copy(secret, id)

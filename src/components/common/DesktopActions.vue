@@ -5,12 +5,19 @@ import { useMessage } from 'naive-ui'
 import { useAuthStore } from '../../stores/auth'
 import { useDesktopStore } from '../../stores/desktop'
 import QuickSearch from './QuickSearch.vue'
+import { confirmPendingChanges } from '../../composables/useDiscardChanges'
+import { callCommand } from '../../services/ipc'
 
 const auth = useAuthStore()
 const desktop = useDesktopStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
+const stopCloseRequests = window.jiaziVault?.onCloseRequest(async token => {
+  const allowed = await confirmPendingChanges()
+  await callCommand('respond_close_request', { token, allowed }).catch(() => message.error('无法关闭窗口，请重试。'))
+})
+onUnmounted(() => stopCloseRequests?.())
 
 watch([() => auth.unlocked, () => route.name, () => desktop.pendingAction], () => {
   if (!auth.unlocked || route.name === 'unlock' || !desktop.pendingAction) return

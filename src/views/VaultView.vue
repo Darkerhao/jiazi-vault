@@ -10,6 +10,8 @@ import { expiryState } from '../../electron/expiry'
 import AppShell from '../components/common/AppShell.vue'
 import ItemFormModal from '../components/item/ItemFormModal.vue'
 import { useVaultStore } from '../stores/vault'
+import { useAuthStore } from '../stores/auth'
+import { vaultErrorMessage } from '../utils/vault-error'
 import { useClipboard } from '../composables/useClipboard'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, ITEM_TYPE_OPTIONS } from '../utils/item-fields'
 import { ITEM_TYPE_ICONS } from '../utils/item-icons'
@@ -19,6 +21,7 @@ import type { Environment, ItemType, VaultItem, VaultItemSummary } from '../type
 const route = useRoute()
 const router = useRouter()
 const vault = useVaultStore()
+const auth = useAuthStore()
 const dialog = useDialog()
 const message = useMessage()
 
@@ -64,7 +67,7 @@ async function batch(action: ItemBatchAction) {
     message.success(`已处理 ${count} 条凭证`)
     return true
   } catch (error) {
-    message.error(String(error).includes('ENVIRONMENT_REQUIRED') ? '环境变量集必须指定环境，本次整批修改未保存。' : '批量操作失败，未修改任何凭证。请刷新列表后重试。')
+    message.error(vaultErrorMessage(error, '批量操作失败，未修改任何凭证。请刷新列表后重试。'))
     return false
   } finally { batchBusy.value = false }
 }
@@ -126,9 +129,7 @@ watch(
 
 watch(() => route.query.item, async (id) => {
   if (typeof id !== 'string') return
-  const full = await vault.get(id)
-  if (full) { editing.value = full; modalShow.value = true }
-  else message.error('无法打开凭证')
+  await openEdit(id)
   const query = { ...route.query }
   delete query.item
   void router.replace({ name: 'vault', query })
@@ -147,15 +148,21 @@ function subtitle(item: VaultItemSummary) {
   return item.username || item.url || item.host || ITEM_TYPE_LABELS[item.type]
 }
 
-async function openEdit(item: VaultItemSummary) {
-  const full = await vault.get(item.id)
-  if (!full) return
-  editing.value = full
-  modalShow.value = true
+async function openEdit(item: VaultItemSummary | string) {
+  const revision = auth.sessionRevision
+  try {
+    const full = await vault.get(typeof item === 'string' ? item : item.id)
+    if (!full) return
+    editing.value = full
+    modalShow.value = true
+  } catch (cause) {
+    if (revision === auth.sessionRevision) message.error(vaultErrorMessage(cause, '读取凭证失败，请重试。'))
+  }
 }
 
 async function toggle(item: VaultItemSummary) {
-  if (!(await vault.toggleFavorite(item.id))) message.error('操作失败，请重试')
+  try { await vault.toggleFavorite(item.id) }
+  catch (cause) { message.error(vaultErrorMessage(cause, '操作失败，请重试。')) }
 }
 
 const { copy, copyItem } = useClipboard()
@@ -174,7 +181,8 @@ function remove(item: VaultItemSummary) {
     positiveText: '删除',
     negativeText: '取消',
     onPositiveClick: async () => {
-      if (!(await vault.removeItem(item.id))) message.error('删除失败，请重试')
+      try { await vault.removeItem(item.id) }
+      catch (cause) { message.error(vaultErrorMessage(cause, '删除失败，请重试。')); return false }
     },
   })
 }
@@ -186,13 +194,15 @@ function removePermanently(item: VaultItemSummary) {
     positiveText: '删除',
     negativeText: '取消',
     onPositiveClick: async () => {
-      if (!(await vault.removeItem(item.id, true))) message.error('删除失败，请重试')
+      try { await vault.removeItem(item.id, true) }
+      catch (cause) { message.error(vaultErrorMessage(cause, '删除失败，请重试。')); return false }
     },
   })
 }
 
 async function restore(item: VaultItemSummary) {
-  if (!(await vault.restoreItem(item.id))) message.error('恢复失败，请重试')
+  try { await vault.restoreItem(item.id) }
+  catch (cause) { message.error(vaultErrorMessage(cause, '恢复失败，请重试。')) }
 }
 </script>
 

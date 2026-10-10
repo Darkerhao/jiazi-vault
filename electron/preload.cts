@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 const allowedCommands = new Set([
   'health_check',
+  'respond_close_request',
   'get_app_version',
   'get_update_state',
   'check_for_updates',
@@ -60,6 +61,11 @@ const allowedCommands = new Set([
 ])
 
 contextBridge.exposeInMainWorld('jiaziVault', {
+  onCloseRequest(callback: (token: string) => void) {
+    const listener = (_event: Electron.IpcRendererEvent, token: string) => callback(token)
+    ipcRenderer.on('close_requested', listener)
+    return () => ipcRenderer.removeListener('close_requested', listener)
+  },
   onUpdateState(callback: (state: unknown) => void) {
     const listener = (_event: Electron.IpcRendererEvent, state: unknown) => callback(state)
     ipcRenderer.on('update_state', listener)

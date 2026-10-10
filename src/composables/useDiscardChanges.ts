@@ -2,13 +2,20 @@ import { onBeforeUnmount } from 'vue'
 import { useDialog } from 'naive-ui'
 import { useAuthStore } from '../stores/auth'
 
+const guards = new Set<() => Promise<boolean>>()
+
+export async function confirmPendingChanges() {
+  for (const confirm of guards) if (!await confirm()) return false
+  return true
+}
+
 export function useDiscardChanges(isDirty: () => boolean, isBusy: () => boolean) {
   const dialog = useDialog(), auth = useAuthStore()
   let pending: Promise<boolean> | null = null
   let dismiss: (() => void) | undefined
-  onBeforeUnmount(() => dismiss?.())
+  onBeforeUnmount(() => { guards.delete(confirmDiscard); dismiss?.() })
 
-  return function confirmDiscard(changed = isDirty()): Promise<boolean> {
+  function confirmDiscard(changed = isDirty()): Promise<boolean> {
     if (!auth.unlocked) return Promise.resolve(true)
     if (isBusy()) return Promise.resolve(false)
     if (!changed) return Promise.resolve(true)
@@ -23,4 +30,6 @@ export function useDiscardChanges(isDirty: () => boolean, isBusy: () => boolean)
     }).finally(() => { pending = null; dismiss = undefined })
     return pending
   }
+  guards.add(confirmDiscard)
+  return confirmDiscard
 }

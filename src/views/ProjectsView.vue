@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { useDiscardChanges } from '../composables/useDiscardChanges'
+import { vaultErrorMessage } from '../utils/vault-error'
 import { NAlert, NButton, NEmpty, NForm, NFormItem, NInput, NList, NListItem, NModal, NSelect, NSpace, NSpin, NText, useDialog, useMessage } from 'naive-ui'
 import AppShell from '../components/common/AppShell.vue'
 import { projectService } from '../services/project'
@@ -52,7 +53,7 @@ async function save() {
     await vault.load()
     message.success('项目已保存')
   } catch (cause) {
-    error.value = cause instanceof Error && cause.message.includes('PROJECT_NAME_EXISTS') ? '项目名称已存在' : '保存失败，请重试'
+    error.value = vaultErrorMessage(cause, '保存失败，请重试。')
   } finally { saving.value = false }
 }
 
@@ -60,7 +61,7 @@ function remove(project: Project) {
   dialog.warning({ title: '删除项目', content: `删除「${project.name}」？凭证和回收站条目会保留，并解除项目归属。`, positiveText: '删除项目', negativeText: '取消',
     onPositiveClick: async () => {
       try { await projectService.remove(project.id); await vault.load() }
-      catch { message.error('删除失败，请重试'); return false }
+      catch (cause) { message.error(vaultErrorMessage(cause, '删除失败，请重试。')); return false }
     },
   })
 }

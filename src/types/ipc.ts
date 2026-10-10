@@ -32,6 +32,7 @@ export interface VaultStatus {
 }
 
 export interface IpcCommands {
+  respond_close_request: { args: { token: string; allowed: boolean }; result: void }
   health_check: { args: undefined; result: string }
   get_app_version: { args: undefined; result: string }
   get_update_state: { args: undefined; result: UpdateState }
@@ -91,6 +92,7 @@ export interface IpcCommands {
 }
 
 export interface DesktopBridge {
+  onCloseRequest(callback: (token: string) => void): () => void
   onUpdateState(callback: (state: UpdateState) => void): () => void
   onBackupChanged(callback: () => void): () => void
   onItemsChanged(callback: () => void): () => void

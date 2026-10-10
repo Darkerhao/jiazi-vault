@@ -17,7 +17,7 @@ function fixture() {
     updater.emit('download-progress', { percent: 42.4 })
   }
   updater.quitAndInstall = (...args) => calls.push(['install', ...args])
-  const service = createAppUpdates(updater, () => { throw new Error('unexpected manual check') }, state => states.push(state), () => calls.push('prepare'))
+  const service = createAppUpdates(updater, () => { throw new Error('unexpected manual check') }, state => states.push(state), () => { calls.push('prepare'); return true })
   return { updater, calls, states, service }
 }
 
@@ -46,6 +46,28 @@ test('concurrent checks cannot start another download or installer', async () =>
   finish()
   await pending
   assert.deepEqual(f.calls, ['check', 'prepare', ['install', false, false]])
+})
+
+test('installation waits for draft confirmation; cancellation keeps the downloaded update ready for retry', async () => {
+  const updater = new EventEmitter(), installs = []
+  let confirm, downloads = 0
+  updater.checkForUpdates = async () => ({ isUpdateAvailable: true, updateInfo: { version: '1.2.0' } })
+  updater.downloadUpdate = async () => { downloads++ }
+  updater.quitAndInstall = () => installs.push('install')
+  const service = createAppUpdates(updater, async () => null, () => {}, () => new Promise(resolve => { confirm = resolve }))
+  const first = service.check()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(installs, [])
+  confirm(false)
+  await first
+  assert.equal(service.state.status, 'ready')
+  assert.deepEqual(installs, [])
+  const retry = service.check()
+  await new Promise(resolve => setImmediate(resolve))
+  confirm(true)
+  await retry
+  assert.deepEqual(installs, ['install'])
+  assert.equal(downloads, 1)
 })
 
 test('same or newer installed version never downloads or installs', async () => {

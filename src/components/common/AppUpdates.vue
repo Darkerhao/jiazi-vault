@@ -6,7 +6,7 @@ import type { UpdateState } from '../../../electron/app-update'
 
 const version = ref('')
 const state = ref<UpdateState | null>(null)
-const busy = computed(() => !!state.value && ['checking', 'downloading', 'installing'].includes(state.value.status))
+const busy = computed(() => !!state.value && ['checking', 'downloading', 'confirming', 'installing'].includes(state.value.status))
 const update = computed(() => state.value?.update)
 const error = ref('')
 let unsubscribe: (() => void) | undefined
@@ -40,9 +40,9 @@ async function openReleasePage() {
 <template>
   <n-card title="关于与更新" class="updates-card" bordered>
     <p class="version">Keystill · 密序 <span v-if="version">v{{ version }}</span></p>
-    <n-text depth="3">点击检查时连接 GitHub，{{ state?.automatic ? '发现新版后自动下载安装包，下载完成将退出应用并启动安装向导。' : '查询公开版本信息。' }}不上传保险库数据。</n-text>
+    <n-text depth="3">点击检查时连接 GitHub，{{ state?.automatic ? '发现新版后自动下载安装包；如有未保存内容，会先确认再退出并启动安装向导。' : '查询公开版本信息。' }}不上传保险库数据。</n-text>
     <div class="update-actions">
-      <n-button :loading="busy" :disabled="!version || !state || busy" @click="check">{{ state?.status === 'error' ? '重试更新' : '检查更新' }}</n-button>
+      <n-button :loading="busy" :disabled="!version || !state || busy" @click="check">{{ state?.status === 'ready' ? '安装已下载的更新' : state?.status === 'error' ? '重试更新' : '检查更新' }}</n-button>
       <n-button @click="openReleasePage">打开官方下载页</n-button>
     </div>
     <n-alert v-if="error || state?.error" type="error">{{ error || state?.error }}</n-alert>
@@ -51,6 +51,8 @@ async function openReleasePage() {
       <n-progress type="line" :percentage="state.percent" :processing="true" aria-label="更新下载进度" />
     </n-alert>
     <n-alert v-else-if="state?.status === 'installing'" type="info">下载完成，正在退出应用并启动安装向导…</n-alert>
+    <n-alert v-else-if="state?.status === 'confirming'" type="info">更新已下载，正在确认未保存的内容…</n-alert>
+    <n-alert v-else-if="state?.status === 'ready'" type="info">更新已下载，保存完成后可继续安装。</n-alert>
     <n-alert v-else-if="state && ['current', 'available'].includes(state.status)" :type="update?.newer ? 'info' : 'success'">
       {{ !update ? '暂未发布正式版本。' : update.newer ? `发现新版本 v${update.version}` : '当前已是最新版本。' }}
     </n-alert>

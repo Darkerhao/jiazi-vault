@@ -6,7 +6,6 @@ import type { AutomaticBackupStatus } from './contracts.js'
 import { backupRevision, recordBackup } from './backup-status.js'
 import { writePrivateFile } from './private-file.js'
 
-export const AUTOMATIC_BACKUP_INTERVAL = 15 * 60_000
 const FILE_NAME = /^auto-(\d{13})-[a-f0-9-]{36}\.jvault$/
 interface SavedBackup { at: number; revision: number; file: string }
 
@@ -46,8 +45,7 @@ export async function runAutomaticBackup(db: DatabaseSync, snapshot: () => strin
     const status = await automaticBackupStatus(db), saved = readRecord(db)
     assertActive()
     const revision = backupRevision(db)
-    if (!force && status.fileExists && saved
-      && (saved.revision === revision || now - saved.at < AUTOMATIC_BACKUP_INTERVAL)) return false
+    if (!force && status.fileExists && saved?.revision === revision) return false
     const contents = snapshot()
     const file = `auto-${now}-${randomUUID()}.jvault`
     await writePrivateFile(join(path, file), contents, assertActive)
