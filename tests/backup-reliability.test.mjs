@@ -8,7 +8,7 @@ import { createItemStore } from '../dist-electron/item-store.js'
 import { createVaultCredential, clearKey } from '../dist-electron/vault-crypto.js'
 import { createBackup, readBackup, restoreBackup } from '../dist-electron/backup.js'
 import { readBackupStatus } from '../dist-electron/backup-status.js'
-import { automaticBackupStatus, runAutomaticBackup, setAutomaticBackupDirectory, AUTOMATIC_BACKUP_INTERVAL } from '../dist-electron/automatic-backup.js'
+import { automaticBackupStatus, runAutomaticBackup, setAutomaticBackupDirectory } from '../dist-electron/automatic-backup.js'
 import { createRecoverySnapshot, listRecoverySnapshots, readRecoverySnapshot } from '../dist-electron/recovery-snapshot.js'
 
 async function fixture(t) {
@@ -26,7 +26,7 @@ async function fixture(t) {
   return { directory, db, store, item, snapshot: () => createBackup(db, credential.metadata, credential.masterKey) }
 }
 
-test('automatic backup respects the interval and revision, detects missing files, preserves device configuration on restore', async (t) => {
+test('automatic backup captures changed revisions immediately, detects missing files, and preserves device configuration on restore', async (t) => {
   const f = await fixture(t), target = join(f.directory, 'backups'), now = 1_800_000_000_000
   assert.equal(await runAutomaticBackup(f.db, f.snapshot, () => {}, true, now), false)
   await setAutomaticBackupDirectory(f.db, target)
@@ -35,10 +35,10 @@ test('automatic backup respects the interval and revision, detects missing files
   const contents = readFileSync(join(target, file), 'utf8')
   assert.ok(!contents.includes('private-current'))
   assert.equal((await automaticBackupStatus(f.db)).fileExists, true)
-  assert.equal(await runAutomaticBackup(f.db, f.snapshot, () => {}, false, now + AUTOMATIC_BACKUP_INTERVAL), false)
+  assert.equal(await runAutomaticBackup(f.db, f.snapshot, () => {}, false, now + 60_000), false)
   f.store.update({ ...f.store.get(f.item.id), password: 'changed' })
-  assert.equal(await runAutomaticBackup(f.db, f.snapshot, () => {}, false, now + 100), false)
-  assert.equal(await runAutomaticBackup(f.db, f.snapshot, () => {}, false, now + AUTOMATIC_BACKUP_INTERVAL), true)
+  assert.equal(await runAutomaticBackup(f.db, f.snapshot, () => {}, false, now + 100), true)
+  assert.equal(await runAutomaticBackup(f.db, f.snapshot, () => {}, false, now + 60_000), false)
   const status = await automaticBackupStatus(f.db)
   const record = JSON.parse(f.db.prepare("SELECT value FROM settings WHERE key = 'automatic_backup_record'").get().value)
   rmSync(join(target, record.file))

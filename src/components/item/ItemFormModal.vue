@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NSelect, NSpace, NText, useMessage } from 'naive-ui'
 import { useDiscardChanges } from '../../composables/useDiscardChanges'
+import { vaultErrorMessage } from '../../utils/vault-error'
 import { useVaultStore } from '../../stores/vault'
 import { useClipboard } from '../../composables/useClipboard'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_OPTIONS, TYPE_FIELDS, type FieldDef } from '../../utils/item-fields'
@@ -223,15 +224,14 @@ function buildItem(): ItemInput {
 async function save() {
   if (invalid.value || saving.value || projectSaving.value || creatingProject.value) return
   saving.value = true
-  const input = buildItem()
-  const ok = props.item ? await vault.updateItem({ ...input, id: props.item.id, createdAt: props.item.createdAt, updatedAt: props.item.updatedAt }) : await vault.createItem(input)
-  saving.value = false
-  if (disposed) return
-  if (!ok) {
-    message.error('保存失败，请重试')
-    return
-  }
-  emit('close')
+  try {
+    const input = buildItem()
+    if (props.item) await vault.updateItem({ ...input, id: props.item.id, createdAt: props.item.createdAt, updatedAt: props.item.updatedAt })
+    else await vault.createItem(input)
+    if (!disposed) emit('close')
+  } catch (cause) {
+    if (!disposed) message.error(vaultErrorMessage(cause, '保存失败，请重试。'))
+  } finally { saving.value = false }
 }
 </script>
 

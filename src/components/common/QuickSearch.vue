@@ -7,6 +7,7 @@ import { useAuthStore } from '../../stores/auth'
 import { useClipboard } from '../../composables/useClipboard'
 import { ITEM_TYPE_LABELS, TYPE_FIELDS } from '../../utils/item-fields'
 import { vaultService } from '../../services/vault'
+import { vaultErrorMessage } from '../../utils/vault-error'
 import { ITEM_TYPE_ICONS } from '../../utils/item-icons'
 import type { VaultItem, VaultItemSummary } from '../../types/vault'
 
@@ -56,8 +57,8 @@ async function loadFields() {
     if (current !== request || revision !== auth.sessionRevision) return
     if (!item) throw new Error('ITEM_NOT_FOUND')
     details.value = item
-  } catch {
-    if (current === request && revision === auth.sessionRevision) fieldsError.value = '读取字段失败，请重试。'
+  } catch (cause) {
+    if (current === request && revision === auth.sessionRevision) fieldsError.value = vaultErrorMessage(cause, '读取字段失败，请重试。')
   } finally { if (current === request) fieldsLoading.value = false }
 }
 watch(() => active.value?.id, loadFields, { immediate: true })

@@ -52,7 +52,7 @@ onBeforeUnmount(() => { disposed = true; request++; unsubscribe?.() })
         <n-button v-if="status.directory" :disabled="busy" @click="perform('disable')">停用自动备份</n-button>
       </n-space>
     </template>
-    <p><n-text depth="3">解锁期间每 15 分钟备份有变化的内容，保留当前专用目录最近 10 份；锁定或退出后暂停。停用或更换位置会保留原目录文件。建议选择另一块磁盘，恢复备份需要备份创建时的主密码。</n-text></p>
+    <p><n-text depth="3">保存后自动备份，短时间内的连续修改会合并处理；解锁期间每分钟检查并重试，保留当前专用目录最近 10 份。锁定或退出后暂停。停用或更换位置会保留原目录文件。建议选择另一块磁盘，恢复备份需要备份创建时的主密码。</n-text></p>
   </section>
 </template>
 

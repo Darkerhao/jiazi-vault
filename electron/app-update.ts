@@ -11,7 +11,7 @@ export interface AppUpdate {
 
 export interface UpdateState {
   automatic: boolean
-  status: 'idle' | 'checking' | 'downloading' | 'installing' | 'current' | 'available' | 'error'
+  status: 'idle' | 'checking' | 'downloading' | 'confirming' | 'ready' | 'installing' | 'current' | 'available' | 'error'
   update: AppUpdate | null
   percent: number
   error: string
@@ -21,7 +21,7 @@ export function createAppUpdates(
   updater: AppUpdater | null,
   checkRelease: () => Promise<AppUpdate | null>,
   notify: (state: UpdateState) => void,
-  beforeInstall: () => void,
+  beforeInstall: () => boolean | Promise<boolean>,
 ) {
   let state: UpdateState = { automatic: !!updater, status: 'idle', update: null, percent: 0, error: '' }
   const publish = (patch: Partial<UpdateState>) => { state = { ...state, ...patch }; notify(state) }
@@ -52,10 +52,20 @@ export function createAppUpdates(
     // Check/download errors reject their promise; installation errors only emit an event.
     updater.on('error', (error) => { if (state.status === 'installing') fail(error) })
   }
+  async function installDownloaded() {
+    publish({ status: 'confirming', percent: 100, error: '' })
+    if (!await beforeInstall()) { publish({ status: 'ready' }); return }
+    publish({ status: 'installing' })
+    updater!.quitAndInstall(false, false)
+  }
   return {
     get state() { return state },
     async check() {
-      if (['checking', 'downloading', 'installing'].includes(state.status)) return state
+      if (['checking', 'downloading', 'confirming', 'installing'].includes(state.status)) return state
+      if (state.status === 'ready') {
+        try { await installDownloaded() } catch (cause) { fail(cause) }
+        return state
+      }
       publish({ status: 'checking', update: null, percent: 0, error: '' })
       try {
         if (!updater) {
@@ -73,9 +83,7 @@ export function createAppUpdates(
           publish({ update, status: update.newer ? 'downloading' : 'current' })
           if (update.newer) {
             await updater.downloadUpdate()
-            beforeInstall()
-            publish({ status: 'installing', percent: 100 })
-            updater.quitAndInstall(false, false)
+            await installDownloaded()
           }
         }
       } catch (cause) { fail(cause) }
