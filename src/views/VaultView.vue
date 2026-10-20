@@ -167,10 +167,10 @@ async function toggle(item: VaultItemSummary) {
 
 const { copy, copyItem } = useClipboard()
 const copyingId = ref<string | null>(null)
-async function copyRow(item: VaultItemSummary) {
+async function copyRow(item: VaultItemSummary, field?: 'password') {
   if (copyingId.value) return
   copyingId.value = item.id
-  try { await copyItem(item.id) }
+  try { await copyItem(item.id, field) }
   finally { copyingId.value = null }
 }
 
@@ -254,6 +254,7 @@ async function restore(item: VaultItemSummary) {
               <div class="item-sub">
                 <n-button v-if="item.username && vault.filter !== 'trash'" text class="item-account" title="点击复制账号" :aria-label="`复制账号 ${item.username}`" @click="copy(item.username, item.id)">{{ item.username }}</n-button>
                 <n-text v-else depth="3">{{ subtitle(item) }}</n-text>
+                <n-button v-if="item.username && vault.filter !== 'trash'" text size="tiny" class="item-copy-password" title="复制密码" :aria-label="`复制密码 ${item.title}`" :loading="copyingId === item.id" @click.stop="copyRow(item, 'password')"><template #icon><n-icon :size="14"><copy-outline /></n-icon></template>复制密码</n-button>
               </div>
               <div class="item-meta"><n-tag v-if="item.expiresAt" size="small" :type="expiryState(item.expiresAt, now) === 'expired' ? 'error' : ['soon', 'invalid'].includes(expiryState(item.expiresAt, now)) ? 'warning' : 'default'">{{ expiryState(item.expiresAt, now) === 'invalid' ? '日期待修正' : `${expiryState(item.expiresAt, now) === 'expired' ? '已过期' : expiryState(item.expiresAt, now) === 'soon' ? '即将到期' : '到期'}：${item.expiresAt}` }}</n-tag>              <n-tag v-if="item.projectId" size="small">{{ vault.projects.find((p) => p.id === item.projectId)?.name }}</n-tag>
               <n-tag v-if="item.environment" size="small" :type="item.environment === 'production' ? 'error' : 'default'">{{ ENVIRONMENT_OPTIONS.find((option) => option.value === item.environment)?.label }}</n-tag>
@@ -304,8 +305,9 @@ async function restore(item: VaultItemSummary) {
 .item-title { max-width: 100%; height: auto; margin-bottom: 4px; font-weight: 600; font-size: 15px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .item-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .item-meta :deep(.n-tag__content) { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
-.item-sub { font-size: 13px; overflow-wrap: anywhere; }
-.item-account { max-width: 100%; height: auto; font-size: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.item-sub { display: flex; align-items: center; gap: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.item-account { min-width: 0; max-width: 100%; height: auto; font-size: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.item-copy-password { flex-shrink: 0; font-size: inherit; }
 .item-account:hover, .item-account:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
 .item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
 .empty { padding: 80px 0 8px; }
