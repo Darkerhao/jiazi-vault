@@ -21,8 +21,8 @@ export function useClipboard() {
     }
   }
 
-  /** One-click copy of an item's main value without opening the editor. */
-  async function copyItem(id: string) {
+  /** Copy an item's main value or password without opening the editor. */
+  async function copyItem(id: string, field?: 'password') {
     const revision = auth.sessionRevision
     let item
     try { item = await vault.get(id, false) }
@@ -32,10 +32,10 @@ export function useClipboard() {
     }
     if (revision !== auth.sessionRevision) return
     if (!item) return
-    if (item.type !== 'env') {
-      const secret = primarySecret(item)
+    if (field === 'password' || item.type !== 'env') {
+      const secret = field === 'password' ? item.password : primarySecret(item)
       if (secret) await copy(secret, id)
-      else message.info('此凭证没有可快捷复制的内容，请打开后选择字段。')
+      else message.info(field === 'password' ? '此凭证未设置密码' : '此凭证没有可快捷复制的内容，请打开后选择字段。')
       return
     }
     try {
