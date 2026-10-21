@@ -151,6 +151,7 @@ async function exportEnv(destination: 'clipboard' | 'file') {
 watch(
   () => props.show,
   (show) => {
+    generating.value = false
     if (!show) return
     const item = props.item
     if (item) {
@@ -248,7 +249,7 @@ async function save() {
     :bordered="false"
     :closable="!saving && !exporting"
     :mask-closable="!saving && !exporting"
-    :close-on-esc="!saving && !exporting"
+    :close-on-esc="!generating && !saving && !exporting"
     :content-style="{ maxHeight: 'calc(100dvh - 200px)', overflowY: 'auto' }"
     @update:show="(v) => !v && requestClose()"
   >
@@ -305,14 +306,8 @@ async function save() {
           <n-input v-else :value="values[field.key] ? '••••••••' : ''" readonly :placeholder="field.label" />
           <n-button v-if="field.sensitive" :aria-label="`${revealedFields.has(field.key) ? '隐藏' : '显示'}${field.label}`" @click="revealedFields.has(field.key) ? revealedFields.delete(field.key) : revealedFields.add(field.key)">{{ revealedFields.has(field.key) ? '隐藏' : '显示' }}</n-button>
           <n-button :disabled="!values[field.key]" :aria-label="`复制${field.label}`" @click="copy(values[field.key] ?? '', item?.id)">复制</n-button>
-          <n-button v-if="field.target === 'password'" @click="generating = !generating">{{ generating ? '收起生成器' : '生成密码' }}</n-button>
+          <n-button v-if="field.target === 'password'" @click="generating = true">生成密码</n-button>
         </div>
-      </n-form-item>
-      <n-form-item v-if="generating" label="密码生成器">
-        <PasswordGenerator v-slot="{ password, busy }">
-          <n-button type="primary" :disabled="!password || busy" @click="values.password = password ?? null; generating = false">填入密码</n-button>
-          <n-button @click="generating = false">取消生成</n-button>
-        </PasswordGenerator>
       </n-form-item>
       <n-form-item v-if="isEnv" label=".env 文件">
         <div class="custom-fields">
@@ -356,6 +351,22 @@ async function save() {
         <n-button v-if="!viewing" type="primary" :loading="saving" :disabled="invalid || exporting || creatingProject" @click="save">保存</n-button>
       </n-space>
     </template>
+  </n-modal>
+  <n-modal v-model:show="generating" style="width: 560px; max-width: calc(100vw - 40px)">
+    <PasswordGenerator
+      title="生成密码"
+      closable
+      :bordered="false"
+      :content-style="{ maxHeight: 'calc(100dvh - 180px)', overflowY: 'auto' }"
+      role="dialog"
+      aria-modal="true"
+      aria-label="生成密码"
+      @close="generating = false"
+      v-slot="{ password, busy }"
+    >
+      <n-button type="primary" :disabled="!password || busy" @click="values.password = password ?? null; generating = false">填入密码</n-button>
+      <n-button @click="generating = false">取消生成</n-button>
+    </PasswordGenerator>
   </n-modal>
 </template>
 
