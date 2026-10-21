@@ -133,7 +133,7 @@ try {
   pass('full copy and file export require confirmation; cancellation writes nothing; Node parses identical values')
   await modal().getByRole('button', { name: '导入 .env', exact: true }).click()
   await modal().getByRole('button', { name: '选择 .env 文件' }).click()
-  await page.getByText(/变量 TOKEN 已在当前变量集中/).waitFor()
+  await page.getByText(/没有新增变量/).waitFor()
   assert.equal(await modal().getByRole('button', { name: /加入编辑/ }).isDisabled(), true)
   await modal().getByRole('button', { name: '取消导入' }).click()
   const importPath = resolve(data, '.env.extra')
@@ -144,7 +144,7 @@ try {
   await modal().getByRole('button', { name: /将 1 个变量加入编辑/ }).click()
   expected.FILE_VALUE = 'from-file'
   await save()
-  pass('native file import previews, rejects collisions and appends validated variables')
+  pass('native file import previews unchanged values and appends validated variables')
   await application.close()
   await launch()
   await unlock()

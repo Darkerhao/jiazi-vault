@@ -38,7 +38,7 @@ try {
   await detail.getByRole('button', { name: '历史版本', exact: true }).click()
   await detail.locator('.n-select').filter({ hasText: '选择历史版本' }).click()
   await page.locator('.n-base-select-option').filter({ hasText: '修改前版本 1' }).click()
-  await detail.getByText(`历史名称：${item.title}`, { exact: true }).waitFor()
+  await detail.getByText('与当前保存内容对比 · 1 个字段变化', { exact: true }).waitFor()
   assert.ok(!(await detail.innerText()).includes('old-desktop-secret'))
   await detail.getByRole('button', { name: '历史密码显示', exact: true }).click()
   await detail.getByText('old-desktop-secret', { exact: true }).waitFor()

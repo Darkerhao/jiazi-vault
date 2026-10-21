@@ -1,4 +1,4 @@
-import type { ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot, ItemBatchAction, ExportScope, BackupSource, BackupPreview } from '../../electron/contracts'
+import type { ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot, ItemBatchAction, ExportScope, BackupSource, BackupPreview, CredentialHealthEntry } from '../../electron/contracts'
 import type { BackupStatus } from '../../electron/backup-status'
 import type { UpdateState } from '../../electron/app-update'
 import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
@@ -63,6 +63,7 @@ export interface IpcCommands {
   restore_item: { args: { id: string }; result: void }
   get_item: { args: { id: string; recordAccess?: boolean }; result: VaultItem | null }
   list_items: { args: { trashed?: boolean }; result: VaultItemSummary[] }
+  get_credential_health: { args: undefined; result: CredentialHealthEntry[] }
   toggle_favorite: { args: { id: string }; result: VaultItemSummary }
   create_project: { args: { project: ProjectInput }; result: Project }
   update_project: { args: { project: ProjectInput & { id: string } }; result: Project }

@@ -1,5 +1,25 @@
 # 交付与验收
 
+## 前四项升级（2026-10-21，源码验收）
+
+- 发布仅由 main 推送或在 main 上手动执行触发；build 必须等待 prepare 成功，准确签出准备后的提交并读取同次发布说明。普通 dev 推送不打包，main PR 复用独立 check.yml。
+- 凭证健康在主进程遍历有效条目，检查短密码（少于 12 个 Unicode 字符）、完全相同的密码和 API Key 到期。页面只收到条目 ID 和问题类型，支持筛选、前往编辑及重新检查，不修改使用记录或备份状态。
+- .env 导入区分新增、变化、未变化；已有值必须显式勾选替换，未导入变量保留。预览默认隐藏值，仅修改编辑草稿，保存时复用现有历史记录、加密和自动备份。
+- 历史版本按「所选旧版 → 当前保存内容」比较名称、类型、项目、环境、标签及全部字段，默认只显示变化，可展开未变化字段。保留空值与删除的区别，内容字段默认隐藏，切换版本/锁定清除显示状态；恢复继续保留被替换内容。
+- 无新增依赖、数据库结构或备份版本变更。扩大加密范围和正式分发条件见[后续迭代方案](docs/encryption-and-distribution.md)。
+
+验证完成：
+
+- `pnpm test`：已有及前三项新增测试 99/99 通过；`node --test tests/item-diff.test.mjs`：历史差异 2/2 通过，共 101 项。
+- `pnpm build`：类型检查、Vite、Electron 和 .NET 10 Windows Hello 构建通过，保留既有 Windows SDK / WinRT IL2104 裁剪警告。
+- 全部 14 组真实 Electron 桌面脚本通过：先跑 upgrade-workflows、data-recovery、env-smoke，再跑其余 11 组。新增组包含 9 个场景，最终截图复测仍为 9/9，renderer errors 为空。
+- 新流程覆盖健康筛选和修改后消除重复提示、.env 选择替换/草稿取消/保存/历史/自动备份、历史增删改/空值/显示重置/取消恢复/确认恢复/锁定销毁。复核 900×600 截图，操作按钮可见，菜单退场不遮挡内容。
+- YAML 本地校验通过，覆盖 main-only 触发、prepare 成功依赖、准备提交签出和独立 PR 检查；`git diff --check` 通过。
+
+日志：`output/upgrade-unit.log`、`output/upgrade-item-diff.log`、`output/upgrade-build.log`、`output/upgrade-desktop-focused.log`、`output/upgrade-desktop-regression.log`、`output/upgrade-desktop-visual.log`。报告和截图在 `output/playwright/upgrade-*`。使用隔离保险库和真实加密/IPC/文件写入，文件选择确认由脚本注入；未操作个人保险库。沙箱首次因 NuGet 网络和 Electron ACL 失败，获准在正常环境后全部验证通过，未修改系统 ACL 或产品安全配置。
+
+远端工作流、正式签名、公证、跨平台安装及真实系统认证未在本轮执行；未重新生成安装包，未暂存、提交或推送。
+
 ## 启动与窗口设置（2026-10-09，源码验收）
 
 - 三项桌面偏好集中在「设置 → 启动与窗口」，沿用 Naive UI 和现有主题，不新增导航。默认开机自启关闭、静默启动关闭、关闭时最小化到托盘开启；开关自动保存，成功后更新显示，失败显示错误。
@@ -118,7 +138,7 @@ Windows 实测：旧 0.1.2 NSIS → 同目录安装当前 0.1.8 本地构建，�
 4. 从上一可达正式版本标签到本次标签提取全部提交（含合并提交、版本提交和提交正文），首次发布使用完整历史。准备阶段生成一份说明，打包时写入更新元数据，全部构建成功后将同一份说明用于 GitHub Release 并公开发布；重试也刷新说明，不再依赖 GitHub 的 PR 自动摘要或 Atom HTML。
 5. 发布成功后，仅将 bot 本次修改 `package.json` 版本号的提交 cherry-pick 并推送到 `dev`，不回合并 `main` 的业务代码或分支历史；`dev` 上尚未发布的开发提交保持不变。
 
-无需手动修改版本号、打标签或创建 Release。当前源码版本为 `0.1.2`，第一次自动发版为 `0.1.3`。合并 PR 或直接推送到 `main` 会触发自动发版，单独在本地 `git commit` 不会触发。日常在 `dev` 开发并验证，通过 PR 合入 `main` 表示确认发布；`dev` 不升版、不打标签、不创建 Release。
+无需手动修改版本号、打标签或创建 Release，版本以 `package.json` 为准。合并 PR 或直接推送到 `main` 会触发自动发版，单独在本地 `git commit` 不会触发。日常在 `dev` 开发并验证，通过 PR 合入 `main` 表示确认发布；普通 `dev` 推送不打包、不升版、不打标签、不创建 Release。
 
 | 平台 | 架构 | 安装包 |
 |---|---|---|
@@ -146,7 +166,7 @@ git pull --ff-only origin dev
 
 构建失败时不公开 Release，但已推送的版本提交和标签会保留。优先使用 Actions 的 **Re-run failed jobs** 重跑该版本；如果完整重跑或手动运行，而 `main` 已有新代码，则会为最新代码生成新版本。附件上传失败时 Release 保持草稿，重试会更新同一版本附件，不重复创建 Release。准备版本期间若恰好发生其他推送，Git 会拒绝整个版本提交/标签推送；不强制覆盖分支或标签，后续任务从最新分支继续。
 
-向 `main` 提交的 PR，以及 `dev` 等其他分支的推送，仅运行测试、构建并提供 Artifacts，不升版、不发布；非 `main` 的旧任务可被新推送取消。工作流不再由标签推送触发。配置位于默认分支后，可通过 **Run workflow** 选择分支手动运行；选择 `main` 会执行同样的自动发版流程。
+向 `main` 提交的 PR 使用独立 `check.yml` 运行测试、构建和桌面回归，失败时保留报告，不产生发布安装包。普通 `dev` 等分支推送和标签推送不触发打包。手动运行 `build.yml` 选择 `main` 才会准备版本和发布；选择其他分支时 prepare 及其下游任务全部跳过。构建必须依赖 prepare 成功，发布说明不会再出现缺少生成来源的分支路径。
 
 构建使用 Node.js 24、`packageManager` 固定的 pnpm 9.12.1、仓库锁文件，以及 Windows 上的 .NET 10 SDK；复用现有 `pnpm test` 和 `pnpm electron:build`。版本准备、发布和分支同步任务使用 GitHub 自动提供的 `GITHUB_TOKEN` 并声明 `contents: write`，构建任务保持只读权限，无需个人令牌；仓库规则须允许工作流写入 `main`、`dev` 和版本标签。[GitHub 的令牌触发规则](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow)使机器人的版本推送及 `dev` 同步推送不会再次启动工作流，构建、发布和同步直接在本次工作流中继续。建议为 `main` 配置 PR 合并；当前脚本直接回写版本提交，`contents: write` 不会绕过分支保护，启用保护时必须同时配置允许发版身份写入的规则，否则版本准备或分支同步会失败。此工作流仅在合入 `main` 后构建，不应将它设为 PR 合并前的必需检查。本次修改不更改 GitHub 默认分支、分支保护或仓库权限。Runner 架构与目标包一致，使用其本机安装的 Electron 和 Argon2 原生依赖。
 

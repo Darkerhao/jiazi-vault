@@ -1,5 +1,25 @@
 # Findings
 
+## 2026-10-21 前四项升级
+
+- 当前工作区保留前三项尚未收尾的实现与专项测试；无仓库内 AGENTS.md。用户确认本轮扩展至历史版本对比，迁移和正式签名仅做规划/核对。
+- ItemHistory 仅获取历史快照并展示旧值；ItemFormModal 详情已持有当前完整条目，可直接传入比较，不需要额外 IPC、数据库迁移或比较依赖。
+- 健康检查逐条解密有效凭证，只返回 id/issues；短密码规则明确为少于 12 个 Unicode 字符，不将随机生成器熵值套用于已有密码。
+- Naive UI 当前安装版 2.45.3 的 Checkbox/Select 受控更新实现、类型与对应版本官方文档已核对；未新增依赖。
+- build.yml main-only 和 prepare 依赖经过 YAML 校验；删除 prepared commit 到 github.sha 的无效回退，PR 继续复用 check.yml。
+- 对比直接复用 ItemFormModal 当前已保存条目；旧版本→当前方向包含元数据和字段，undefined 与空字符串分开，跳过收藏和时间等恢复不覆盖的信息。
+- 正常桌面运行解决了沙箱下 Electron ACL 拒绝；完整构建在正常环境完成 NuGet 还原。未修改系统 ACL 或产品沙箱配置。
+- 视觉检查：健康页风格与侧栏一致；900×600 下 .env 和历史在原弹窗内滚动。历史截图捕获到 Select 退场动画，测试改为等待菜单隐藏；.env 截图前滚动到应用按钮。
+- 官方 GitHub/Electron/electron-builder 26 文档已通过正常环境只读下载；MacTargetHelper 确认完整公证凭据缺失时会跳过，后续正式发布必须验凭据和验最终产物。迁移/签名方案写入 docs/encryption-and-distribution.md。
+
+## 2026-10-20 前三项升级依据
+
+- build.yml 的 push branches=['**'] 和 build 在 prepare=skipped 时运行，与仅 main 发布的目标冲突；release-notes 只由 prepare 生成，后续下载缺少来源。
+- item-store 只解密完整条目，列表返回非敏感摘要。健康检查应在该层遍历有效凭证，不向渲染层返回密码、密码指纹或秘密字段，不记录访问和内容修改。
+- 现有生成器的熵计算仅适用于随机生成密码，不应用于用户导入密码。新检查明确限于密码少于 12 个字符、密码重复使用、API Key 到期，不声称完整强度评估或泄漏库查询。
+- EnvImport 将已有变量名当错误，ItemFormModal.applyEnv 仅追加。应在现有解析结果上计算差异，替换需勾选确认，再统一更新现有编辑草稿，保留未导入变量。
+- 已核对本地 Naive UI 2.45.3 Checkbox 的 checked/onUpdate:checked、label 和实际更新分支；采用仓库已有控件和调用方式。
+
 ## 2026-10-06 维护与安装验证
 
 - 工作树初始干净，当前 dev 与 main 仅发布配置/说明有差异；main 已负责发版。

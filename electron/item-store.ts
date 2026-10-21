@@ -1,9 +1,10 @@
 import { validExpiry } from './expiry.js'
+import { inspectCredentials } from './credential-health.js'
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { decryptValue, encryptValue, type EncryptedValue } from './vault-crypto.js'
 
-import type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary, ItemHistorySummary, ItemBatchAction } from './contracts.js'
+import type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary, ItemHistorySummary, ItemBatchAction, CredentialHealthEntry } from './contracts.js'
 import { ITEM_TYPES } from './contracts.js'
 import { validateEnvFields } from './env.js'
 export type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from './contracts.js'
@@ -66,6 +67,7 @@ function parseTags(raw: string): string[] | undefined {
 }
 
 export interface ItemStore {
+  checkHealth(now?: Date): CredentialHealthEntry[]
   batch(ids: string[], action: ItemBatchAction): number
   listHistory(id: string): ItemHistorySummary[]
   getHistory(id: string, historyId: number): VaultItem
@@ -181,6 +183,13 @@ export function createItemStore(db: DatabaseSync, getKey: () => Buffer): ItemSto
   }
 
   return {
+    checkHealth(now) {
+      getKey()
+      function* activeItems() {
+        for (const row of selectActive.iterate()) yield rowToItem(row as unknown as ItemRow)
+      }
+      return inspectCredentials(activeItems(), now)
+    },
     batch(ids, action) {
       getKey()
       if (!Array.isArray(ids) || !ids.length || ids.some((id) => typeof id !== 'string' || !id)
