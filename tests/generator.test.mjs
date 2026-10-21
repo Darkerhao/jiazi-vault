@@ -2,13 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { generatePassword } from '../dist-electron/password-generator.js'
 
-const defaults = { length: 20, uppercase: true, lowercase: true, numbers: true, symbols: true, excludeAmbiguous: true }
+const defaults = { length: 18, uppercase: true, lowercase: true, numbers: true, symbols: true, excludeAmbiguous: true }
 
 test('all selected groups are present, excluded characters absent, and output stays within bounds', () => {
   const samples = new Set()
   for (let mask = 1; mask < 16; mask++) {
     const enabled = ['uppercase', 'lowercase', 'numbers', 'symbols'].map((key, i) => [key, !!(mask & (1 << i))])
-    for (const length of [8, 20, 128]) {
+    for (const length of [8, 18, 128]) {
       for (const excludeAmbiguous of [true, false]) {
         const options = { ...defaults, ...Object.fromEntries(enabled), length, excludeAmbiguous }
         const result = generatePassword(options)

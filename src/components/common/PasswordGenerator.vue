@@ -5,7 +5,7 @@ import { useClipboard } from '../../composables/useClipboard'
 import { generatorService } from '../../services/generator'
 import type { GeneratedPassword, PasswordOptions } from '../../../electron/password-generator'
 
-const options = reactive<PasswordOptions>({ length: 20, uppercase: true, lowercase: true, numbers: true, symbols: true, excludeAmbiguous: true })
+const options = reactive<PasswordOptions>({ length: 18, uppercase: true, lowercase: true, numbers: true, symbols: true, excludeAmbiguous: true })
 const generated = ref<GeneratedPassword | null>(null)
 const busy = ref(false)
 const error = ref('')
@@ -52,7 +52,9 @@ onUnmounted(() => { request++; generated.value = null })
       <n-slider v-model:value="options.length" :min="8" :max="128" :step="1" aria-label="密码长度滑块" />
       <div class="switches"><div v-for="option in switches" :key="option.key" class="switch-row"><n-text>{{ option.label }}</n-text><n-switch v-model:value="options[option.key]" :aria-label="option.label" /></div></div>
       <n-alert v-if="error" type="warning" class="error">{{ error }}</n-alert>
-      <n-space><n-button type="primary" :loading="busy" @click="generate">重新生成</n-button><n-button :disabled="!generated || busy" @click="copy(generated!.password)">复制密码</n-button><slot :password="generated?.password" :busy="busy" /></n-space>
+      <template #footer>
+        <n-space><n-button type="primary" :loading="busy" @click="generate">重新生成</n-button><n-button :disabled="!generated || busy" @click="copy(generated!.password)">复制密码</n-button><slot :password="generated?.password" :busy="busy" /></n-space>
+      </template>
     </n-card>
 </template>
 
