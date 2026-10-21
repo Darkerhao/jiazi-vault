@@ -9,6 +9,7 @@ export const router = createRouter({
     { path: '/vault', name: 'vault', component: () => import('../views/VaultView.vue') },
     { path: '/projects', name: 'projects', component: () => import('../views/ProjectsView.vue') },
     { path: '/generator', name: 'generator', component: () => import('../views/GeneratorView.vue') },
+    { path: '/health', name: 'health', component: () => import('../views/HealthView.vue') },
     { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/vault' },
   ],

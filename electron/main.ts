@@ -340,6 +340,10 @@ function registerIpcHandlers() {
       session.lock()
     } finally { vaultOperationBusy = false }
   })
+  handleIpc('get_credential_health', () => {
+    requireUnlocked()
+    return itemStore.checkHealth()
+  })
   handleIpc('list_items', (_event, args?: { trashed?: boolean }) => {
     requireUnlocked()
     cleanTrash()

@@ -32,6 +32,7 @@ const allowedCommands = new Set([
   'restore_item',
   'get_item',
   'list_items',
+  'get_credential_health',
   'toggle_favorite',
   'create_project',
   'update_project',

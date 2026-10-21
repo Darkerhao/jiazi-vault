@@ -5,6 +5,15 @@ export const ENV_MAX_BYTES = 1024 * 1024
 export interface EnvEntry { name: string; value: string; line: number }
 export interface EnvIssue { line: number; message: string }
 export interface EnvPreview { entries: EnvEntry[]; issues: EnvIssue[] }
+export type EnvChange = EnvEntry & { kind: 'added' | 'changed' | 'unchanged'; previous?: string }
+
+export function diffEnvFields(current: Record<string, string>, entries: EnvEntry[]): EnvChange[] {
+  return entries.map(entry => {
+    if (!Object.prototype.hasOwnProperty.call(current, entry.name)) return { ...entry, kind: 'added' }
+    const previous = current[entry.name]
+    return { ...entry, previous, kind: previous === entry.value ? 'unchanged' : 'changed' }
+  })
+}
 
 export function parseEnv(contents: string): EnvPreview {
   const lines = contents.replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n')

@@ -2,7 +2,7 @@
 import { computed, h, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { NButton, NIcon, NInput, NLayout, NLayoutHeader, NLayoutSider, NMenu, NText } from 'naive-ui'
-import { ArchiveOutline, FolderOpenOutline, GridOutline, KeyOutline, LockClosedOutline, SettingsOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
+import { ArchiveOutline, FolderOpenOutline, GridOutline, KeyOutline, LockClosedOutline, SettingsOutline, ShieldCheckmarkOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
 import { useAuthStore } from '../../stores/auth'
 import { useDesktopStore } from '../../stores/desktop'
 import { ITEM_TYPE_OPTIONS } from '../../utils/item-fields'
@@ -45,6 +45,7 @@ const menuOptions = [
   { label: () => h(RouterLink, { to: '/vault?filter=trash' }, { default: () => '回收站' }), key: '/vault?filter=trash', icon: () => h(NIcon, null, { default: () => h(TrashOutline) }) },
   { label: () => h(RouterLink, { to: '/projects' }, { default: () => '项目' }), key: '/projects', icon: () => h(NIcon, null, { default: () => h(FolderOpenOutline) }) },
   { label: () => h(RouterLink, { to: '/generator' }, { default: () => '密码生成器' }), key: '/generator', icon: () => h(NIcon, null, { default: () => h(SparklesOutline) }) },
+  { label: () => h(RouterLink, { to: '/health' }, { default: () => '凭证健康' }), key: '/health', icon: () => h(NIcon, null, { default: () => h(ShieldCheckmarkOutline) }) },
   { label: () => h(RouterLink, { to: '/settings' }, { default: () => '设置' }), key: '/settings', icon: () => h(NIcon, null, { default: () => h(SettingsOutline) }) },
 ]
 

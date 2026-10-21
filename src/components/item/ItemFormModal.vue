@@ -126,7 +126,11 @@ const expiryError = computed(() => type.value === 'api-key' && values.expiresAt 
 const invalid = computed(() => !!expiryError.value || !!portError.value || !title.value.trim() || !!fieldError.value || (isEnv.value && (!environment.value || importing.value)))
 
 function applyEnv(fields: Record<string, string>) {
-  extraFields.value.push(...Object.entries(fields).map(([name, value]) => ({ id: nextFieldId++, name, value, visible: false })))
+  for (const [name, value] of Object.entries(fields)) {
+    const existing = extraFields.value.find(field => field.name.trim() === name)
+    if (existing) { existing.value = value; existing.visible = false }
+    else extraFields.value.push({ id: nextFieldId++, name, value, visible: false })
+  }
   importing.value = false
 }
 
@@ -266,7 +270,7 @@ async function save() {
       </div>
       <n-space v-if="isEnv"><n-button :disabled="!!exportError" :loading="exporting" @click="exportEnv('clipboard')">复制完整 .env</n-button><n-button :disabled="!!exportError" :loading="exporting" @click="exportEnv('file')">导出 .env 文件</n-button></n-space>
       <n-text v-if="tags" depth="3">标签：{{ tags }}</n-text>
-      <ItemHistory v-if="item" :item-id="item.id" :can-restore="item.deletedAt === undefined" @restored="emit('close')" />
+      <ItemHistory v-if="item" :key="item.id" :item="item" :can-restore="item.deletedAt === undefined" @restored="emit('close')" />
     </section>
     <n-form v-else label-placement="left" label-width="96" :disabled="saving || exporting">
       <n-form-item label="类型">
@@ -313,8 +317,8 @@ async function save() {
       <n-form-item v-if="isEnv" label=".env 文件">
         <div class="custom-fields">
           <n-alert type="info" :show-icon="false">采用 Node.js DotEnv 语法：支持空值、单双引号、注释、引号内多行和 export 前缀；双引号内的 \n 解析为换行。不展开变量引用，不执行命令。导出保留值，不保留注释和排版。</n-alert>
-          <EnvImport v-if="importing" :names="extraFields.map((field) => field.name.trim())" @apply="applyEnv" @cancel="importing = false" />
-          <n-button v-else dashed @click="importing = true">导入 .env</n-button>
+          <EnvImport v-if="importing" :fields="envFields" @apply="applyEnv" @cancel="importing = false" />
+          <n-button v-else dashed :disabled="!!fieldError && extraFields.length > 0" @click="importing = true">导入 .env</n-button>
           <n-space>
             <n-button :disabled="!!fieldError || !!exportError || importing" :loading="exporting" @click="exportEnv('clipboard')">复制完整 .env</n-button>
             <n-button :disabled="!!fieldError || !!exportError || importing" :loading="exporting" @click="exportEnv('file')">导出 .env 文件</n-button>
