@@ -8,7 +8,6 @@ import VaultSecurity from '../components/common/VaultSecurity.vue'
 import { useSettingsStore } from '../stores/settings'
 import BackupStatus from '../components/common/BackupStatus.vue'
 import AutomaticBackup from '../components/common/AutomaticBackup.vue'
-import AppUpdates from '../components/common/AppUpdates.vue'
 import StartupSettings from '../components/common/StartupSettings.vue'
 import { callCommand } from '../services/ipc'
 import { DEFAULT_SEARCH_SHORTCUT, validateSearchShortcut, type AppSettings } from '../../electron/settings'
@@ -99,7 +98,6 @@ function updateAutoLock(value: number) {
       <p>应用内：Ctrl K 搜索 · Ctrl N 新建凭证 · Ctrl Shift N 新建项目 · Ctrl G 生成密码 · Ctrl Shift L 锁定（macOS 使用 ⌘）。</p>
       <n-text depth="3">双击托盘图标可重新打开窗口；使用托盘菜单“退出”结束应用。关闭窗口的行为可在“启动与窗口”中设置。</n-text>
     </n-card>
-    <AppUpdates />
   </AppShell>
 </template>
 

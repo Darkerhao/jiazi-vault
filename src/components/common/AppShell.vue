@@ -2,9 +2,10 @@
 import { computed, h, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { NButton, NIcon, NInput, NLayout, NLayoutHeader, NLayoutSider, NMenu, NText } from 'naive-ui'
-import { ArchiveOutline, FolderOpenOutline, GridOutline, KeyOutline, LockClosedOutline, SettingsOutline, ShieldCheckmarkOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
+import { ArchiveOutline, FolderOpenOutline, GridOutline, InformationCircleOutline, KeyOutline, LockClosedOutline, SettingsOutline, ShieldCheckmarkOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
 import { useAuthStore } from '../../stores/auth'
 import { useDesktopStore } from '../../stores/desktop'
+import { useUpdatesStore } from '../../stores/updates'
 import { ITEM_TYPE_OPTIONS } from '../../utils/item-fields'
 import BackupStatus from './BackupStatus.vue'
 import { ITEM_TYPE_ICONS } from '../../utils/item-icons'
@@ -23,6 +24,8 @@ const resize = () => { collapsed.value = compact.matches }
 onMounted(() => compact.addEventListener('change', resize))
 onUnmounted(() => compact.removeEventListener('change', resize))
 const desktop = useDesktopStore()
+const updates = useUpdatesStore()
+const updateDot = () => updates.hasUpdate ? h('span', { class: 'update-dot', role: 'img', 'aria-label': '有新版本可更新', title: `新版本 v${updates.state?.update?.version}` }) : null
 const selectedMenu = computed(() => {
   if (route.name !== 'vault') return route.path
   const filter = route.query.filter
@@ -47,6 +50,11 @@ const menuOptions = [
   { label: () => h(RouterLink, { to: '/generator' }, { default: () => '密码生成器' }), key: '/generator', icon: () => h(NIcon, null, { default: () => h(SparklesOutline) }) },
   { label: () => h(RouterLink, { to: '/health' }, { default: () => '凭证健康' }), key: '/health', icon: () => h(NIcon, null, { default: () => h(ShieldCheckmarkOutline) }) },
   { label: () => h(RouterLink, { to: '/settings' }, { default: () => '设置' }), key: '/settings', icon: () => h(NIcon, null, { default: () => h(SettingsOutline) }) },
+  {
+    label: () => h(RouterLink, { to: '/about', class: 'about-menu-link', 'aria-label': '关于' }, { default: () => ['关于', !collapsed.value ? updateDot() : null] }),
+    key: '/about',
+    icon: () => h('span', { class: 'about-menu-icon' }, [h(NIcon, null, { default: () => h(InformationCircleOutline) }), collapsed.value ? updateDot() : null]),
+  },
 ]
 
 async function lock() {
@@ -73,7 +81,7 @@ function newItem() {
         <n-button class="global-search" quaternary @click="desktop.request('quick-search')">全局搜索 <span class="shortcut">Ctrl K</span></n-button>
         <n-button type="primary" @click="newItem"><template #icon><n-icon><add-outline /></n-icon></template>新建</n-button>
       </n-layout-header>
-      <div class="page-content"><BackupStatus v-if="route.name !== 'settings'" /><slot /></div>
+      <div class="page-content"><BackupStatus v-if="route.name !== 'settings' && route.name !== 'about'" /><slot /></div>
     </n-layout>
   </n-layout>
 </template>
@@ -85,6 +93,10 @@ function newItem() {
 .brand-name { display: flex; flex-direction: column; white-space: nowrap; line-height: 1.4; }
 .brand-caption { font-size: 10px; letter-spacing: .6px; margin-top: 2px; }
 .sider-menu { flex: 1; min-height: 0; overflow-y: auto; }
+.sider-menu :deep(.about-menu-link) { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sider-menu :deep(.update-dot) { display: inline-block; width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: #e65353; }
+.sider-menu :deep(.about-menu-icon) { position: relative; display: flex; }
+.sider-menu :deep(.about-menu-icon .update-dot) { position: absolute; top: -2px; right: -5px; }
 .sider-footer { flex-shrink: 0; padding: 14px 12px; }
 .topbar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 14px; padding: 0 24px; height: 64px; }
 .search-input { max-width: 560px; flex: 1; }

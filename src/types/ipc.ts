@@ -1,6 +1,6 @@
-import type { ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot, ItemBatchAction, ExportScope, BackupSource, BackupPreview, CredentialHealthEntry } from '../../electron/contracts'
+import type { AppInfo, AppLink, ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot, ItemBatchAction, ExportScope, BackupSource, BackupPreview, CredentialHealthEntry } from '../../electron/contracts'
 import type { BackupStatus } from '../../electron/backup-status'
-import type { UpdateState } from '../../electron/app-update'
+import type { AppRelease, UpdateState } from '../../electron/app-update'
 import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
 import type { AppSettings, DesktopSetting, DesktopSettings } from '../../electron/settings'
 import type { GeneratedPassword, PasswordOptions } from '../../electron/password-generator'
@@ -34,10 +34,12 @@ export interface VaultStatus {
 export interface IpcCommands {
   respond_close_request: { args: { token: string; allowed: boolean }; result: void }
   health_check: { args: undefined; result: string }
-  get_app_version: { args: undefined; result: string }
+  get_app_info: { args: undefined; result: AppInfo }
   get_update_state: { args: undefined; result: UpdateState }
   check_for_updates: { args: undefined; result: UpdateState }
-  open_release_page: { args: undefined; result: void }
+  install_update: { args: undefined; result: UpdateState }
+  get_recent_releases: { args: undefined; result: AppRelease[] }
+  open_app_link: { args: { target: AppLink; tag?: string }; result: void }
   get_desktop_status: { args: undefined; result: { shortcut: string | null; shortcutRegistered: boolean } }
   get_desktop_preferences: { args: undefined; result: DesktopSettings }
   set_desktop_preference: { args: { key: DesktopSetting; value: boolean }; result: DesktopSettings }

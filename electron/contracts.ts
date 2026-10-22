@@ -1,3 +1,14 @@
+export interface AppInfo {
+  version: string
+  platform: string
+  arch: string
+  systemVersion: string
+  electronVersion: string
+  chromiumVersion: string
+  nodeVersion: string
+}
+export type AppLink = 'project' | 'guide' | 'feedback' | 'releases' | 'history' | 'release'
+
 export const ITEM_TYPES = ['login', 'password', 'server', 'database', 'api-key', 'ssh', 'secure-note', 'custom', 'env'] as const
 export type ItemType = typeof ITEM_TYPES[number]
 export type Environment = 'development' | 'testing' | 'staging' | 'production' | 'other'
