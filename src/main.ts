@@ -8,11 +8,15 @@ import { useVaultStore } from './stores/vault'
 import { useSettingsStore } from './stores/settings'
 import { useBackupStore } from './stores/backup'
 import { useDesktopStore } from './stores/desktop'
+import { useUpdatesStore } from './stores/updates'
 
 const app = createApp(App).use(createPinia())
 const auth = useAuthStore()
 const vault = useVaultStore()
 const desktop = useDesktopStore()
+const updates = useUpdatesStore()
+window.jiaziVault?.onUpdateState((state) => { updates.state = state })
+void updates.load()
 window.jiaziVault?.onItemsChanged(() => { if (auth.unlocked) void vault.load() })
 window.jiaziVault?.onBackupChanged(() => { if (auth.unlocked) void useBackupStore().load() })
 window.jiaziVault?.onDesktopAction(desktop.request)

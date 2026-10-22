@@ -11,6 +11,7 @@ export const router = createRouter({
     { path: '/generator', name: 'generator', component: () => import('../views/GeneratorView.vue') },
     { path: '/health', name: 'health', component: () => import('../views/HealthView.vue') },
     { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
+    { path: '/about', name: 'about', component: () => import('../views/AboutView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/vault' },
   ],
 })

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, net, powerMonitor, shell } from 'electron'
 import electronUpdater from 'electron-updater'
-import { checkForUpdates, createAppUpdates, RELEASE_PAGE } from './app-update.js'
+import { checkForUpdates, createAppUpdates, getRecentReleases, RELEASE_PAGE, RELEASE_TAG } from './app-update.js'
 import { openDatabase, purgeExpiredItems, type DatabaseState } from './database.js'
 import { clearKey, createVaultCredential, isVaultMetadata, type CreatedVaultCredential, type VaultMetadata, unlockVaultCredential } from './vault-crypto.js'
 import { createItemStore, type ItemInput, type VaultItem } from './item-store.js'
@@ -28,7 +28,15 @@ import { writePrivateFile } from './private-file.js'
 import { automaticBackupStatus, runAutomaticBackup, setAutomaticBackupDirectory } from './automatic-backup.js'
 import { createBackupQueue } from './backup-queue.js'
 import { createRecoverySnapshot, listRecoverySnapshots, readRecoverySnapshot } from './recovery-snapshot.js'
-import type { ItemBatchAction, ExportScope } from './contracts.js'
+import type { AppInfo, AppLink, ItemBatchAction, ExportScope } from './contracts.js'
+
+const appLinks: Record<Exclude<AppLink, 'release'>, string> = {
+  project: 'https://github.com/Darkerhao/jiazi-vault',
+  guide: 'https://github.com/Darkerhao/jiazi-vault#readme',
+  feedback: 'https://github.com/Darkerhao/jiazi-vault/issues/new',
+  releases: RELEASE_PAGE,
+  history: 'https://github.com/Darkerhao/jiazi-vault/releases',
+}
 
 let mainWindow: BrowserWindow | null = null
 let database: DatabaseState | null = null
@@ -47,6 +55,7 @@ let biometric: BiometricVault
 let itemStore: ReturnType<typeof createItemStore>
 let projects: ReturnType<typeof createProjectStore>
 let updates: ReturnType<typeof createAppUpdates>
+let stopUpdateChecks: (() => void) | undefined
 const backupQueue = createBackupQueue(() => automaticBackup())
 let closeRequest: { token: string; resolve: (allowed: boolean) => void } | null = null
 let preparingClose = false
@@ -99,7 +108,7 @@ function isApplicationUrl(value: string) {
   } catch { return false }
 }
 
-const recoveryCommands = new Set(['health_check', 'get_app_version', 'get_update_state', 'check_for_updates', 'open_release_page', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'select_backup_source', 'preview_backup', 'cancel_backup_restore', 'restore_backup', 'list_recovery_snapshots'])
+const recoveryCommands = new Set(['health_check', 'get_app_info', 'get_update_state', 'check_for_updates', 'install_update', 'get_recent_releases', 'open_app_link', 'get_desktop_status', 'get_vault_status', 'is_vault_unlocked', 'lock_vault', 'get_settings', 'select_backup_source', 'preview_backup', 'cancel_backup_restore', 'restore_backup', 'list_recovery_snapshots'])
 
 function handleIpc(channel: string, listener: Parameters<typeof ipcMain.handle>[1]) {
   ipcMain.handle(channel, async (event, ...args) => {
@@ -216,18 +225,31 @@ function registerIpcHandlers() {
     if (typeof args?.allowed !== 'boolean' || typeof args.token !== 'string') throw new Error('INVALID_DATA')
     if (closeRequest?.token === args.token) closeRequest.resolve(args.allowed)
   })
-  handleIpc('get_app_version', () => app.getVersion())
+  handleIpc('get_app_info', (): AppInfo => ({
+    version: app.getVersion(), platform: process.platform, arch: process.arch,
+    systemVersion: process.getSystemVersion(), electronVersion: process.versions.electron,
+    chromiumVersion: process.versions.chrome, nodeVersion: process.versions.node,
+  }))
   handleIpc('set_search_shortcut', (_event, args: { shortcut: string | null }) => {
     requireUnlocked()
     const shortcut = writeSearchShortcut(requireDatabase().connection, args?.shortcut)
     return desktop.configure(shortcut)
   })
   handleIpc('get_update_state', () => updates.state)
-  handleIpc('check_for_updates', () => {
+  handleIpc('check_for_updates', () => updates.check())
+  handleIpc('install_update', () => {
     if (vaultOperationBusy) throw new Error('VAULT_BUSY')
-    return updates.check()
+    return updates.install()
   })
-  handleIpc('open_release_page', () => shell.openExternal(RELEASE_PAGE))
+  handleIpc('get_recent_releases', () => getRecentReleases(net.fetch))
+  handleIpc('open_app_link', (_event, args: { target: AppLink; tag?: string }) => {
+    if (args?.target === 'release') {
+      if (typeof args.tag !== 'string' || !RELEASE_TAG.test(args.tag)) throw new Error('INVALID_DATA')
+      return shell.openExternal(`${appLinks.history}/tag/${encodeURIComponent(args.tag)}`)
+    }
+    if (typeof args?.target !== 'string' || !Object.hasOwn(appLinks, args.target)) throw new Error('INVALID_DATA')
+    return shell.openExternal(appLinks[args.target])
+  })
   handleIpc('get_desktop_status', () => desktop.status)
   handleIpc('get_desktop_preferences', () => ({ ...desktopPreferences, ...readLoginStartup() }))
   handleIpc('set_desktop_preference', (_event, args: { key: DesktopSetting; value: boolean }) => {
@@ -742,6 +764,7 @@ else app.whenReady().then(() => {
   registerIpcHandlers()
   desktop = createDesktopControls(() => mainWindow ?? createWindow(), () => session.lock(), database ? readSearchShortcut(database.connection) : DEFAULT_SEARCH_SHORTCUT)
   createWindow(!database || !hasVault() || !desktopPreferences.silentStart)
+  if (app.isPackaged) stopUpdateChecks = updates.startChecking()
 
   app.on('activate', () => {
     desktop.show()
@@ -762,6 +785,7 @@ app.on('before-quit', (event) => {
     quitting = true
     clearInterval(trashTimer)
     clearInterval(backupTimer)
+    stopUpdateChecks?.()
     session.dispose()
     await clipboardManager.clearOnLock().catch(() => {})
     desktop?.dispose()
