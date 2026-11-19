@@ -5,6 +5,8 @@ node_modules/
 dist/
 dist-electron/
 release/
+src-tauri/target/
+src-tauri/gen/
 
 # Local test and browser automation output
 output/

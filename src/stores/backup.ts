@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { callCommand } from '../services/ipc'
 import { useAuthStore } from './auth'
-import type { BackupStatus } from '../../electron/backup-status'
+import type { BackupStatus } from '../types/desktop'
 
 export const useBackupStore = defineStore('backup', () => {
   const status = ref<BackupStatus | null>(null)

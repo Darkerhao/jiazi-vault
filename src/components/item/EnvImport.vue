@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { NAlert, NButton, NCheckbox, NInput, NSpace, NTag, NText } from 'naive-ui'
-import { ENV_MAX_BYTES, diffEnvFields, parseEnv } from '../../../electron/env'
+import { ENV_MAX_BYTES, diffEnvFields, parseEnv } from '../../utils/env'
 import { callCommand } from '../../services/ipc'
 import { useAuthStore } from '../../stores/auth'
 

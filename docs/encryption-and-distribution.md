@@ -19,23 +19,18 @@
 
 取舍：保留现有密码学与调用边界，代价是解锁后列表读取需要解密元数据。新库加密不会清除历史快照、旧文件系统备份或磁盘历史块中的明文；迁移完成后需要向用户说明旧快照的保留和清理方式，不自动删除回滚材料。验收必须使用隔离旧版数据库，真实用户迁移另行发布验证。
 
-## 正式分发
+## 正式分发（Tauri / Rust 底座）
 
-本地核对的版本为 Electron 44.5.1、electron-builder 26.15.3。当前 `build.yml` 两个 macOS 目标仍显式传入 `identity=-` 和 `hardenedRuntime=false`；未配置签名/公证环境变量。package.json 未配置 Windows 签名身份。仓库里有 Windows 安装/升级验收脚本，但没有 macOS/Linux 安装验收任务。本次未读取远端 Secrets，不能据此断言组织没有证书。
+当前源码已迁移到 Tauri 2，保留旧加密协议；上文扩大加密范围仍是独立后续方案，不包含在本次底座迁移中。
 
-| 平台 | 正式分发前需要提供 | 接入现有构建后的验收 |
-| --- | --- | --- |
-| macOS x64 / arm64 | Apple Developer ID Application 证书及私钥；签名使用 `CSC_LINK` / `CSC_KEY_PASSWORD`；推荐 App Store Connect API 公证凭据：`APPLE_API_KEY`（临时 .p8 文件路径）、`APPLE_API_KEY_ID`、`APPLE_API_ISSUER` | 移除临时签名参数，启用 hardened runtime，核实 Electron 所需 entitlements；签名、公证、staple 后在两种架构机器测试 Gatekeeper、安装/升级、Touch ID 和旧库恢复 |
-| Windows x64 | 正式代码签名身份及 CI 可用的安全签名凭据，明确发布者名称；私钥不进入仓库 | 接入 electron-builder 现有 Windows 签名器，对应用、原生组件及安装器验证 Authenticode 和时间戳；复用 `verify-windows-package.ps1` 验证旧版升级、备份恢复和卸载，再验证已签名包的应用内更新 |
-| Linux x64 | 可用的目标发行版验收环境 | 在目标系统实际启动 AppImage/tar.gz，验证 FUSE/运行库要求、创建/解锁/锁定、升级及旧库恢复，提供产物 SHA256 |
+- Windows 使用 NSIS 与系统 WebView2，应用不包含 Node.js、Chromium 或 .NET helper。缺少 WebView2 时，默认安装器需联网安装它。
+- macOS 输出 dmg/app，Linux 输出 AppImage/deb；平台安装和系统认证需要对应机器验收，不能由 Windows 测试替代。
+- Tauri 自动更新使用独立密钥和 `.sig`，不会读取 Electron 的 `latest.yml`。公钥通过 `TAURI_UPDATER_PUBLIC_KEY` 编译进应用；CI 使用 `TAURI_SIGNING_PRIVATE_KEY` 与可选密码 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 签名，聚合为 `tauri-updater.json`。缺少签名配置的构建明确使用手动安装；Linux deb 也使用手动安装。
+- 更新签名仅证明更新包完整性与来源，不会消除 Windows SmartScreen，也不替代 macOS Developer ID 签名、公证和 Gatekeeper 验收。正式对外分发仍需按 Tauri 的对应平台签名文档配置发布者证书。
+- 本次没有读取或修改远端 Secrets、发布 Release、替换个人安装或迁移真实用户数据库。旧 Electron 用户首次切换应先创建加密备份，退出旧版后手动安装；应用沿用旧数据目录，设备快捷解锁需重新登记。
 
-凭据就绪后只扩展现有 build 工作流，不建立另一套发布流程；正式发布应强制签名，缺少凭据或公证失败直接使任务失败。不能仅设置 `mac.notarize=true` 就视为已公证：当前 MacTargetHelper 在没有完整公证凭据时会跳过，CI 必须事前校验必填凭据并对最终产物验签。密钥通过 GitHub Secrets 注入临时文件，不写入源码、报告或构建日志。
-
-官方依据与本地实现：
-
-- [Electron 分发签名说明](https://www.electronjs.org/docs/latest/tutorial/code-signing)：macOS 正式分发需要签名与公证两个步骤。
-- [electron-builder 26 macOS 签名文档](https://www.electron.build/v26/docs/features/code-signing/code-signing-mac/)；已核对本地 26.15.3 的 `mac/MacTargetHelper.js` 中签名选项、hardenedRuntime 默认值及 getNotarizeOptions/notarizeIfProvided。
-- 本地 26.15.3 的 `codeSign/windowsSignToolManager.js` 支持现有 Windows 签名配置；具体证书交付方式确定后再配置，不预填虚假证书或身份。
-- [GitHub job 依赖说明](https://docs.github.com/actions/using-jobs/using-jobs-in-a-workflow)：上游失败或跳过时，下游依赖任务默认跳过；本轮已移除绕过 prepare 的条件。
-
-公开文档下载和源码核对记录保存在本机 `output/research/upgrade-*`，不随应用分发。
+官方参考：
+- [Tauri Windows 安装器](https://v2.tauri.app/distribute/windows-installer/)
+- [Tauri 更新插件](https://v2.tauri.app/plugin/updater/)
+- [Tauri macOS 签名](https://v2.tauri.app/distribute/sign/macos/)
+- [Tauri Windows 签名](https://v2.tauri.app/distribute/sign/windows/)

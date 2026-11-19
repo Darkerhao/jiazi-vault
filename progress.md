@@ -210,3 +210,30 @@
 - 已有桌面回归抓到详情切编辑的双保存按钮；核对 Naive UI Space 当前源码后，动态按钮区使用 wrap-item=false，完整回归通过。快捷键输入的可访问名称通过 input-props 传到原生输入框。
 - 最终完成：`pnpm test` 77/77；`pnpm build`；全部 10 组桌面回归（新增组 9 个场景）；900×600 截图检查；`git diff --check`。README/DELIVERY 已同步，日志保存在 output/operation-*.log。
 - 未新增依赖、未更改保险库文件格式、未修改用户实际数据、未暂存/提交/发布。本轮未构建安装器，未做 macOS/Linux 和物理全局快捷键验收。
+# 2026-11-19 Tauri / Rust 底座迁移
+
+- 已按用户要求创建 `refactor/tauri-rust-migration`；无暂存、提交或推送。
+- 已核对 Git 状态、构建配置、全部模块清单、桥接类型、SQLite schema 和本机工具链，开始协议兼容及 Rust 实现。
+- Rust 数据、加密、桌面桥接和原生 Windows 能力已实现；`cargo check --all-targets --offline` 及首批 `cargo test` 31/31 通过（35 秒）。
+- 旧 Electron 原始实现生成固定 SQL / Argon2id 密钥 / .jvault v1–v4 夹具，后续测试不依赖 Electron。增加 Rust 写入后 Node AES-GCM 独立解密验证。
+- 前端已改为 Tauri API，公共类型与纯工具迁入 src；Electron、electron-updater、Argon2 Node 模块、.NET helper 及旧专用测试已移除，保留纯前端和 Git 发布测试，Rust 覆盖原后端行为。
+- 环境问题：Cargo HTTP 请求超时及旧 Windows crate 缓存损坏。通过官方 sparse index / static.crates.io 重新获取并按 Cargo.lock SHA-256 校验，Windows-sys 分段下载校验通过；未改变全局 Cargo 配置。
+- 处理当前插件 API：autostart 新版 macos_launcher 仅在 macOS 可用，使用其默认 LaunchAgent；AES-GCM 新 Array API 已按已下载的当前源码修正。所有 Rust 源码经 cargo fmt。
+- 待完成：新版 WebView2 CDP 桌面脚本、构建/发布流水线、Windows NSIS 安装验证、macOS 通知 API 源码核对、最终文档与体积。
+
+## 2026-11-19 完成验收
+
+- 全量 pnpm test：Rust 35/35、前端/Git 发布/更新清单 24/24、原 Node 算法读取 Rust 备份通过；类型、Vite、Rust 格式/Clippy、依赖审计、YAML 与品牌生成实跑通过。
+- 最终 Windows NSIS 3,385,175 bytes / 3.23 MiB；相对本地旧 Electron 包 128,514,399 bytes 减少 97.37%。载荷 EXE 8,069,120 bytes。哈希和真实边界已写入 DELIVERY。
+- NSIS 初次提取缓存时官方 bundler 的 fs::rename 返回 os error 17；路径显示同盘，未断言系统底层原因。校验官方 NSIS.exe 与插件 SHA-1 后复制到标准缓存，正常打包成功，未给产品加入兜底路径。
+- 真实测试发现并修复 updater 配置缺失、CSV 无效数值被 serde Option 当作 null 接受的问题；补上严格导入和异常预览/锁定中止导出的回归。
+- 用户个人 Keystill 进程位于 D:/MyWork/software，仍在运行，未停止或覆盖。安装脚本新增运行中个人进程保护，已验证阻断。通过官方 7-Zip 只解包、不执行安装器，核对 NSS 标记后载荷与编译产物一致。
+- 对实际 NSIS 载荷执行 13 项真实 WebView2 流程全部通过，含重载和 WTS/休眠消息模拟，已目检最终截图。测试 cleanup 处理已退出子进程并保留原始失败信息；测试进程已退出。
+- 本轮未实际安装/卸载、未操作个人数据库、未实际触发系统认证和物理锁屏，未做其他平台实机与远端发布。
+
+## 2026-11-19 代码评审与本地提交
+
+- `pnpm test` 通过：Rust 35 项、前端/发布 24 项及 Node 对 Rust 备份的独立解密兼容检查。
+- `pnpm build`、`cargo fmt --check`、`cargo clippy --all-targets --locked -- -D warnings` 与 `git diff --check` 通过。
+- 本轮未重跑 Windows 原生桌面场景：个人 Keystill 进程仍在运行，桌面用例会操作系统剪贴板；本地已有的先前 13 场景报告不作为本轮新执行证据。
+- 用户本轮明确授权评审后提交代码；只提交到当前本地分支，不推送或发布。

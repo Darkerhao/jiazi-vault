@@ -35,7 +35,7 @@
 
 桌面版启动时及运行期间每 6 小时自动检查正式新版，发现更新后在侧栏「关于」显示红点，折叠侧栏时仍可见。进入页面或阅读更新说明不会清除未安装更新的提示；检测不会自动下载或退出应用，网络失败时静默等待下次检测，也可手动重试。
 
-在「关于 → 软件更新」中，点击“更新到 v…”后，Windows 非便携版才会下载并校验安装包，确认未保存内容后退出应用、启动安装向导。完成页默认勾选“打开应用（Keystill）”，点击“完成”启动新版，取消勾选则保持关闭。下载失败或校验失败可重试；更新前建议创建加密备份。Windows 便携版及 macOS/Linux 使用官方下载页手动安装。尚未包含此功能的旧版本需先手动升级一次。
+在「关于 → 软件更新」中主动检查版本。配置了 Tauri 更新签名的正式 Windows、macOS 和 Linux AppImage 构建，支持下载、验证签名、确认未保存内容后安装；开发构建、未配置签名的构建及 Linux deb 使用官方下载页手动安装。更新只接受 Tauri 专用的 `tauri-updater.json` 和对应签名，不读取 Electron 的 `latest.yml`。从旧 Electron 版首次切换时，请先创建加密备份，再退出旧版并手动安装新版。
 
 “近期更新”按版本展示最近 5 个正式版本的完整发布说明，支持查看单个版本详情或全部发布记录。自动检测、手动检查和读取发布说明会连接 GitHub，不上传保险库数据。
 
@@ -45,15 +45,15 @@
 
 | 平台 | 架构 | 格式 |
 | --- | --- | --- |
-| Windows | x64 | `.exe` 安装版、`-portable.exe` 免安装版、`.zip` 压缩包 |
-| macOS | Intel x64 / Apple Silicon arm64 | `.dmg`、`.zip` |
-| Linux | x64 | `.AppImage`、`.tar.gz` |
+| Windows | x64 | `.exe` NSIS 安装包 |
+| macOS | Intel x64 / Apple Silicon arm64 | `.dmg`，配置更新签名后另有 `.app.tar.gz` |
+| Linux | x64 | `.AppImage`、`.deb` |
 
-Windows 安装版可选择安装目录；ZIP 版本需完整解压后运行 `Keystill.exe`。Windows 包含 Windows Hello 组件及所需 .NET 运行时，普通用户无需另装 .NET。
+Windows 使用系统 WebView2。已安装 WebView2 的设备无需再次分发浏览器内核；缺少时，默认安装器联网安装 WebView2。安装完成后保险库日常操作可离线运行。应用包不包含 Chromium、Node.js 或 .NET 运行时。
 
-免安装版和 ZIP 版也将保险库保存在系统用户数据目录，数据不会随程序文件一起移动。更换设备请使用应用内的加密备份与恢复。
+保险库仍保存在原用户数据目录，更换设备请使用 `.jvault` 加密备份与恢复。上述格式描述当前源码，历史 Release 的架构与产物请以对应交付记录为准。
 
-当前发布配置未设置开发者证书签名；macOS 使用临时签名，未做 Apple 公证，系统可能显示发布者或安全提示。Linux AppImage 需要执行权限及相应的系统运行支持。各平台实机验收范围见 [DELIVERY.md](./DELIVERY.md)。
+当前源码未配置正式 Windows 发布者证书和 Apple 公证；系统可能显示未知发布者或安全提示。Linux AppImage 需要执行权限及系统运行支持。更新包签名与系统代码签名不同，实际平台验收范围见 [DELIVERY.md](./DELIVERY.md)。
 
 ## 开始使用
 
@@ -105,18 +105,20 @@ Windows 安装版可选择安装目录；ZIP 版本需完整解压后运行 `Key
 
 ## 数据与安全
 
-保险库使用 SQLite，数据库文件为 Electron 用户数据目录下的 `vault.db`，路径由主进程的 `app.getPath('userData')` 确定。品牌升级保留内部包名 `jiazi-vault` 与应用 ID，继续使用原数据目录，无需手动迁移；原 `.jvault` 备份仍可恢复。下载文件使用 `keystill-` 前缀，GitHub 仓库地址保持不变。
+保险库使用 SQLite。Rust 明确沿用旧 Electron 的数据目录：Windows `%APPDATA%/jiazi-vault/vault.db`、macOS `~/Library/Application Support/jiazi-vault/vault.db`、Linux `$XDG_CONFIG_HOME/jiazi-vault/vault.db`（默认 `~/.config/jiazi-vault/vault.db`）。应用标识保持 `com.jiazi.vault`，数据库结构及 `.jvault` v1–v4 协议保持兼容。迁移过程不会自动搬移或重建个人保险库。
+
+`KEYSTILL_DATA_DIR` 可指定独立数据目录，用于测试或明确选择其他保险库；桌面自动化始终使用仓库 `output/` 下的隔离目录。不要同时运行新旧底座操作同一保险库。
 
 - 主密码通过 **Argon2id** 派生 256 位密钥，当前参数为 64 MiB 内存、3 次迭代、并行度 1，每个保险库使用随机盐。
 - 密码、备注及 `fields` 中的数据（包括私钥、API Key、自定义字段、环境变量名和值）使用 **AES-256-GCM** 加密存储，每次加密使用随机 nonce。
 - **数据库采用字段级加密。** 标题、类型、用户名、URL、主机、端口、标签、项目和环境等元数据以明文保存。搜索仅使用元数据，不检索密码、私钥、备注或环境变量内容。
-- 主密钥由 Electron 主进程持有，锁定时清除；渲染进程通过 preload 提供的 IPC 接口访问功能，启用上下文隔离和沙箱，并校验 IPC 来源。
+- 主密钥仅由 Rust 持有，使用 zeroize 管理并在锁定时清除；Vue 通过类型化 Tauri 命令调用业务能力。仅允许本地主窗口，禁止外部导航和新窗口，文件、剪贴板和系统能力由 Rust 控制。
 - 默认 15 分钟无操作后锁定，复制内容默认 15 秒后清除；两者均可在设置中调整。系统锁屏、休眠和关闭窗口会触发锁定；锁定或退出时也会清理仍属于本应用的剪贴板内容。
 - 连续输错主密码会触发递增等待时间。修改主密码会在同一事务中重新加密现有条目、回收站和历史版本，完成后锁定保险库，并移除系统快捷解锁登记。
 
-系统快捷解锁通过操作系统认证后，读取由 Electron `safeStorage` 保护的设备密钥；该登记不进入加密备份。Windows 依赖 DPAPI，不能将其视为针对同一登录用户下其他进程的隔离保障。Linux 当前没有系统快捷解锁后端。
+系统快捷解锁通过系统认证后读取设备保护的密钥：Windows 直接调用 Windows Hello 与 DPAPI，macOS 使用 LocalAuthentication 与 Keychain，Linux 暂不提供生物识别后端。旧 Electron 设备登记不跨底座复用，首次需主密码解锁后重新启用一次，界面会提示；这不改变主密码和保险库密文。设备登记不进入可移植备份，也不能视为同一操作系统账号下恶意进程的安全隔离。
 
-相关实现见 [加密模块](./electron/vault-crypto.ts)、[条目存储](./electron/item-store.ts)、[会话管理](./electron/vault-session.ts) 和 [系统认证适配](./electron/biometric-provider.ts)。
+相关实现见 [加密](./src-tauri/src/crypto.rs)、[条目](./src-tauri/src/items.rs)、[会话与命令](./src-tauri/src/vault.rs) 和 [系统认证](./src-tauri/src/biometric.rs)。
 
 ## 备份与数据交换
 
@@ -134,7 +136,7 @@ Windows 安装版可选择安装目录；ZIP 版本需完整解压后运行 `Key
 
 凭证详情的「历史版本」将所选旧版本（左侧）与当前保存内容（右侧）比较，标记新增、删除和修改，默认仅显示变化，取消勾选可查看全部内容。比较包含名称、类型、项目、环境、标签和所有内容字段；空值与不存在分别显示，字段值默认隐藏，切换版本或锁定后清除显示状态。恢复历史会将恢复前的当前内容保存为新版本，保留收藏和使用记录；历史项目已删除时恢复为未分配项目。回收站中可查看历史，需先恢复凭证才能恢复其版本；永久删除或满 30 天清理时级联删除历史。
 
-JSON / CSV 导入先预览记录及格式错误，再确认追加有效条目。默认跳过与当前有效凭证或文件内前面记录内容完全相同的条目（忽略收藏和时间）；同名但内容不同仍新增，不覆盖原凭证。无效记录不会导入，预览不显示密码。取消或锁定后待导入内容失效。其他工具的专有格式需要先转换为本项目格式；字段说明见 [JSON / CSV 格式](./DELIVERY.md#json--csv-格式)，当前类型以 [contracts.ts](./electron/contracts.ts) 为准。
+JSON / CSV 导入先预览记录及格式错误，再确认追加有效条目。默认跳过与当前有效凭证或文件内前面记录内容完全相同的条目（忽略收藏和时间）；同名但内容不同仍新增，不覆盖原凭证。无效记录不会导入，预览不显示密码。取消或锁定后待导入内容失效。其他工具的专有格式需要先转换为本项目格式；字段说明见 [JSON / CSV 格式](./DELIVERY.md#json--csv-格式)，当前类型以 [contracts.ts](./src/types/contracts.ts) 为准。
 
 设置页显示最近成功创建备份的时间。修改凭证、项目、偏好或主密码后会提示更新备份；查看和复制记录不触发提醒。自动备份检查最近文件是否存在，手动备份记录保存时间但不持续检查文件。恢复其他备份后需重新备份，启用自动备份时会在下次解锁检查后创建。建议将备份保存到另一块磁盘或外部设备，避免同盘故障同时损失原数据和备份。
 
@@ -146,76 +148,77 @@ API Key 的过期时间使用 YYYY-MM-DD，并继续保存在加密字段中；�
 
 ## 本地开发
 
-仓库包含独立的 `Check desktop changes / Desktop checks` 工作流：仅在目标分支为 `main` 的 PR 或手动触发时运行单测、类型检查、完整构建和 Windows 桌面回归；普通 `dev` 推送不触发检查，已有合入 `main` 的 PR 时，后续提交仍会触发 PR 检查。失败时保留 7 天的测试截图与 JSON 报告。它不打包发布或递增版本号。需要在仓库分支保护中将 `Desktop checks` 设置为必需检查，才能强制阻止未通过检查的合并。
-
-技术栈：**Electron + Vue 3 + TypeScript + Vite + Naive UI + Pinia + SQLite**。Windows Hello 辅助程序使用 C# / .NET。
+技术栈：**Tauri 2 + Rust + Vue 3 + TypeScript + Vite + Naive UI + Pinia + SQLite**。界面与 Rust 通过单一类型化 IPC 边界通信，数据库、加密和桌面能力在 Rust 内实现，不使用 Node sidecar。
 
 ### 环境要求
 
-- Node.js：建议使用 **24**，与 CI 保持一致。
-- pnpm：**9.12.1**，由 `package.json` 的 `packageManager` 固定。
-- Windows 开发或构建还需 **.NET 10 SDK**，用于编译 Windows Hello 组件；安装包内置运行时，用户无需安装 SDK。macOS / Linux 会跳过该组件。
-
-### 安装与启动
+- Node.js 24 与 pnpm 9.12.1，仅用于前端开发、打包和测试。
+- Rust 1.90 或更新的稳定版，建议使用 rustup 管理。
+- Windows：MSVC C++ 构建工具、Windows SDK 和 WebView2；无需 .NET SDK。
+- macOS：Xcode Command Line Tools。
+- Linux：WebKitGTK 4.1、GTK 3、AppIndicator 及相应开发包，具体安装命令见 CI。
 
 ```sh
-git clone https://github.com/Darkerhao/jiazi-vault.git
-cd jiazi-vault
 pnpm install --frozen-lockfile
-pnpm exec install-electron
-pnpm electron:dev
+pnpm desktop:dev
 ```
 
-`pnpm exec install-electron` 显式下载当前平台所需的 Electron 二进制。`pnpm electron:dev` 会编译主进程、构建平台原生组件，并同时启动 Vite 和 Electron；开发服务器固定使用 `http://127.0.0.1:1420`，需保证端口可用。
-
-`pnpm dev` 仅启动 Vite。凭证、数据库、剪贴板等功能依赖 Electron IPC，直接在浏览器中打开页面无法使用完整功能。主进程和 preload 修改后需重新运行 `pnpm electron:dev`；前端页面由 Vite 热更新。
+开发服务器固定 `http://127.0.0.1:1420`。`pnpm dev` 只提供界面预览，完整凭据功能需要 Tauri；前端热更新，Rust 由 `tauri dev` 自动重编译。
 
 ### 常用命令
 
 | 命令 | 说明 |
 | --- | --- |
-| `pnpm electron:dev` | 启动桌面开发环境 |
+| `pnpm desktop:dev` | 启动 Tauri 桌面开发环境 |
 | `pnpm typecheck` | Vue / TypeScript 类型检查 |
-| `pnpm test` | 编译 Electron 代码并运行 Node 测试 |
-| `pnpm test:desktop` | 完成构建后，顺序运行桌面自动化测试 |
-| `pnpm audit:ci` | 阻断生产依赖中危及以上、全量依赖高危及以上告警 |
-| `pnpm test:package:win` | 构建后验证真实 NSIS 安装、启动、恢复并卸载；使用隔离测试库 |
-| `pnpm build` | 类型检查、前端生产构建、Electron 编译及平台原生组件构建 |
-| `pnpm electron:build --publish never` | 构建当前平台安装包，不发布到 GitHub |
-| `pnpm electron:build:win --publish never` | 构建 Windows x64 安装版、免安装版和 ZIP |
-| `pnpm brand:generate` | 从品牌母版生成应用及托盘图标 |
+| `pnpm build` | 类型检查与前端生产构建 |
+| `pnpm test` | Rust 回归、前端/Git 发布测试、原 Node 算法解密 Rust 备份 |
+| `pnpm test:frontend` | 只运行前端纯工具和发布流程测试 |
+| `pnpm test:desktop` | 构建并运行真实 Windows WebView2 桌面流程 |
+| `pnpm test:package:win` | 对已构建的 NSIS 进行隔离安装、桌面验收及卸载 |
+| `pnpm desktop:build` | 构建当前平台安装包，不发布 |
+| `pnpm desktop:build:win` | 构建 Windows NSIS 安装包，不发布 |
+| `pnpm audit:ci` | 检查前端依赖安全公告 |
+| `pnpm brand:generate` | 使用 resvg 从品牌母版生成资源 |
 
-前端构建输出到 `dist/`，Electron 编译输出到 `dist-electron/`，安装包输出到 `release/`。macOS / Linux 构建参数及 CI 平台矩阵见 [构建工作流](./.github/workflows/build.yml)。
+前端输出 `dist/`，原生构建输出 `src-tauri/target/`，安装包位于对应 `release/bundle/` 子目录。`target/` 是开发构建缓存，不是分发目录。Windows 桌面测试通过 CDP 连接应用自己的 WebView2，不启动额外浏览器；设置 `KEYSTILL_TEST_EXE` 可检查指定的原生 EXE。
 
-桌面测试使用 `output/playwright/` 下的隔离数据，顺序执行以避免剪贴板和窗口焦点冲突。已有构建时，可只运行指定回归组：
-
-```sh
-node tests/desktop.mjs desktop-regression
-```
-
-发布 CI 额外验证 Windows NSIS 安装包：安装上一正式版并创建测试库，再覆盖安装当前版，检查旧库和备份可读，执行安装后的启动、主密码、恢复和更新入口测试，最后卸载。首次发布没有上一版时只验证新装；下载上一版失败会阻断发布。报告保留 7 天。本地跨版本验证使用 `powershell -NoProfile -File scripts/verify-windows-package.ps1 -BaselineInstaller <旧版安装包绝对路径>`，个人正式安装存在时脚本会拒绝执行，应使用干净测试机。真实系统认证、物理锁屏 / 休眠仍需人工验收。
+测试使用 `output/playwright/` 隔离数据，截图和报告也保存在该目录。安装器测试发现个人正式安装时会拒绝执行；应在干净测试机验收。系统锁屏/休眠消息模拟与真实物理操作分开记录；Windows Hello/Touch ID 的实际认证需要人工参与。
 
 ## 项目结构
 
 ```text
-jiazi-vault/
-├── src/                    # Vue 渲染进程
-│   ├── views/              # 保险库、项目、密码生成器、解锁、设置与关于页面
-│   ├── components/         # 条目编辑、环境变量导入、备份等组件
-│   ├── stores/             # Pinia 状态
-│   ├── services/           # 类型化 IPC 调用
-│   └── utils/              # 字段模板、图标和搜索
-├── electron/               # 主进程、preload、数据库、加密和桌面能力
-├── native/windows-hello/   # Windows Hello 原生辅助程序
-├── public/brand/           # 应用内品牌资源
-├── build/                  # 各平台打包图标
-├── scripts/                # 原生构建、品牌生成和版本准备脚本
-├── tests/                  # Node 测试和 Electron 桌面测试
-└── .github/workflows/      # 多平台构建与自动发版
+src/
+  views/, components/       # 现有 Vue 界面
+  stores/                   # Pinia 临时状态，锁定清除敏感视图
+  services/                 # 类型化 Tauri IPC 和事件桥接
+  types/, utils/            # 公共契约与前端纯工具
+src-tauri/
+  src/lib.rs                # 受控命令入口、窗口与进程生命周期
+  src/vault.rs              # 会话、解锁限制和业务命令
+  src/database.rs           # 旧 SQLite schema、事务与备份修订跟踪
+  src/crypto.rs             # 兼容 Argon2id / AES-256-GCM
+  src/items.rs              # 凭据、项目、历史和健康检查
+  src/backup.rs             # 加密备份、快照、原子恢复与文件写入
+  src/transfer.rs           # JSON / CSV / .env 导入导出
+  src/desktop.rs            # 托盘、快捷键、原生对话框与剪贴板
+  src/biometric.rs          # Windows Hello / Touch ID 和设备密钥
+  src/system_lock*.rs       # 各平台锁屏、休眠通知
+  src/updates.rs            # 正式版本检查及 Tauri 签名更新
+  tests/migration.rs        # Rust 行为及原格式兼容测试
+  tauri*.conf.json          # 应用、平台打包和最小权限配置
+public/brand/, build/       # 现有品牌资源
+scripts/                   # 品牌、构建、版本与发布元数据
+tests/fixtures/            # 原 Electron 生成的独立兼容夹具
+.github/workflows/         # 检查和 main-only 发布
 ```
 
 ## 开发与发布流程
 
-日常开发使用 `dev` 分支，发布时合入 `main`。当前 [GitHub Actions 工作流](./.github/workflows/build.yml) 在代码推送到 `main` 后自动递增补丁版本、提交版本号并创建标签，随后运行测试和多平台打包；全部构建成功后发布 Release，再将 bot 本次仅修改 `package.json` 版本号的提交 cherry-pick 到 `dev`，不回合并 `main` 的业务代码或分支历史。版本提交已同步时自动跳过。
+日常开发使用 `dev`；迁移在 `refactor/tauri-rust-migration` 中完成。`Check desktop changes` 在面向 `main` 的 PR 和手动触发时检查 Windows、macOS、Linux 源码；普通 `dev` 推送不触发。可在分支保护中将这些检查设为必需。
 
-`dev` 推送和 PR 事件不会触发该工作流，合入 `main` 前需自行完成相关验证。分支权限、失败重试及发布产物说明见 [DELIVERY.md](./DELIVERY.md)，品牌资源维护方式见 [BRAND.md](./BRAND.md)。
+构建发布仍仅由 `main` 推送或手动触发：递增补丁版本，同步 `package.json`、`Cargo.toml`、`Cargo.lock`，创建版本标签并按提交生成说明；四个平台/架构构建全部成功后才发布，再将只包含版本变更的提交 cherry-pick 回 `dev`，不回合并业务代码。
+
+自动更新需要仓库 Secrets `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，以及变量 `TAURI_UPDATER_PUBLIC_KEY`；公私钥必须成对配置。不配置时仍可构建供手动安装的包；不会生成误导性的自动更新清单。更新签名与 Windows 发布者证书、Apple Developer ID 签名/公证是不同事项。
+
+本地构建不会发布或推送；自动化只操作隔离测试保险库。当前迁移的测量、验收和平台边界见 [DELIVERY.md](./DELIVERY.md)。

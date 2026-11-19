@@ -5,87 +5,37 @@
   "packageManager": "pnpm@9.12.1",
   "description": "Local encrypted credential vault for developers",
   "type": "module",
-  "main": "dist-electron/main.js",
   "scripts": {
-    "brand:generate": "electron scripts/generate-brand.cjs",
+    "brand:generate": "node scripts/generate-brand.cjs",
     "dev": "vite",
-    "electron:compile": "tsc -p electron/tsconfig.json",
-    "electron:dev": "pnpm electron:compile && pnpm native:build && concurrently --kill-others-on-fail \"vite\" \"wait-on http://127.0.0.1:1420 && electron .\"",
-    "electron:build": "pnpm build && electron-builder",
-    "electron:build:win": "pnpm build && electron-builder --win --x64 --config.electronDist=node_modules/electron/dist",
-    "native:build": "node scripts/build-native.mjs",
-    "build": "pnpm typecheck && vite build && pnpm electron:compile && pnpm native:build",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "node scripts/build-desktop.mjs",
+    "desktop:build:win": "node scripts/build-desktop.mjs --bundles nsis",
+    "build": "pnpm typecheck && vite build",
     "typecheck": "vue-tsc --noEmit",
-    "test": "pnpm electron:compile && node --test tests/*.test.mjs",
-    "test:desktop": "pnpm build && node tests/desktop.mjs",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=4 && pnpm test:frontend && node tests/legacy-compatibility.mjs",
+    "test:frontend": "node --test tests/*.test.mjs",
+    "test:desktop": "tauri build --debug --no-bundle && node tests/desktop.mjs",
     "test:package:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-windows-package.ps1",
     "audit:ci": "pnpm audit --prod --audit-level moderate && pnpm audit --audit-level high",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@node-rs/argon2": "2.2.0",
+    "@tauri-apps/api": "2.12.5",
     "@vicons/ionicons5": "^0.13.0",
-    "electron-updater": "6.8.9",
     "naive-ui": "^2.45.3",
     "pinia": "^3.0.4",
     "vue": "^3.5.43",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "@tauri-apps/cli": "2.12.5",
     "@types/node": "^22.20.5",
     "@vitejs/plugin-vue": "^6.0.9",
-    "concurrently": "^10.0.5",
-    "electron": "^44.5.1",
-    "electron-builder": "^26.15.3",
     "playwright-core": "1.63.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.7",
-    "vue-tsc": "^3.3.12",
-    "wait-on": "^9.5.1"
-  },
-  "pnpm": {
-    "overrides": {
-      "@electron/get>global-agent": "4.1.3",
-      "concurrently>shell-quote": "1.12.0"
-    }
-  },
-  "build": {
-    "appId": "com.jiazi.vault",
-    "productName": "Keystill",
-    "artifactName": "keystill-${version}-${os}-${arch}.${ext}",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**",
-      "dist-electron/**",
-      "package.json"
-    ],
-    "win": {
-      "icon": "build/icon.ico",
-      "publish": { "provider": "github", "owner": "Darkerhao", "repo": "jiazi-vault" },
-      "extraResources": [{ "from": "output/windows-hello", "to": "windows-hello", "filter": ["**/*"] }],
-      "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "runAfterFinish": true
-    },
-    "portable": {
-      "artifactName": "keystill-${version}-${os}-${arch}-portable.${ext}"
-    },
-    "mac": {
-      "icon": "build/icon.icns",
-      "target": ["dmg", "zip"]
-    },
-    "linux": {
-      "icon": "build/icon.png",
-      "target": ["AppImage", "tar.gz"]
-    }
+    "vue-tsc": "^3.3.12"
   }
 }

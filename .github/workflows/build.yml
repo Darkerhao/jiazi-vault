@@ -2,8 +2,6 @@ name: Build and release desktop apps
 
 on:
   push:
-    branches: ['**']
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -12,7 +10,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_name != 'main' }}
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -61,147 +59,110 @@ jobs:
           if-no-files-found: error
 
   build:
-    name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    name: Build ${{ matrix.platform }}
     needs: prepare
-    if: always() && !cancelled() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-2022
-            platform: win
-            arch: x64
-            extra_args: ''
+            platform: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
           - os: macos-15-intel
-            platform: mac
-            arch: x64
-            extra_args: --config.mac.identity=- --config.mac.hardenedRuntime=false
+            platform: darwin-x86_64
+            target: x86_64-apple-darwin
+            bundles: dmg,app
           - os: macos-15
-            platform: mac
-            arch: arm64
-            extra_args: --config.mac.identity=- --config.mac.hardenedRuntime=false
+            platform: darwin-aarch64
+            target: aarch64-apple-darwin
+            bundles: dmg,app
           - os: ubuntu-24.04
-            platform: linux
-            arch: x64
-            extra_args: ''
+            platform: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.prepare.outputs.commit || github.sha }}
-
+          ref: ${{ needs.prepare.outputs.commit }}
       - uses: pnpm/action-setup@v5
-
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: pnpm
-
-      - name: Set up Windows Hello build tools
-        if: runner.os == 'Windows'
-        uses: actions/setup-dotnet@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: '10.0.x'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Electron runtime
-        run: pnpm exec install-electron
-
-      - name: Run tests
-        run: pnpm test
-
-      - name: Download release notes
-        uses: actions/download-artifact@v7
-        with:
-          name: release-notes
-          path: output
-
-      - name: Build packages
-        run: >-
-          pnpm electron:build
-          --${{ matrix.platform }} --${{ matrix.arch }}
-          --publish never
-          --config.electronDist=node_modules/electron/dist
-          --config.releaseInfo.releaseNotesFile=output/release-notes.md
-          ${{ matrix.extra_args }}
-
-      - name: Verify Windows desktop flows
+          targets: ${{ matrix.target }}
+      - name: Install Linux system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - name: Build Tauri packages
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+        run: pnpm desktop:build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --ci
+      - name: Collect installers and signed updater metadata
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: node scripts/collect-packages.mjs ${{ matrix.target }} ${{ matrix.platform }}
+      - name: Verify native Windows release build
         if: runner.os == 'Windows'
-        timeout-minutes: 10
+        env:
+          KEYSTILL_TEST_EXE: src-tauri/target/x86_64-pc-windows-msvc/release/keystill.exe
         run: node tests/desktop.mjs
-
-      - name: Verify Windows installer and upgrade
+      - name: Verify Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
-        timeout-minutes: 15
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $releases = gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot query previous release' }
-          $arguments = @{}
-          if ($releases.Count -gt 0) {
-            gh release download $releases[0].tagName --pattern 'keystill-*-win-x64.exe' --dir output/previous-release
-            if ($LASTEXITCODE -ne 0) { throw 'Cannot download previous Windows installer' }
-            $installers = @(Get-ChildItem output/previous-release -Filter '*.exe')
-            if ($installers.Count -ne 1) { throw 'Expected one previous Windows installer' }
-            $arguments.BaselineInstaller = $installers[0].FullName
-          }
-          ./scripts/verify-windows-package.ps1 @arguments
-
+        run: ./scripts/verify-windows-package.ps1
       - name: Upload verification reports
         if: always() && runner.os == 'Windows'
         uses: actions/upload-artifact@v6
         with:
           name: windows-verification
-          path: |
-            output/playwright/**/*.png
-            output/playwright/**/*report*.json
+          path: output/playwright/
           if-no-files-found: ignore
           retention-days: 7
-
       - name: Upload packages
         uses: actions/upload-artifact@v6
         with:
-          name: keystill-${{ matrix.platform }}-${{ matrix.arch }}
-          path: |
-            release/*.exe
-            release/*.dmg
-            release/*.AppImage
-            release/*.zip
-            release/*.tar.gz
-            release/*.blockmap
-            release/latest.yml
+          name: keystill-${{ matrix.platform }}
+          path: release/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
 
   release:
     name: Publish release
-    if: github.ref_type == 'branch' && github.ref_name == 'main'
     needs: [prepare, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - name: Download release notes
-        uses: actions/download-artifact@v7
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v7
         with:
           name: release-notes
           path: output
-
       - uses: actions/download-artifact@v7
         with:
           pattern: keystill-*
           path: release
           merge-multiple: true
-
+      - name: Assemble signed Tauri update manifest
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: node scripts/updater-manifest.mjs release "$RELEASE_TAG" output/release-notes.md
       - name: Publish packages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

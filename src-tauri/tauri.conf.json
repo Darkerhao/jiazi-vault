@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Keystill",
+  "version": "../package.json",
+  "identifier": "com.jiazi.vault",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{
+      "label": "main", "create": false, "title": "Keystill", "width": 1200, "height": 760,
+      "minWidth": 900, "minHeight": 600, "visible": false,
+      "backgroundColor": "#20251f"
+    }],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-src 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'none'"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [],
+      "requireSignedVersion": true,
+      "windows": { "installMode": "basicUi" }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Local encrypted credential vault",
+    "icon": ["../build/icon.png", "../build/icon.ico", "../build/icon.icns"],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "nsis": { "displayLanguageSelector": true, "languages": ["SimpChinese", "English"] }
+    }
+  }
+}

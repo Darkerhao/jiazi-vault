@@ -4,7 +4,7 @@ import { NAlert, NButton, NCard, NCheckbox, NModal, NPagination, NSpace, NText, 
 import { callCommand } from '../../services/ipc'
 import { useVaultStore } from '../../stores/vault'
 import { useAuthStore } from '../../stores/auth'
-import type { ImportPreview } from '../../../electron/contracts'
+import type { ImportPreview } from '../../types/contracts'
 import { ITEM_TYPE_LABELS } from '../../utils/item-fields'
 import type { ItemType } from '../../types/vault'
 import PlaintextExport from './PlaintextExport.vue'

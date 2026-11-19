@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { useBackupStore } from './backup'
-import type { AppSettings } from '../../electron/settings'
+import type { AppSettings } from '../types/desktop'
 import { settingsService } from '../services/settings'
 
 export const useSettingsStore = defineStore('settings', () => {

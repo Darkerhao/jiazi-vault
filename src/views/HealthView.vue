@@ -8,7 +8,7 @@ import { useVaultStore } from '../stores/vault'
 import { callCommand } from '../services/ipc'
 import { ITEM_TYPE_LABELS } from '../utils/item-fields'
 import { vaultErrorMessage } from '../utils/vault-error'
-import type { CredentialHealthEntry, CredentialHealthIssue } from '../../electron/contracts'
+import type { CredentialHealthEntry, CredentialHealthIssue } from '../types/contracts'
 
 const router = useRouter(), auth = useAuthStore(), vault = useVaultStore()
 const entries = ref<CredentialHealthEntry[]>([])

@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { NAlert, NButton, NIcon, NModal, NSpin, NText, useMessage } from 'naive-ui'
 import { OpenOutline, SparklesOutline } from '@vicons/ionicons5'
 import { callCommand } from '../../services/ipc'
-import type { AppRelease } from '../../../electron/app-update'
+import type { AppRelease } from '../../types/desktop'
 
 const emit = defineEmits<{ close: [] }>()
 const message = useMessage()

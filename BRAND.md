@@ -19,13 +19,13 @@ K 字母是识别轮廓，竖笔圆孔暗示钥匙。使用粗实几何结构，
 - `build/icon.icns`：macOS 图标，标准及 Retina 尺寸，最大 1024 px。
 - `build/icon.png`：1024 px 通用及 Linux 图标。
 
-运行 `pnpm brand:generate` 从母版统一生成派生资源。复用项目已有 Electron，不增加图形工具或依赖。
+运行 `pnpm brand:generate` 从母版统一生成派生资源。开发时使用 resvg 渲染 PNG/ICO/ICNS，不再依赖 Electron；品牌资源仍由同一母版生成。
 
 ## 品牌升级与数据兼容
 
 用户可见名称统一为 Keystill；中文名出现在欢迎页、侧栏、网页标题和文档。Windows Hello、Touch ID、托盘、窗口标题、macOS 菜单、导出文件名、安装包和 CI 发布标题同步升级。
 
-保留以下持久化身份：`package.json.name = jiazi-vault`、`build.appId = com.jiazi.vault`、备份格式 `jiazi-vault`、扩展名 `.jvault`、密钥校验字符串及现有 IPC 标识。`build.productName` 改为 Keystill，安装包前缀显式设为 `keystill-`。不要向 package.json 顶层添加 `productName`，否则 Electron 将优先使用它作为内部应用名，改变默认数据目录。
+保留 `package.json.name = jiazi-vault`、Tauri `identifier = com.jiazi.vault`、备份格式 `jiazi-vault`、扩展名 `.jvault` 和密钥校验字符串。Tauri 的 `productName` 为 Keystill；Rust 明确使用原 `jiazi-vault` 数据目录，而不采用新的 bundle identifier 目录。下面的 Electron 源码链接说明旧数据目录的来源，不再是本分支的运行实现。
 
 依据：旧 Windows 0.1.2 安装包内的 package.json 使用 `name: jiazi-vault` 且无顶层 productName；[Electron 44.2.0 初始化源码](https://github.com/electron/electron/blob/v44.2.0/lib/browser/init.ts) 由该字段设置内部应用名，[app 文档](https://github.com/electron/electron/blob/v44.2.0/docs/api/app.md) 说明默认 userData 为 appData 下的应用名目录。沿用这些标识即可继续读取原库，无需新增迁移逻辑。
 
