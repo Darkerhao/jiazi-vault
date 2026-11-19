@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { NAlert, NButton, NCard, NSkeleton, NSwitch, NText } from 'naive-ui'
-import type { DesktopSetting, DesktopSettings } from '../../../electron/settings'
+import type { DesktopSetting, DesktopSettings } from '../../types/desktop'
 import { callCommand } from '../../services/ipc'
 
 const preferences = ref<DesktopSettings | null>(null)

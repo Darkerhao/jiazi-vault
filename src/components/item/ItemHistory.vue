@@ -6,7 +6,7 @@ import { useAuthStore } from '../../stores/auth'
 import { useVaultStore } from '../../stores/vault'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, TYPE_FIELDS } from '../../utils/item-fields'
 import { diffItemHistory, type HistoryValue } from '../../utils/item-history'
-import type { ItemHistorySummary, VaultItem } from '../../../electron/contracts'
+import type { ItemHistorySummary, VaultItem } from '../../types/contracts'
 
 const props = defineProps<{ item: VaultItem; canRestore: boolean }>()
 const emit = defineEmits<{ restored: [] }>()

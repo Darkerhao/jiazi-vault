@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { DesktopAction } from '../../electron/desktop'
+import type { DesktopAction } from '../types/desktop'
 
 export const useDesktopStore = defineStore('desktop', () => {
   const pendingAction = ref<DesktopAction | null>(null)

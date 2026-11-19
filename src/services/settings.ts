@@ -1,4 +1,4 @@
-import type { AppSettings } from '../../electron/settings'
+import type { AppSettings } from '../types/desktop'
 import { callCommand } from './ipc'
 
 export const settingsService = {

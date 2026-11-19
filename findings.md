@@ -179,3 +179,10 @@
 - JSON/CSV 目前全库导出；备份恢复目前密码先于文件。统一更新现有 IPC，不保留旧恢复路径。
 - Electron 44.5.1 快捷键实现与返回值已核对：官方 docs/api/global-shortcut.md 和 shell/browser/api/electron_api_global_shortcut.cc（https://github.com/electron/electron/tree/v44.5.1）。
 - Naive UI 2.45.3 当前 Space.mjs 为每个包装 div 生成相同 key: 1；详情按钮 3→2 时真实出现双保存按钮。动态操作区设置公开 wrap-item=false，使用其现有 flex gap 分支保留按钮身份，不新增组件或升级依赖。
+# 2026-11-19 Tauri / Rust 迁移发现
+
+- 起点 `dev` / `acc2a01`，工作区干净，已创建 `refactor/tauri-rust-migration`。
+- 现有 70 余个 IPC 命令经 `src/services/ipc.ts` / preload 进入 Electron；业务模块约 3,000 行，需完整迁移而非附带 Node sidecar。
+- 兼容底线：`%APPDATA%/jiazi-vault/vault.db`、旧 schema、Argon2id 参数、AES-GCM JSON 格式、.jvault v1–v4、设备偏好与恢复快照。
+- 本机具备 Rust 1.99.1、Cargo、pnpm 9.12.1、Node 和 .NET；无 `.ai_state`，沿用仓库现有文件规划工作流。
+- 官方 Tauri 文档核对入口：Vite、calling-rust、global-shortcut、updater。更新插件的签名协议与 Electron latest.yml 不同，必须防止下载旧 Electron 安装包。

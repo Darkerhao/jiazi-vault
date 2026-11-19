@@ -5,7 +5,7 @@ import { NAlert, NButton, NCard, NCheckbox, NForm, NFormItem, NInput, NLayout, N
 import type { InputInst } from 'naive-ui'
 import { useAuthStore } from '../stores/auth'
 import { vaultService } from '../services/vault'
-import type { BiometricStatus } from '../../electron/contracts'
+import type { BiometricStatus } from '../types/contracts'
 import BackupRestore from '../components/common/BackupRestore.vue'
 
 const router = useRouter()

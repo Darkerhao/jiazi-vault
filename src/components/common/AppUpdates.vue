@@ -51,7 +51,7 @@ async function openReleasePage() {
       <summary>查看 v{{ update.version }} 更新说明</summary>
       <pre>{{ update.notes }}</pre>
     </details>
-    <p class="update-hint"><n-text depth="3">更新前建议创建加密备份。{{ state?.automatic ? '安装完成页默认勾选“打开应用”，点击“完成”即可启动新版；取消勾选则保持关闭。' : '当前平台或便携版请从官方下载页下载并手动安装。' }}</n-text></p>
+    <p class="update-hint"><n-text depth="3">更新前建议创建加密备份。{{ state?.automatic ? '下载并验证签名后，确认未保存的内容，再退出应用安装新版。' : '当前构建使用手动安装；正式签名版本可启用自动更新。' }}</n-text></p>
   </n-card>
   <RecentUpdates v-if="showRecent" @close="showRecent = false" />
 </template>

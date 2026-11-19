@@ -1,11 +1,6 @@
-import type { AppInfo, AppLink, ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot, ItemBatchAction, ExportScope, BackupSource, BackupPreview, CredentialHealthEntry } from '../../electron/contracts'
-import type { BackupStatus } from '../../electron/backup-status'
-import type { AppRelease, UpdateState } from '../../electron/app-update'
+import type { AppInfo, AppLink, ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot, ItemBatchAction, ExportScope, BackupSource, BackupPreview, CredentialHealthEntry, TransferFormat, BiometricStatus } from './contracts'
+import type { BackupStatus, AppRelease, UpdateState, AppSettings, DesktopSetting, DesktopSettings, GeneratedPassword, PasswordOptions, DesktopAction } from './desktop'
 import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
-import type { AppSettings, DesktopSetting, DesktopSettings } from '../../electron/settings'
-import type { GeneratedPassword, PasswordOptions } from '../../electron/password-generator'
-import type { DesktopAction } from '../../electron/desktop'
-import type { TransferFormat, BiometricStatus } from '../../electron/contracts'
 
 export type VaultError =
   | 'INVALID_PASSWORD'
@@ -32,6 +27,7 @@ export interface VaultStatus {
 }
 
 export interface IpcCommands {
+  touch_session: { args: undefined; result: void }
   respond_close_request: { args: { token: string; allowed: boolean }; result: void }
   health_check: { args: undefined; result: string }
   get_app_info: { args: undefined; result: AppInfo }

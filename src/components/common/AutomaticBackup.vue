@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { desktopBridge } from '../../services/desktop'
+
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { NAlert, NButton, NSpace, NText } from 'naive-ui'
 import { callCommand } from '../../services/ipc'
 import { useAuthStore } from '../../stores/auth'
-import type { AutomaticBackupStatus } from '../../../electron/contracts'
+import type { AutomaticBackupStatus } from '../../types/contracts'
 
 const auth = useAuthStore()
 const status = ref<AutomaticBackupStatus | null>(null)
@@ -31,7 +33,7 @@ async function perform(action: 'configure' | 'disable' | 'run') {
     if (!disposed) error.value = '操作未完成，请确认保险库已解锁、没有其他备份操作，并检查目录权限或外部磁盘连接后重试。'
   } finally { busy.value = false }
 }
-const unsubscribe = window.jiaziVault?.onBackupChanged(load)
+const unsubscribe = desktopBridge.onBackupChanged(load)
 onMounted(load)
 onBeforeUnmount(() => { disposed = true; request++; unsubscribe?.() })
 </script>

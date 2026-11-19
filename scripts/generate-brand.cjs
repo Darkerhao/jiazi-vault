@@ -1,5 +1,5 @@
-// One SVG master; rasterize with the Chromium already included in Electron.
-const { app, BrowserWindow } = require('electron')
+// One SVG master; render assets with resvg during development, never a bundled browser.
+const { Resvg } = require('@resvg/resvg-js')
 const { readFile, writeFile, mkdir } = require('node:fs/promises')
 const { join } = require('node:path')
 
@@ -24,19 +24,8 @@ async function generate() {
     await writeFile(join(brand, `${name}.svg`), logo)
   }
 
-  const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } })
-  await window.loadURL('data:text/html,<meta charset="utf-8">')
   async function png(source, size) {
-    const data = await window.webContents.executeJavaScript(`(async () => {
-      const image = new Image();
-      image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(${JSON.stringify(source)});
-      await image.decode();
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = ${size};
-      canvas.getContext('2d').drawImage(image, 0, 0, ${size}, ${size});
-      return canvas.toDataURL('image/png').split(',')[1];
-    })()`)
-    return Buffer.from(data, 'base64')
+    return Buffer.from(new Resvg(source, { fitTo: { mode: 'width', value: size } }).render().asPng())
   }
 
   const sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256, 512, 1024]
@@ -78,11 +67,10 @@ async function generate() {
   header.write('icns')
   header.writeUInt32BE(8 + chunks.reduce((total, chunk) => total + chunk.length, 0), 4)
   await writeFile(join(build, 'icon.icns'), Buffer.concat([header, ...chunks]))
-  window.destroy()
   console.log('Generated Keystill logos, application icons and tray icons from public/brand/mark.svg')
 }
 
-app.whenReady().then(generate).then(() => app.quit()).catch((error) => {
+generate().catch((error) => {
   console.error(error)
-  app.exit(1)
+  process.exitCode = 1
 })

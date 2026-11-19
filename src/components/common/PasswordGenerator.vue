@@ -3,7 +3,7 @@ import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { NAlert, NButton, NCard, NInput, NInputNumber, NProgress, NSlider, NSpace, NSwitch, NText } from 'naive-ui'
 import { useClipboard } from '../../composables/useClipboard'
 import { generatorService } from '../../services/generator'
-import type { GeneratedPassword, PasswordOptions } from '../../../electron/password-generator'
+import type { GeneratedPassword, PasswordOptions } from '../../types/desktop'
 
 const options = reactive<PasswordOptions>({ length: 18, uppercase: true, lowercase: true, numbers: true, symbols: true, excludeAmbiguous: true })
 const generated = ref<GeneratedPassword | null>(null)

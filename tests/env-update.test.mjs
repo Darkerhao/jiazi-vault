@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { diffEnvFields, parseEnv } from '../dist-electron/env.js'
+import { diffEnvFields, parseEnv } from '../src/utils/env.ts'
 
 test('env diff distinguishes new, changed and unchanged values without mutating the current set', () => {
   const current = { TOKEN: 'old-secret', EMPTY: '', MULTI: 'first\nsecond', KEEP: 'retained' }

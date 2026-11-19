@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { NAlert, NButton, NCard, NForm, NFormItem, NInput, NText, useMessage } from 'naive-ui'
 import { vaultService } from '../../services/vault'
 import { useAuthStore } from '../../stores/auth'
-import type { BiometricStatus } from '../../../electron/contracts'
+import type { BiometricStatus } from '../../types/contracts'
 
 const auth = useAuthStore()
 const message = useMessage()
@@ -61,6 +61,7 @@ async function toggleBiometric() {
   <n-card title="保险库安全" class="settings-card security-card" bordered>
     <n-alert v-if="error" type="error" class="security-error">{{ error }}</n-alert>
     <h2>{{ biometric?.label ?? '系统快捷解锁' }}</h2>
+    <n-alert v-if="biometric?.needsReenrollment" type="info" class="security-error">桌面底座已升级，请使用主密码重新启用一次系统快捷解锁。保险库内容和加密备份不受影响。</n-alert>
     <n-text depth="3">启用后，此设备的系统认证可替代主密码。主密码仍用于备份恢复和其他设备。Windows Hello 可使用指纹、人脸或系统 PIN。</n-text>
     <n-form v-if="biometric" class="security-form" :disabled="busy" @submit.prevent="toggleBiometric">
       <n-alert v-if="!biometric.available" type="info" class="security-error">此设备暂不可用，请在系统设置中配置 Windows Hello 或 Touch ID。你仍可使用主密码。</n-alert>

@@ -10,7 +10,7 @@ import BackupStatus from '../components/common/BackupStatus.vue'
 import AutomaticBackup from '../components/common/AutomaticBackup.vue'
 import StartupSettings from '../components/common/StartupSettings.vue'
 import { callCommand } from '../services/ipc'
-import { DEFAULT_SEARCH_SHORTCUT, validateSearchShortcut, type AppSettings } from '../../electron/settings'
+import { DEFAULT_SEARCH_SHORTCUT, validateSearchShortcut, type AppSettings } from '../types/desktop'
 
 const settings = useSettingsStore()
 const shortcut = ref<{ shortcut: string | null; shortcutRegistered: boolean } | null>(null)

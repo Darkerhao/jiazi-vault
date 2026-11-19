@@ -1,3 +1,4 @@
+import { desktopBridge, waitForDesktopEvents } from './services/desktop'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
@@ -15,12 +16,12 @@ const auth = useAuthStore()
 const vault = useVaultStore()
 const desktop = useDesktopStore()
 const updates = useUpdatesStore()
-window.jiaziVault?.onUpdateState((state) => { updates.state = state })
+desktopBridge.onUpdateState((state) => { updates.state = state })
 void updates.load()
-window.jiaziVault?.onItemsChanged(() => { if (auth.unlocked) void vault.load() })
-window.jiaziVault?.onBackupChanged(() => { if (auth.unlocked) void useBackupStore().load() })
-window.jiaziVault?.onDesktopAction(desktop.request)
-window.jiaziVault?.onLocked(() => {
+desktopBridge.onItemsChanged(() => { if (auth.unlocked) void vault.load() })
+desktopBridge.onBackupChanged(() => { if (auth.unlocked) void useBackupStore().load() })
+desktopBridge.onDesktopAction(desktop.request)
+desktopBridge.onLocked(() => {
   auth.markLocked()
   vault.clear()
   useBackupStore().clear()
@@ -28,4 +29,16 @@ window.jiaziVault?.onLocked(() => {
   void router.replace('/unlock')
 })
 void useSettingsStore().load()
-app.use(router).mount('#app')
+let lastActivity = 0
+function touchSession() {
+  if (!auth.unlocked || Date.now() - lastActivity < 1000) return
+  lastActivity = Date.now()
+  void desktopBridge.invoke('touch_session', undefined).catch(() => {})
+}
+for (const event of ['keydown', 'pointerdown', 'pointermove']) {
+  document.addEventListener(event, touchSession, { passive: true })
+}
+void waitForDesktopEvents().then(() => app.use(router).mount('#app')).catch(() => {
+  const root = document.getElementById('app')
+  if (root) root.textContent = '桌面连接初始化失败，请重新启动 Keystill。'
+})

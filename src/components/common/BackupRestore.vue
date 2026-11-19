@@ -5,7 +5,7 @@ import { backupService } from '../../services/backup'
 import { useAuthStore } from '../../stores/auth'
 import { useSettingsStore } from '../../stores/settings'
 import { callCommand } from '../../services/ipc'
-import type { RecoverySnapshot, BackupSource, BackupPreview } from '../../../electron/contracts'
+import type { RecoverySnapshot, BackupSource, BackupPreview } from '../../types/contracts'
 
 const auth = useAuthStore(), settings = useSettingsStore()
 const show = ref(false), busy = ref(false), password = ref(''), error = ref('')

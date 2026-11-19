@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { NAlert, NButton, NFormItem, NModal, NSelect, NSpace, useMessage } from 'naive-ui'
 import { useVaultStore } from '../../stores/vault'
 import { callCommand } from '../../services/ipc'
-import type { ExportScope, TransferFormat } from '../../../electron/contracts'
+import type { ExportScope, TransferFormat } from '../../types/contracts'
 
 const props = defineProps<{ ids?: string[]; disabled?: boolean }>()
 const vault = useVaultStore(), message = useMessage()

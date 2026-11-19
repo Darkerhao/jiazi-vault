@@ -1,0 +1,60 @@
+{
+  "password": "legacy-fixture-主密码-2026",
+  "metadata": {
+    "version": 1,
+    "kdf": {
+      "algorithm": "Argon2id",
+      "memoryCost": 65536,
+      "timeCost": 3,
+      "parallelism": 1,
+      "outputLen": 32,
+      "salt": "KGhtxotUpReJcpyJ0yfFug=="
+    },
+    "verifier": {
+      "algorithm": "AES-256-GCM",
+      "nonce": "MsFgZiwFH2lyFQ/R",
+      "ciphertext": "agpuMviwg9Y5iIrgllgrKCwSaLhbMDY=",
+      "authTag": "+DnPXJr3K5DmqBP7HrxZgA=="
+    }
+  },
+  "key": "rJkJTs0H5hFtE+gfDb80Fgl3hrPiFpIXTIrBbSiBcwQ=",
+  "itemId": "2701fa63-02ef-42eb-9f07-294470ec2711",
+  "envId": "6aa4baac-2b4a-4d90-ab62-bd60d8f11282",
+  "trashId": "6c3405cf-0197-4f38-ae7b-5ac73ea00195",
+  "expected": {
+    "id": "2701fa63-02ef-42eb-9f07-294470ec2711",
+    "type": "login",
+    "title": "Legacy account",
+    "projectId": "87f1e838-99bd-41b3-a318-99d64b3b2572",
+    "username": "fixture-user",
+    "tags": [
+      "fixture"
+    ],
+    "favorite": true,
+    "createdAt": 1795073440543,
+    "updatedAt": 1795073440546,
+    "password": "fixture-secret-B",
+    "notes": "测试备注\n第二行",
+    "fields": {
+      "custom": "自定义值"
+    }
+  },
+  "history": {
+    "id": "2701fa63-02ef-42eb-9f07-294470ec2711",
+    "type": "login",
+    "title": "Legacy account",
+    "projectId": "87f1e838-99bd-41b3-a318-99d64b3b2572",
+    "username": "fixture-user",
+    "tags": [
+      "fixture"
+    ],
+    "favorite": true,
+    "createdAt": 1795073440543,
+    "updatedAt": 1795073440543,
+    "password": "fixture-secret-A",
+    "notes": "测试备注\n第二行",
+    "fields": {
+      "custom": "自定义值"
+    }
+  }
+}

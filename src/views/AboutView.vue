@@ -7,7 +7,7 @@ import AppShell from '../components/common/AppShell.vue'
 import AppUpdates from '../components/common/AppUpdates.vue'
 import { useClipboard } from '../composables/useClipboard'
 import { callCommand } from '../services/ipc'
-import type { AppInfo, AppLink } from '../../electron/contracts'
+import type { AppInfo, AppLink } from '../types/contracts'
 
 const router = useRouter()
 const message = useMessage()
@@ -20,9 +20,8 @@ const environment = computed(() => info.value ? [
   { label: '应用版本', value: `Keystill ${info.value.version}` },
   { label: '操作系统', value: `${platformNames[info.value.platform] ?? info.value.platform} ${info.value.systemVersion}` },
   { label: '系统架构', value: info.value.arch },
-  { label: 'Electron', value: info.value.electronVersion },
-  { label: 'Chromium', value: info.value.chromiumVersion },
-  { label: 'Node.js', value: info.value.nodeVersion },
+  { label: 'Tauri', value: info.value.tauriVersion },
+  { label: '系统 WebView', value: info.value.webviewVersion },
 ] : [])
 const resources = [
   { target: 'guide', label: '使用文档', description: '快速上手、快捷键与备份指南', icon: BookOutline },

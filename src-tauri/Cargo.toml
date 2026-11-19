@@ -1,0 +1,61 @@
+[package]
+name = "keystill"
+version = "0.1.18"
+description = "Local encrypted credential vault for developers"
+edition = "2024"
+rust-version = "1.90"
+
+[lib]
+name = "keystill_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.5", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2.8.3"
+tauri-plugin-global-shortcut = "2.4.1"
+tauri-plugin-autostart = "2.7.0"
+tauri-plugin-single-instance = "2.5.5"
+tauri-plugin-opener = "2.7.3"
+tauri-plugin-clipboard-manager = "2.3.3"
+tauri-plugin-updater = "2.14.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.40.2", features = ["bundled", "backup"] }
+argon2 = { version = "0.5.3", features = ["zeroize"] }
+aes-gcm = "0.11.1"
+base64 = "0.22.1"
+getrandom = "0.3.4"
+zeroize = { version = "1.9", features = ["derive"] }
+sha2 = "0.10.9"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "7"
+semver = "1"
+tempfile = "3"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "blocking"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Security_Credentials_UI", "Foundation", "Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Memory", "Win32_System_WinRT", "Win32_System_RemoteDesktop", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Power"] }
+windows-future = "0.3.2"
+windows-version = "0.1.7"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["block2", "NSNotification", "NSDistributedNotificationCenter", "NSOperation"] }
+objc2-local-authentication = { version = "0.3", features = ["block2"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace"] }
+block2 = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5.19", features = ["blocking-api"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

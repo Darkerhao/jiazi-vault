@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { callCommand } from '../services/ipc'
-import type { UpdateState } from '../../electron/app-update'
+import type { UpdateState } from '../types/desktop'
 
 export const useUpdatesStore = defineStore('updates', () => {
   const state = ref<UpdateState | null>(null)

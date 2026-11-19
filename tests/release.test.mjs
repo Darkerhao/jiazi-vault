@@ -3,20 +3,12 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import { createRequire } from 'node:module'
 import { test } from 'node:test'
-import { GitHubProvider } from 'electron-updater/out/providers/GitHubProvider.js'
-
-const require = createRequire(import.meta.url)
-const builderRequire = createRequire(require.resolve('electron-builder'))
-const { createUpdateInfoTasks, writeUpdateInfoFiles } = builderRequire('app-builder-lib/out/publish/updateInfoBuilder.js')
-const { PlatformPackager } = builderRequire('app-builder-lib/out/platformPackager.js')
-const { Platform } = builderRequire('app-builder-lib/out/core.js')
 
 const script = resolve('scripts/prepare-release.mjs')
 const notesScript = resolve('scripts/release-notes.mjs')
 const testRoot = resolve('output/release-tests')
-const manifest = '{\n  "name": "release-test",\n  "version": "0.1.2",\n  "type": "module",\n  "main": "dist-electron/main.js",\n  "build": { "files": ["dist/**"] }\n}\n'
+const manifest = JSON.stringify({ name: 'release-test', version: '0.1.2', type: 'module', build: { files: ['dist/**'] } }, null, 2) + '\n'
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe', windowsHide: true }).trim()
@@ -41,7 +33,10 @@ function fixture(t) {
   git(root, 'clone', remote, repo)
   identity(repo)
   writeFileSync(join(repo, 'package.json'), manifest)
-  git(repo, 'add', 'package.json')
+  mkdirSync(join(repo, 'src-tauri'))
+  writeFileSync(join(repo, 'src-tauri/Cargo.toml'), '[package]\nname = "keystill"\nversion = "0.1.2"\n')
+  writeFileSync(join(repo, 'src-tauri/Cargo.lock'), 'version = 4\n\n[[package]]\nname = "keystill"\nversion = "0.1.2"\n')
+  git(repo, 'add', '.')
   git(repo, 'commit', '-m', 'Initial source')
   git(repo, 'push', '-u', 'origin', 'main')
   return {
@@ -114,49 +109,6 @@ test('first release notes contain the complete history and numeric version order
   assert.doesNotMatch(notes, /Version ten change|Initial source/)
 })
 
-test('build metadata carries the commit notes and the real GitHub updater prefers them over Atom HTML', async (t) => {
-  const f = fixture(t)
-  git(f.repo, 'tag', 'v0.1.2')
-  const notes = releaseNotes(f, 'v0.1.2')
-  const workflow = readFileSync(resolve('.github/workflows/build.yml'), 'utf8')
-  const notesFile = workflow.match(/--config\.releaseInfo\.releaseNotesFile=(\S+)/)?.[1]
-  assert.ok(notesFile, 'Packaging must embed the generated release notes')
-  assert.doesNotMatch(workflow, /--generate-notes/)
-  const destination = resolve(f.repo, notesFile)
-  mkdirSync(dirname(destination), { recursive: true })
-  writeFileSync(destination, notes)
-  const packager = {
-    projectDir: f.repo,
-    info: { buildResourcesDir: join(f.repo, 'build') },
-    resourceList: Promise.resolve([]),
-    getResource: PlatformPackager.prototype.getResource,
-    platform: Platform.WINDOWS,
-    platformSpecificBuildOptions: {},
-    config: { releaseInfo: { releaseNotesFile: notesFile } },
-    appInfo: { version: '0.1.2' },
-  }
-  const tasks = await createUpdateInfoTasks({ packager, target: { outDir: f.root },
-    file: join(f.root, 'setup.exe'), arch: 1, updateInfo: { sha512: 'fixture-checksum' },
-  }, [{ provider: 'github', owner: 'Darkerhao', repo: 'jiazi-vault' }])
-  await writeUpdateInfoFiles(tasks, { emitArtifactCreated: async () => {} })
-  const metadata = readFileSync(join(f.root, 'latest.yml'), 'utf8')
-  const html = '<p><strong>Full Changelog</strong>: <a href="https://github.com/Darkerhao/jiazi-vault/compare/v0.1.1...v0.1.2">v0.1.1...v0.1.2</a></p>'
-  let channel = metadata
-  const provider = new GitHubProvider({ provider: 'github', owner: 'Darkerhao', repo: 'jiazi-vault' }, {}, {
-    platform: 'win32', executor: { request: async ({ path }) => {
-      if (path.endsWith('.atom')) return `<feed><entry><title>Release</title><link href="https://github.com/Darkerhao/jiazi-vault/releases/tag/v0.1.2"/><content type="html"><![CDATA[${html}]]></content></entry></feed>`
-      if (path.endsWith('/latest')) return JSON.stringify({ tag_name: 'v0.1.2' })
-      assert.ok(path.endsWith('/latest.yml'))
-      return channel
-    } },
-  })
-  // Without embedded notes the previous pipeline reproduces the screenshot's HTML.
-  channel = JSON.stringify({ version: '0.1.2', files: [] })
-  assert.equal((await provider.getLatestVersion()).releaseNotes, html)
-  channel = metadata
-  assert.equal((await provider.getLatestVersion()).releaseNotes, notes)
-})
-
 test('release sync applies only the bot version commit to divergent dev and is safe to retry', (t) => {
   const f = fixture(t)
   git(f.repo, 'switch', '-c', 'dev')
@@ -185,7 +137,7 @@ test('release sync applies only the bot version commit to divergent dev and is s
   assert.equal(git(f.repo, 'show', '-s', '--format=%P', syncedHead), devHead)
   assert.equal(git(f.repo, 'show', '-s', '--format=%an', syncedHead), 'github-actions[bot]')
   assert.equal(git(f.repo, 'show', '-s', '--format=%s', syncedHead), 'chore(release): v0.1.3')
-  assert.equal(git(f.repo, 'diff', '--name-only', devHead, syncedHead), 'package.json')
+  assert.equal(git(f.repo, 'diff', '--name-only', devHead, syncedHead), 'package.json\nsrc-tauri/Cargo.lock\nsrc-tauri/Cargo.toml')
   assert.equal(git(f.remote, 'show', 'refs/heads/dev:package.json'), devManifest.replace('0.1.2', '0.1.3').trim())
   assert.equal(git(f.remote, 'rev-parse', 'refs/heads/main'), releaseCommit)
 

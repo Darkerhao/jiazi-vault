@@ -1,5 +1,46 @@
 # 交付与验收
 
+## Tauri / Rust 底座迁移（2026-11-19，本地验收）
+
+分支 `refactor/tauri-rust-migration`，基于 `dev` / `acc2a01`；本轮评审后按用户明确要求提交到本地分支，未推送或发布，也未操作个人保险库。以下更早章节为当时 Electron 版本的历史记录，不能作为本次 Tauri 的验收结果。
+
+### 实现
+
+- 保留现有 Vue / Naive UI / Pinia 页面，桥接改为类型化 Tauri 命令和事件。Rust 独立实现 SQLite、Argon2id、AES-256-GCM、会话、凭据/项目/历史、备份、恢复、JSON/CSV/.env、密码生成和桌面集成。
+- 删除 Electron、electron-updater、Node Argon2、preload、.NET Windows Hello helper 与对应构建路径；没有 Node sidecar。公共前端类型与纯工具放入 src。
+- 保留原 `jiazi-vault` 数据目录、SQL schema、主密码派生参数及 `.jvault` v1–v4。旧实现生成独立人工数据夹具，Rust 读取；Rust 写回后再由原 Node AES-GCM 算法独立解密。
+- Windows Hello 直接调用 WinRT / DPAPI，macOS 使用 LocalAuthentication / Keychain；旧设备快捷解锁登记需主密码登录后重新启用一次，界面有提示。
+- 保留 main-only 发版与 dev 版本同步，版本提交同步 package.json / Cargo.toml / Cargo.lock。Tauri 专用更新元数据与签名独立于 Electron，未配置正式更新密钥的构建使用手动安装。
+
+### Windows 实测体积
+
+| 产物 | 字节 | MiB |
+| --- | ---: | ---: |
+| 本地旧 Electron 0.1.18 NSIS | 128,514,399 | 122.56 |
+| 本次 Tauri NSIS | 3,385,175 | 3.23 |
+| 新 NSIS 内实际原生 EXE | 8,069,120 | 7.70 |
+
+安装包减少 **97.37%**。新包使用系统共享 WebView2；不包含离线 WebView2 运行时，缺少时安装器联网安装，因此不能将上述体积理解为系统总运行时占用。
+
+产物：`src-tauri/target/release/bundle/nsis/Keystill_0.1.18_x64-setup.exe`。
+
+SHA-256：`03ce11f32d9d00d15b0e3aa89b222b1dae44b94f35932d27ec279091fe447f7f`。
+
+### 已通过
+
+- Rust 35 项测试；前端、发布版本与更新清单 24 项测试；Node 独立解密 Rust 写入备份；Vue 类型检查与生产构建。
+- `cargo fmt --check`、`cargo clippy --all-targets --locked --offline -- -D warnings`、YAML 语法、前端依赖审计（无已知告警）。品牌生成器在隔离目录实跑通过，未重绘正式资源。
+- 正式优化构建和 NSIS 打包。提取实际 NSIS 载荷后运行 13 个真实 WebView2 场景：创建/解锁、原 Vue 表单保存、项目/密文/历史/健康、关于与系统能力、真实 Windows 剪贴板及超时清理、关闭时草稿取消、锁定拒读、WebView 重载锁定、锁屏/休眠消息回调、重启持久化、原 Electron SQLite 解锁。
+- 13 场景全部完成、无 renderer error。锁屏/休眠为发送到测试窗口的原生 Windows 消息模拟，没有实际锁定或休眠用户系统。
+- 已目检关于页与 900×600 凭据页，现有布局保留、无截断或遮挡。报告 `output/playwright/tauri-desktop-report.json`，截图位于其 evidence 目录；包体积/完整性记录 `output/package-payload-report.json`。
+- 原始编译 EXE 与 NSIS 载荷仅相差官方 Tauri bundle marker 的 3 字节（UNK → NSS）；规范化该标记后逐字节一致。未修改实际载荷。
+
+### 验收边界
+
+用户当前个人密序进程正在运行。为保留现有安装与草稿，**没有执行真实安装、覆盖升级或卸载**；已验证安装测试脚本会在该情形停止，实际运行的是从生产 NSIS 提取的 EXE，使用 output 下的独立保险库。干净 Windows CI 保留完整安装/卸载验收脚本。
+
+本轮未做 Windows Hello / Touch ID 的用户实际认证、物理锁屏/休眠、macOS/Linux 实机或安装器验证；没有运行远端 Actions、签名、公证或发布。正式自动更新需要 TAURI_SIGNING_PRIVATE_KEY、可选密码及 TAURI_UPDATER_PUBLIC_KEY，不能把未配置密钥的本地包视为已验证的在线自动升级产物。
+
 ## 前四项升级（2026-10-21，源码验收）
 
 - 发布仅由 main 推送或在 main 上手动执行触发；build 必须等待 prepare 成功，准确签出准备后的提交并读取同次发布说明。普通 dev 推送不打包，main PR 复用独立 check.yml。

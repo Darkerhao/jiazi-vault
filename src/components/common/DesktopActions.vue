@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { desktopBridge } from '../../services/desktop'
+
 import { onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
@@ -13,7 +15,7 @@ const desktop = useDesktopStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
-const stopCloseRequests = window.jiaziVault?.onCloseRequest(async token => {
+const stopCloseRequests = desktopBridge.onCloseRequest(async token => {
   const allowed = await confirmPendingChanges()
   await callCommand('respond_close_request', { token, allowed }).catch(() => message.error('无法关闭窗口，请重试。'))
 })

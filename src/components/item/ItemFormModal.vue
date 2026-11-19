@@ -8,14 +8,14 @@ import { useVaultStore } from '../../stores/vault'
 import { useClipboard } from '../../composables/useClipboard'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_OPTIONS, TYPE_FIELDS, type FieldDef } from '../../utils/item-fields'
 import type { Environment, ItemInput, ItemType, VaultItem } from '../../types/vault'
-import { ENV_NAME, serializeEnv } from '../../../electron/env'
+import { ENV_NAME, serializeEnv } from '../../utils/env'
 import { callCommand } from '../../services/ipc'
 import { useAuthStore } from '../../stores/auth'
 import EnvImport from './EnvImport.vue'
 import ItemHistory from './ItemHistory.vue'
 import PasswordGenerator from '../common/PasswordGenerator.vue'
 import { projectService } from '../../services/project'
-import { validExpiry, expiryState } from '../../../electron/expiry'
+import { validExpiry, expiryState } from '../../utils/expiry'
 
 const props = defineProps<{ show: boolean; item: VaultItem | null; draft?: Partial<ItemInput> }>()
 const emit = defineEmits<{ close: []; duplicate: [item: ItemInput] }>()

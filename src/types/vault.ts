@@ -1,2 +1,2 @@
-export type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from '../../electron/contracts'
-export type { Project, ProjectInput } from '../../electron/project-store'
+export type { ItemType, Environment, ItemInput, VaultItem, VaultItemSummary } from './contracts'
+export type { Project, ProjectInput } from './desktop'
