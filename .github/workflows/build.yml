@@ -188,11 +188,10 @@ jobs:
           ref: dev
           fetch-depth: 0
 
-      - name: Cherry-pick release version commit into dev
+      - name: Sync release version to dev
         env:
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git cherry-pick --empty=drop "$RELEASE_COMMIT"
-          git push origin HEAD:refs/heads/dev
+          node scripts/sync-release-version.mjs "$RELEASE_COMMIT"

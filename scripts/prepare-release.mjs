@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { writeVersion } from './release-version.mjs'
 
 const branch = process.env.GITHUB_REF_NAME
 const output = process.env.GITHUB_OUTPUT
@@ -22,11 +23,7 @@ if (!git('tag', '--points-at', 'HEAD', '--list', tag)) {
   tag = `v${version}`
   if (git('tag', '--list', tag)) throw new Error(`Release tag ${tag} already exists`)
 
-  writeFileSync('package.json', manifest.replace(/("version"\s*:\s*")[^"]+(")/, (_, prefix, suffix) => `${prefix}${version}${suffix}`))
-  const cargo = readFileSync('src-tauri/Cargo.toml', 'utf8')
-  const lock = readFileSync('src-tauri/Cargo.lock', 'utf8')
-  writeFileSync('src-tauri/Cargo.toml', cargo.replace(/^(version\s*=\s*")[^"]+(")/m, (_, prefix, suffix) => `${prefix}${version}${suffix}`))
-  writeFileSync('src-tauri/Cargo.lock', lock.replace(/(\[\[package\]\]\r?\nname = "keystill"\r?\nversion = ")[^"]+(")/, (_, prefix, suffix) => `${prefix}${version}${suffix}`))
+  writeVersion(version)
   git('config', 'user.name', 'github-actions[bot]')
   git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
   git('add', '--', 'package.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock')
