@@ -52,6 +52,7 @@ async function launch(data) {
     if (!page) await delay(100)
   }
   page.setDefaultTimeout(20_000)
+  await page.setViewportSize({ width: 1200, height: 760 })
   page.on('pageerror', error => errors.push(error.message))
   await page.getByRole('heading', { name: /欢迎使用 Keystill|解锁保险库/ }).waitFor()
   assert.equal(await call('health_check'), 'ok')
