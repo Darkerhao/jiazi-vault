@@ -217,7 +217,7 @@ tests/fixtures/            # 原 Electron 生成的独立兼容夹具
 
 日常开发使用 `dev`；迁移在 `refactor/tauri-rust-migration` 中完成。`Check desktop changes` 在面向 `main` 的 PR 和手动触发时检查 Windows、macOS、Linux 源码；普通 `dev` 推送不触发。可在分支保护中将这些检查设为必需。
 
-构建发布仍仅由 `main` 推送或手动触发：递增补丁版本，同步 `package.json`、`Cargo.toml`、`Cargo.lock`，创建版本标签并按提交生成说明；四个平台/架构构建全部成功后才发布，再将只包含版本变更的提交 cherry-pick 回 `dev`，不回合并业务代码。
+构建发布仍仅由 `main` 推送或手动触发：递增补丁版本，同步 `package.json`、`Cargo.toml`、`Cargo.lock`，创建版本标签并按提交生成说明；四个平台/架构构建全部成功后才发布，再把发布版本号写入 `dev`，不回合并业务代码。
 
 自动更新需要仓库 Secrets `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，以及变量 `TAURI_UPDATER_PUBLIC_KEY`；公私钥必须成对配置。不配置时仍可构建供手动安装的包；不会生成误导性的自动更新清单。更新签名与 Windows 发布者证书、Apple Developer ID 签名/公证是不同事项。
 

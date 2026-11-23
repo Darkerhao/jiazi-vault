@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -36,6 +36,9 @@ function fixture(t) {
   mkdirSync(join(repo, 'src-tauri'))
   writeFileSync(join(repo, 'src-tauri/Cargo.toml'), '[package]\nname = "keystill"\nversion = "0.1.2"\n')
   writeFileSync(join(repo, 'src-tauri/Cargo.lock'), 'version = 4\n\n[[package]]\nname = "keystill"\nversion = "0.1.2"\n')
+  mkdirSync(join(repo, 'scripts'))
+  copyFileSync(resolve('scripts/release-version.mjs'), join(repo, 'scripts/release-version.mjs'))
+  copyFileSync(resolve('scripts/sync-release-version.mjs'), join(repo, 'scripts/sync-release-version.mjs'))
   git(repo, 'add', '.')
   git(repo, 'commit', '-m', 'Initial source')
   git(repo, 'push', '-u', 'origin', 'main')
@@ -109,11 +112,13 @@ test('first release notes contain the complete history and numeric version order
   assert.doesNotMatch(notes, /Version ten change|Initial source/)
 })
 
-test('release sync applies only the bot version commit to divergent dev and is safe to retry', (t) => {
+test('release sync sets the released version on a stale dev and is safe to retry', (t) => {
   const f = fixture(t)
   git(f.repo, 'switch', '-c', 'dev')
-  const devManifest = manifest.replace('dist/**', 'dev/**')
+  const devManifest = manifest.replace('0.1.2', '0.1.1').replace('dist/**', 'dev/**')
   writeFileSync(join(f.repo, 'package.json'), devManifest)
+  writeFileSync(join(f.repo, 'src-tauri/Cargo.toml'), '[package]\nname = "keystill"\nversion = "0.1.1"\n')
+  writeFileSync(join(f.repo, 'src-tauri/Cargo.lock'), 'version = 4\n\n[[package]]\nname = "keystill"\nversion = "0.1.1"\n')
   writeFileSync(join(f.repo, 'feature.txt'), 'unreleased dev feature')
   git(f.repo, 'add', '.')
   git(f.repo, 'commit', '-m', 'Unreleased development')
@@ -138,7 +143,9 @@ test('release sync applies only the bot version commit to divergent dev and is s
   assert.equal(git(f.repo, 'show', '-s', '--format=%an', syncedHead), 'github-actions[bot]')
   assert.equal(git(f.repo, 'show', '-s', '--format=%s', syncedHead), 'chore(release): v0.1.3')
   assert.equal(git(f.repo, 'diff', '--name-only', devHead, syncedHead), 'package.json\nsrc-tauri/Cargo.lock\nsrc-tauri/Cargo.toml')
-  assert.equal(git(f.remote, 'show', 'refs/heads/dev:package.json'), devManifest.replace('0.1.2', '0.1.3').trim())
+  assert.equal(git(f.remote, 'show', 'refs/heads/dev:package.json'), devManifest.replace('0.1.1', '0.1.3').trim())
+  assert.equal(git(f.remote, 'show', 'refs/heads/dev:src-tauri/Cargo.toml'), '[package]\nname = "keystill"\nversion = "0.1.3"')
+  assert.equal(git(f.remote, 'show', 'refs/heads/dev:src-tauri/Cargo.lock'), 'version = 4\n\n[[package]]\nname = "keystill"\nversion = "0.1.3"')
   assert.equal(git(f.remote, 'rev-parse', 'refs/heads/main'), releaseCommit)
 
   const retry = syncVersion(f.repo, releaseCommit)
