@@ -1,6 +1,6 @@
 [package]
 name = "keystill"
-version = "0.1.22"
+version = "0.1.23"
 description = "Local encrypted credential vault for developers"
 edition = "2024"
 rust-version = "1.90"
