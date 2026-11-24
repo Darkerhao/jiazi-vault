@@ -36,6 +36,8 @@ export interface IpcCommands {
   install_update: { args: undefined; result: UpdateState }
   get_recent_releases: { args: undefined; result: AppRelease[] }
   open_app_link: { args: { target: AppLink; tag?: string }; result: void }
+  open_url: { args: { url: string; itemId?: string }; result: number | null }
+  hide_window: { args: undefined; result: void }
   get_desktop_status: { args: undefined; result: { shortcut: string | null; shortcutRegistered: boolean } }
   get_desktop_preferences: { args: undefined; result: DesktopSettings }
   set_desktop_preference: { args: { key: DesktopSetting; value: boolean }; result: DesktopSettings }
@@ -72,6 +74,7 @@ export interface IpcCommands {
   get_settings: { args: undefined; result: AppSettings }
   update_settings: { args: { settings: AppSettings }; result: AppSettings }
   copy_to_clipboard: { args: { text: string; itemId?: string }; result: number | null }
+  copy_item: { args: { id: string }; result: { copied: boolean; usedAt: number | null } | null }
   get_backup_status: { args: undefined; result: BackupStatus }
   create_backup: { args: undefined; result: string | null }
   select_backup_source: { args: { snapshotId?: string }; result: BackupSource | null }

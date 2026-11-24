@@ -99,6 +99,31 @@ pub fn serialize_env(fields: &BTreeMap<String, String>) -> Result<String> {
     }
     Ok(output)
 }
+
+pub fn primary(item: &Item) -> Option<String> {
+    let field = |key: &str| {
+        item.fields
+            .as_ref()
+            .and_then(|fields| fields.get(key))
+            .filter(|value| !value.is_empty())
+            .cloned()
+    };
+    let password = || item.password.clone().filter(|value| !value.is_empty());
+    match item.r#type.as_str() {
+        "api-key" => field("apiKey").or_else(|| field("secret")),
+        "ssh" => field("privateKey"),
+        "secure-note" => item.notes.clone().filter(|value| !value.is_empty()),
+        "database" => password().or_else(|| field("connectionString")),
+        "custom" => password().or_else(|| {
+            item.fields
+                .as_ref()
+                .and_then(|fields| fields.values().find(|value| !value.is_empty()).cloned())
+        }),
+        "env" => None,
+        _ => password(),
+    }
+}
+
 pub fn validate(item: &Item, check_expiry: bool) -> Result<()> {
     ensure(
         !item.title.trim().is_empty()

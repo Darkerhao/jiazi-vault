@@ -25,12 +25,19 @@ watch([() => auth.unlocked, () => route.name, () => desktop.pendingAction], () =
   if (!auth.unlocked || route.name === 'unlock' || !desktop.pendingAction) return
   const action = desktop.pendingAction
   desktop.pendingAction = null
-  if (action === 'quick-search') { desktop.quickSearchOpen = true; return }
+  if (action === 'quick-search' || action === 'quick-search-global') { desktop.quickSearchOpen = true; return }
   desktop.quickSearchOpen = false
   if (action === 'generator') void router.push('/generator')
   else if (action === 'new-item') void router.push({ name: 'vault', query: { ...route.query, new: '1' } })
   else if (action === 'new-project') void router.push('/projects?new=1')
 }, { immediate: true })
+
+function closeQuickSearch(hideWindow = true) {
+  const hide = hideWindow && desktop.quickSearchTransient
+  desktop.quickSearchOpen = false
+  desktop.quickSearchTransient = false
+  if (hide) void callCommand('hide_window').catch(() => {})
+}
 
 function keydown(event: KeyboardEvent) {
   if (!auth.unlocked || !(event.ctrlKey || event.metaKey) || event.altKey) return
@@ -49,4 +56,4 @@ onMounted(() => document.addEventListener('keydown', keydown))
 onUnmounted(() => document.removeEventListener('keydown', keydown))
 </script>
 
-<template><QuickSearch v-if="auth.unlocked && desktop.quickSearchOpen" @close="desktop.quickSearchOpen = false" /></template>
+<template><QuickSearch v-if="auth.unlocked && desktop.quickSearchOpen" @close="closeQuickSearch" /></template>

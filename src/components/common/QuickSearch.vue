@@ -2,20 +2,23 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NAlert, NButton, NEmpty, NIcon, NInput, NModal, NSpin, NText, type InputInst } from 'naive-ui'
+import { OpenOutline } from '@vicons/ionicons5'
 import { useVaultStore } from '../../stores/vault'
 import { useAuthStore } from '../../stores/auth'
 import { useClipboard } from '../../composables/useClipboard'
-import { ITEM_TYPE_LABELS, TYPE_FIELDS } from '../../utils/item-fields'
+import { useOpenUrl } from '../../composables/useOpenUrl'
+import { ITEM_TYPE_LABELS, TYPE_FIELDS, primaryOptionLabel, primaryValueLabel } from '../../utils/item-fields'
 import { vaultService } from '../../services/vault'
 import { vaultErrorMessage } from '../../utils/vault-error'
 import { ITEM_TYPE_ICONS } from '../../utils/item-icons'
 import type { VaultItem, VaultItemSummary } from '../../types/vault'
 
-const emit = defineEmits<{ (event: 'close'): void }>()
+const emit = defineEmits<{ (event: 'close', hideWindow?: boolean): void }>()
 const vault = useVaultStore()
 const auth = useAuthStore()
 const router = useRouter()
 const { copy, copyItem } = useClipboard()
+const { open: openUrl, opening: openingUrl } = useOpenUrl()
 const query = ref('')
 const selected = ref(0)
 const input = ref<InputInst | null>(null)
@@ -25,6 +28,7 @@ const matches = computed(() => vault.search(vault.items, query.value))
 const results = computed(() => matches.value.slice(0, 50))
 const active = computed(() => results.value[selected.value])
 const details = ref<VaultItem | null>(null)
+const activeUrl = computed(() => active.value?.url ?? (details.value?.id === active.value?.id ? details.value.fields?.endpoint : undefined))
 const fieldsLoading = ref(false)
 const fieldsError = ref('')
 const selectedField = ref('primary')
@@ -77,29 +81,51 @@ onMounted(async () => { input.value?.focus(); await vault.load() })
 
 function open(item = active.value) {
   if (!item || !auth.unlocked) return
-  emit('close')
+  emit('close', false)
   void router.push({ name: 'vault', query: { item: item.id } })
 }
 
-async function copySelected() {
+async function copySelected(): Promise<boolean> {
   const item = active.value
-  if (!item || copying.value || fieldsLoading.value || !auth.unlocked) return
+  if (!item || copying.value || !auth.unlocked) return false
   const field = copyFields.value.find((field) => field.key === selectedField.value)
+  if (selectedField.value !== 'primary' && (!field || details.value?.id !== item.id)) return false
   copying.value = true
   try {
-    if (selectedField.value === 'primary') await copyItem(item.id)
-    else if (field && details.value?.id === item.id) await copy(field.value, item.id)
+    return selectedField.value === 'primary'
+      ? await copyItem(item.id, primaryValueLabel(item.type))
+      : await copy(field!.value, item.id, field!.label)
   }
   finally { copying.value = false }
 }
 
+async function copyAndClose() {
+  if (await copySelected()) emit('close', true)
+}
+
+async function openActiveUrl() {
+  const item = active.value
+  if (item && await openUrl(activeUrl.value, item.id)) emit('close', true)
+}
+
 function keydown(event: KeyboardEvent) {
-  if ((event.target as HTMLElement).closest('select, button')) return
+  const interactive = !!(event.target as HTMLElement).closest('select, button')
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (interactive) return
     event.preventDefault()
     if (results.value.length) selected.value = (selected.value + (event.key === 'ArrowDown' ? 1 : -1) + results.value.length) % results.value.length
-  } else if (event.key === 'Enter') { event.preventDefault(); open() }
-  else if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'c') { event.preventDefault(); void copySelected() }
+  } else if (event.key === 'Enter') {
+    if (interactive) return
+    event.preventDefault()
+    if (event.ctrlKey || event.metaKey) open()
+    else void copyAndClose()
+  } else if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'o') {
+    event.preventDefault()
+    void openActiveUrl()
+  } else if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'c') {
+    event.preventDefault()
+    void copyAndClose()
+  }
 }
 
 function subtitle(item: VaultItemSummary) {
@@ -108,7 +134,7 @@ function subtitle(item: VaultItemSummary) {
 </script>
 
 <template>
-  <n-modal :show="true" preset="card" title="快捷搜索" style="width: 640px; max-width: calc(100vw - 40px)" @update:show="(show) => !show && emit('close')">
+  <n-modal :show="true" preset="card" title="快捷搜索" style="width: 640px; max-width: calc(100vw - 40px)" @update:show="(show) => !show && emit('close', true)">
     <div @keydown="keydown">
       <n-input ref="input" v-model:value="query" placeholder="搜索名称、项目、环境、账号…" clearable :input-props="{ role: 'combobox', 'aria-controls': 'quick-search-results', 'aria-expanded': true, 'aria-activedescendant': active ? `quick-result-${active.id}` : undefined }" />
       <n-alert v-if="vault.error" type="error" class="search-state">{{ vault.error }} <n-button text @click="vault.load">重试</n-button></n-alert>
@@ -124,16 +150,17 @@ function subtitle(item: VaultItemSummary) {
       </n-spin>
       <n-alert v-if="fieldsError" type="error">{{ fieldsError }} <n-button text @click="loadFields">重试</n-button></n-alert>
       <div class="search-footer">
-        <n-text depth="3">↑ ↓ 选择 · Enter 打开 · Ctrl Shift C 复制（macOS 使用 ⌘）· Esc 关闭</n-text>
+        <n-text depth="3">↑ ↓ 选择 · Enter / Ctrl Shift C 复制并关闭 · Ctrl O 打开 · Ctrl Enter 查看详情（macOS 使用 ⌘）· Esc 关闭</n-text>
         <div class="copy-controls">
           <select v-model="selectedField" aria-label="选择复制字段" :disabled="!details || fieldsLoading || copying">
-            <option value="primary">{{ active?.type === 'env' ? '完整 .env（需确认）' : '默认内容' }}</option>
+            <option value="primary">{{ active ? primaryOptionLabel(active.type) : '默认内容' }}</option>
             <option v-for="field in copyFields" :key="field.key" :value="field.key">{{ field.label }}</option>
           </select>
-          <n-button size="small" :disabled="!active || fieldsLoading || !!fieldsError" :loading="copying" @click="copySelected">复制</n-button>
+          <n-button size="small" :disabled="!activeUrl" :loading="openingUrl === active?.id" @click="openActiveUrl"><template #icon><n-icon><open-outline /></n-icon></template>打开</n-button>
+          <n-button size="small" :disabled="!active" :loading="copying" @click="copyAndClose">复制并关闭</n-button>
         </div>
       </div>
-      <n-button v-if="matches.length > 50" text class="all-results" @click="emit('close'); router.push({ name: 'vault', query: { q: query || undefined } })">查看全部 {{ matches.length }} 条结果</n-button>
+      <n-button v-if="matches.length > 50" text class="all-results" @click="emit('close', false); router.push({ name: 'vault', query: { q: query || undefined } })">查看全部 {{ matches.length }} 条结果</n-button>
     </div>
   </n-modal>
 </template>

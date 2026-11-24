@@ -132,11 +132,14 @@ fn dispatch(app: &AppHandle, command: &str, args: &Value) -> Result<Value> {
             "respond_close_request"
                 | "get_app_info"
                 | "open_app_link"
+                | "open_url"
+                | "hide_window"
                 | "get_desktop_status"
                 | "set_search_shortcut"
                 | "get_desktop_preferences"
                 | "set_desktop_preference"
                 | "copy_to_clipboard"
+                | "copy_item"
         )
     {
         let result = desktop::dispatch(app, command, args);

@@ -9,13 +9,18 @@ const messages: Record<string, string> = {
   DATABASE_ERROR: '无法读写本地数据库，请重启应用；仍失败时请从备份恢复。',
   INVALID_DATA: '凭证内容不符合要求，请检查后重试。',
   INVALID_EXPIRY: '有效期格式不正确，请重新选择日期。',
+  INVALID_URL: 'URL 格式不正确，仅支持 http 或 https 链接。',
+  OPEN_LINK_FAILED: '无法打开系统浏览器，请检查默认浏览器设置。',
+  CLIPBOARD_FAILED: '无法写入系统剪贴板，请重试。',
+  ENV_EXPORT_FAILED: '环境变量内容无法导出，请检查变量名和值后重试。',
+  INVALID_ENV_FIELDS: '环境变量名称或内容不符合要求，请打开变量集检查。',
   ENVIRONMENT_REQUIRED: '环境变量集必须指定环境，本次修改未保存。',
 }
 
 /** IPC wraps Error messages; expose only known codes, never raw diagnostic text. */
 export function vaultErrorMessage(cause: unknown, fallback: string) {
   const text = String(cause)
-  const code = text.match(/\b(?:VAULT_LOCKED|VAULT_BUSY|ITEM_NOT_FOUND|ITEM_STATE_CHANGED|PROJECT_NOT_FOUND|PROJECT_NAME_EXISTS|DECRYPT_FAILED|DATABASE_ERROR|INVALID_DATA|INVALID_EXPIRY|ENVIRONMENT_REQUIRED)\b/)?.[0]
+  const code = text.match(/\b(?:VAULT_LOCKED|VAULT_BUSY|ITEM_NOT_FOUND|ITEM_STATE_CHANGED|PROJECT_NOT_FOUND|PROJECT_NAME_EXISTS|DECRYPT_FAILED|DATABASE_ERROR|INVALID_DATA|INVALID_EXPIRY|INVALID_URL|OPEN_LINK_FAILED|CLIPBOARD_FAILED|ENV_EXPORT_FAILED|INVALID_ENV_FIELDS|ENVIRONMENT_REQUIRED)\b/)?.[0]
   if (code) return messages[code]!
   if (/\b(?:SQLITE_[A-Z_]+|ERR_SQLITE_ERROR)\b/.test(text)) return messages.DATABASE_ERROR!
   return fallback

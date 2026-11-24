@@ -377,3 +377,13 @@ Windows 11（10.0.22631），i9-13900H，20 逻辑核，约 31.7 GiB 内存。�
 复现：先执行 `pnpm build`，再运行 `node tests/credentials-smoke.mjs`、`node tests/electron-smoke.mjs`、`node tests/performance.mjs`（桌面脚本顺序执行，避免争用剪贴板或窗口焦点）。性能默认启动 5 次，可用 `JIAZI_PERF_RUNS` 调整；报告和隔离测试库写入 `output/playwright`。
 
 历史 0.1.1 的待验收项由本文开头的 0.1.2 记录更新。仍独立保留 macOS/Linux 构建与运行、Touch ID 实机认证、硬冷启动及 Windows 代码签名；SSH 连接、浏览器扩展、同步、移动端与团队保险库属于后续迭代。
+
+## 快捷搜索直达复制与快速打开（2026-11-24）
+
+- 快捷搜索按 Enter 复制当前选中字段并关闭；Ctrl/Cmd+Enter 打开凭证详情；Ctrl/Cmd+Shift+C 保留复制并关闭。默认字段复制不再等待详情字段预取，快速输入后按 Enter 不会被加载状态静默忽略。
+- 从全局快捷键或托盘唤起快捷搜索时，复制成功或按 Esc 收起主窗口；应用内 Ctrl K 打开的搜索保持窗口。查看详情和“查看全部结果”不会触发收起。新增 Rust `hide_window` 命令，仍只接受应用主窗口调用。
+- 列表、详情和快捷搜索支持直接打开凭证 URL；快捷搜索 Ctrl/Cmd+O 打开并收起，API Key 的 Endpoint 可在详情和快捷搜索中打开；仅接受 http/https，使用系统默认浏览器。成功打开会更新最近使用。
+- 列表每行只保留一个主复制入口，按类型显示复制密码 / 复制 API Key / 复制私钥 / 复制 .env / 复制内容；快捷搜索默认字段沿用相同命名。
+- 搜索结果同分时收藏优先、其次最近使用，最后按更新时间；复制提示显示复制内容与剪贴板清除时间，环境变量集导出提示保持一致。
+- 列表和快捷搜索的主字段复制改为 Rust 单次 `copy_item`：解密、写入剪贴板和记录最近使用一次完成，密码不经过 WebView；已保存环境变量集沿用同一路径并保留明文确认。
+- 验收：`cargo test`（36 项）、`pnpm test:frontend`（26 项）与旧版兼容测试通过；`node tests/desktop.mjs` 在临时 `com.jiazi.vault.desktop-test` 标识的调试产物上全部通过，新增覆盖 Enter 复制、Ctrl+Enter 详情、Rust 主字段复制、非 http/https URL 拒绝、类型命名复制入口、复制提示、原生隐藏窗口及二次启动唤回。测试使用独立保险库和真实 Windows 剪贴板。

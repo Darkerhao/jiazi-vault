@@ -21,9 +21,15 @@ use zeroize::Zeroizing;
 
 pub fn show(app: &AppHandle, action: &str) {
     if let Some(window) = app.get_webview_window("main") {
+        let foreground = window.is_focused().unwrap_or(false);
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        let action = if action == "quick-search-global" && foreground {
+            "quick-search"
+        } else {
+            action
+        };
         if action != "open" {
             let _ = app.emit("desktop_action", action);
         }
@@ -55,15 +61,19 @@ pub fn clear_clipboard(app: &AppHandle, vault: &mut vault::Vault) {
         let _ = app.clipboard().clear();
     }
 }
-fn copy(app: &AppHandle, text: String, item: Option<&str>) -> Result<Value> {
-    let state = app.state::<State>();
-    let mut vault = state.vault.lock().map_err(|_| Error("VAULT_BUSY"))?;
-    vault.key()?;
+fn write_clipboard(app: &AppHandle, vault: &mut vault::Vault, text: String) -> Result<()> {
     app.clipboard()
         .write_text(text.clone())
         .map_err(|_| Error("CLIPBOARD_FAILED"))?;
     vault.owned_clipboard = Some(Zeroizing::new(text));
     vault.copied_at = Instant::now();
+    Ok(())
+}
+fn copy(app: &AppHandle, text: String, item: Option<&str>) -> Result<Value> {
+    let state = app.state::<State>();
+    let mut vault = state.vault.lock().map_err(|_| Error("VAULT_BUSY"))?;
+    vault.key()?;
+    write_clipboard(app, &mut vault, text)?;
     Ok(json!(
         item.map(|id| items::mark_used(vault.connection()?, id))
             .transpose()?
@@ -244,7 +254,7 @@ pub fn configure_shortcut(app: &AppHandle, value: Option<&str>) -> Result<Value>
         app.global_shortcut()
             .on_shortcut(shortcut, |app, _, event| {
                 if event.state() == ShortcutState::Pressed {
-                    show(app, "quick-search")
+                    show(app, "quick-search-global")
                 }
             })
             .is_ok()
@@ -256,6 +266,32 @@ pub fn configure_shortcut(app: &AppHandle, value: Option<&str>) -> Result<Value>
 pub fn dispatch(app: &AppHandle, command: &str, args: &Value) -> Result<Value> {
     let state = app.state::<State>();
     match command {
+        "hide_window" => {
+            window(app)?
+                .hide()
+                .map_err(|_| Error("DESKTOP_SETUP_FAILED"))?;
+            Ok(Value::Null)
+        }
+        "open_url" => {
+            let raw = vault::text(args, "url")?.trim();
+            ensure(raw.len() <= 2048, "INVALID_URL")?;
+            let parsed = tauri::Url::parse(raw).map_err(|_| Error("INVALID_URL"))?;
+            ensure(
+                matches!(parsed.scheme(), "http" | "https") && parsed.host_str().is_some(),
+                "INVALID_URL",
+            )?;
+            app.opener()
+                .open_url(parsed.as_str(), None::<&str>)
+                .map_err(|_| Error("OPEN_LINK_FAILED"))?;
+            let used = if let Some(id) = args["itemId"].as_str() {
+                let vault = state.vault.lock().map_err(|_| Error("VAULT_BUSY"))?;
+                vault.key()?;
+                items::mark_used(vault.connection()?, id)?
+            } else {
+                None
+            };
+            Ok(json!(used))
+        }
         "respond_close_request" => {
             let token = vault::text(args, "token")?;
             let allowed = args["allowed"].as_bool().ok_or(Error("INVALID_DATA"))?;
@@ -359,6 +395,39 @@ pub fn dispatch(app: &AppHandle, command: &str, args: &Value) -> Result<Value> {
             vault::text(args, "text")?.into(),
             args["itemId"].as_str(),
         ),
+        "copy_item" => {
+            let id = vault::text(args, "id")?;
+            let mut vault = state.vault.lock().map_err(|_| Error("VAULT_BUSY"))?;
+            let key = vault.key()?;
+            let item = items::get(vault.connection()?, key, id, false)?
+                .ok_or(Error("ITEM_NOT_FOUND"))?;
+            if item.r#type == "env" {
+                let contents = items::serialize_env(
+                    item.fields
+                        .as_ref()
+                        .ok_or(Error("ENV_EXPORT_FAILED"))?,
+                )?;
+                drop(vault);
+                if !confirm(
+                    app,
+                    "复制完整 .env",
+                    "即将把全部环境变量以明文复制到系统剪贴板。系统剪贴板可被其他应用读取，请妥善保管。",
+                )? {
+                    return Ok(Value::Null);
+                }
+                let mut vault = state.vault.lock().map_err(|_| Error("VAULT_BUSY"))?;
+                vault.key()?;
+                write_clipboard(app, &mut vault, contents)?;
+                let used = items::mark_used(vault.connection()?, id)?;
+                return Ok(json!({"copied": true, "usedAt": used}));
+            }
+            let Some(secret) = items::primary(&item) else {
+                return Ok(json!({"copied": false, "usedAt": null}));
+            };
+            write_clipboard(app, &mut vault, secret)?;
+            let used = items::mark_used(vault.connection()?, id)?;
+            Ok(json!({"copied": true, "usedAt": used}))
+        }
         "read_env_file" => {
             let epoch = checkpoint(app)?;
             let Some(path) = choose(app, "导入 .env 文件", &[], false, "")? else {
@@ -380,8 +449,12 @@ pub fn dispatch(app: &AppHandle, command: &str, args: &Value) -> Result<Value> {
             };
             if !confirm(
                 app,
-                "导出明文 .env",
-                "即将以明文导出全部环境变量。文件或系统剪贴板可被其他应用读取，请妥善保管并避免提交到版本库。",
+                if to_file { "导出明文 .env" } else { "复制完整 .env" },
+                if to_file {
+                    "即将以明文导出全部环境变量。文件可被其他应用读取，请妥善保管并避免提交到版本库。"
+                } else {
+                    "即将把全部环境变量以明文复制到系统剪贴板。系统剪贴板可被其他应用读取，请妥善保管。"
+                },
             )? {
                 return Ok(Value::Null);
             }
@@ -648,6 +721,7 @@ pub fn setup(app: &AppHandle) -> Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => request_close(app, true),
             "lock" => lock(app),
+            "quick-search" => show(app, "quick-search-global"),
             action => show(app, action),
         })
         .on_tray_icon_event(|tray, event| {

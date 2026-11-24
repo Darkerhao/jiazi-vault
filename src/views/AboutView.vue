@@ -72,7 +72,7 @@ onMounted(loadInfo)
         </div>
         <div class="diagnostics">
           <div><n-text strong>反馈时附上版本信息</n-text><p><n-text depth="3">仅复制应用版本与系统环境，不包含凭证、主密码或本地文件路径。</n-text></p></div>
-          <n-button :disabled="!info" @click="copy(environment.map(({ label, value }) => `${label}：${value}`).join('\n'))">
+          <n-button :disabled="!info" @click="copy(environment.map(({ label, value }) => `${label}：${value}`).join('\n'), undefined, '诊断信息')">
             <template #icon><n-icon><copy-outline /></n-icon></template>复制诊断信息
           </n-button>
         </div>

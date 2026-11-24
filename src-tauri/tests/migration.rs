@@ -724,3 +724,86 @@ fn corrupted_ciphertext_returns_the_safe_recovery_error_code() {
         "DECRYPT_FAILED"
     );
 }
+
+#[test]
+fn primary_copy_values_follow_item_types() {
+    let item = |kind: &str, password: Option<&str>, notes: Option<&str>, fields: &[(&str, &str)]| {
+        items::Item {
+            r#type: kind.into(),
+            title: "fixture".into(),
+            password: password.map(str::to_string),
+            notes: notes.map(str::to_string),
+            fields: (!fields.is_empty()).then(|| {
+                fields
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string()))
+                    .collect()
+            }),
+            ..Default::default()
+        }
+    };
+    assert_eq!(
+        items::primary(&item("login", Some("pw"), None, &[])).as_deref(),
+        Some("pw")
+    );
+    assert_eq!(
+        items::primary(&item(
+            "api-key",
+            None,
+            None,
+            &[("apiKey", "key"), ("secret", "secret")]
+        ))
+        .as_deref(),
+        Some("key")
+    );
+    assert_eq!(
+        items::primary(&item("api-key", None, None, &[("secret", "secret")])).as_deref(),
+        Some("secret")
+    );
+    assert_eq!(
+        items::primary(&item("ssh", None, None, &[("privateKey", "pem")])).as_deref(),
+        Some("pem")
+    );
+    assert_eq!(
+        items::primary(&item("secure-note", None, Some("note"), &[])).as_deref(),
+        Some("note")
+    );
+    assert_eq!(
+        items::primary(&item(
+            "database",
+            None,
+            None,
+            &[("connectionString", "db")]
+        ))
+        .as_deref(),
+        Some("db")
+    );
+    assert_eq!(
+        items::primary(&item(
+            "database",
+            Some("pw"),
+            None,
+            &[("connectionString", "db")]
+        ))
+        .as_deref(),
+        Some("pw")
+    );
+    assert_eq!(
+        items::primary(&item(
+            "custom",
+            None,
+            None,
+            &[("a", ""), ("b", "value")]
+        ))
+        .as_deref(),
+        Some("value")
+    );
+    assert_eq!(
+        items::primary(&item("login", Some(""), None, &[("unused", "x")])),
+        None
+    );
+    assert_eq!(
+        items::primary(&item("env", None, None, &[("A", "1")])),
+        None
+    );
+}
