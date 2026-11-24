@@ -42,7 +42,7 @@ async function openReleasePage() {
     <n-alert v-if="updates.error || state?.error" type="error">{{ updates.error || state?.error }} <n-button v-if="!state" text @click="updates.load">重新加载</n-button></n-alert>
     <n-alert v-else-if="state?.status === 'downloading'" type="info">
       正在下载 v{{ update?.version }}，完成后自动开始安装。
-      <n-progress type="line" :percentage="state.percent" :processing="true" aria-label="更新下载进度" />
+      <n-progress type="line" :percentage="Math.floor(state.percent)" :processing="true" aria-label="更新下载进度" />
     </n-alert>
     <n-alert v-else-if="state?.status === 'installing'" type="info">下载完成，正在退出应用并安装更新，完成后会自动重新打开。</n-alert>
     <n-alert v-else-if="state?.status === 'confirming'" type="info">更新已下载，正在确认未保存的内容…</n-alert>
