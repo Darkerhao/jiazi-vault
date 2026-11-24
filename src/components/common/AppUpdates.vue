@@ -12,7 +12,10 @@ const update = computed(() => state.value?.update)
 const showRecent = ref(false)
 const actionLabel = computed(() => {
   if (state.value?.status === 'ready') return '安装已下载的更新'
-  if (updates.hasUpdate) return state.value?.status === 'error' ? '重试更新' : `更新到 v${update.value?.version}`
+  if (updates.hasUpdate) {
+    if (state.value?.status === 'error') return '重试更新'
+    return state.value?.automatic ? `在应用内更新到 v${update.value?.version}` : `更新到 v${update.value?.version}`
+  }
   return state.value?.status === 'error' ? '重试检查' : '检查更新'
 })
 function updateAction() {
@@ -28,7 +31,7 @@ async function openReleasePage() {
 
 <template>
   <n-card title="软件更新" class="updates-card" bordered>
-    <n-text depth="3">启动时及运行期间每 6 小时自动检查新版本，发现更新后在「关于」菜单显示红点。{{ state?.automatic ? '点击更新后开始下载并安装。' : '点击更新前往官方下载页手动安装。' }}</n-text>
+    <n-text depth="3">启动时及运行期间每 6 小时自动检查新版本，发现更新后在「关于」菜单显示红点。{{ state?.automatic ? '点击更新后会在应用内下载并安装，无需手动下载。' : '点击更新前往官方下载页手动安装。' }}</n-text>
     <p v-if="updates.hasUpdate" class="available-update" role="status">检测到新版本：<n-text strong>v{{ update?.version }}</n-text></p>
     <div class="update-actions">
       <n-button type="primary" :loading="updates.busy" :disabled="!state || updates.busy" @click="updateAction">{{ actionLabel }}</n-button>
@@ -41,7 +44,7 @@ async function openReleasePage() {
       正在下载 v{{ update?.version }}，完成后自动开始安装。
       <n-progress type="line" :percentage="state.percent" :processing="true" aria-label="更新下载进度" />
     </n-alert>
-    <n-alert v-else-if="state?.status === 'installing'" type="info">下载完成，正在退出应用并启动安装向导…</n-alert>
+    <n-alert v-else-if="state?.status === 'installing'" type="info">下载完成，正在退出应用并安装更新，完成后会自动重新打开。</n-alert>
     <n-alert v-else-if="state?.status === 'confirming'" type="info">更新已下载，正在确认未保存的内容…</n-alert>
     <n-alert v-else-if="state?.status === 'ready'" type="info">更新已下载，保存完成后可继续安装。</n-alert>
     <n-alert v-else-if="state?.status === 'current'" type="success">
@@ -51,7 +54,7 @@ async function openReleasePage() {
       <summary>查看 v{{ update.version }} 更新说明</summary>
       <pre>{{ update.notes }}</pre>
     </details>
-    <p class="update-hint"><n-text depth="3">更新前建议创建加密备份。{{ state?.automatic ? '下载并验证签名后，确认未保存的内容，再退出应用安装新版。' : '当前构建使用手动安装；正式签名版本可启用自动更新。' }}</n-text></p>
+    <p class="update-hint"><n-text depth="3">更新前建议创建加密备份。{{ state?.automatic ? '更新包会校验发布签名，安装过程无需手动下载。' : '当前构建使用手动安装；正式签名版本可启用自动更新。' }}</n-text></p>
   </n-card>
   <RecentUpdates v-if="showRecent" @close="showRecent = false" />
 </template>

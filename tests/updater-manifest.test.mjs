@@ -7,6 +7,7 @@ import { test } from 'node:test'
 
 const collector = resolve('scripts/collect-packages.mjs')
 const assembler = resolve('scripts/updater-manifest.mjs')
+const builder = resolve('scripts/build-desktop.mjs')
 const testRoot = resolve('output/publishing-tests')
 function fixture(t) {
   mkdirSync(testRoot, { recursive: true })
@@ -56,4 +57,29 @@ test('signed manifest assembly requires all four platform and architecture artif
   assert.deepEqual(Object.keys(manifest.platforms).sort(), platforms.sort())
   assert.equal(manifest.version, '0.1.19')
   assert.equal(manifest.notes, 'Complete commit notes')
+})
+test('signed builds pass the updater public key into the Tauri build config', t => {
+  const root = fixture(t)
+  const cli = join(root, 'fake-cli.mjs')
+  const capture = join(root, 'build-args.json')
+  writeFileSync(cli, "import { writeFileSync } from 'node:fs'\nwriteFileSync(process.env.BUILD_ARGS, JSON.stringify(process.argv.slice(2)))\n")
+  const result = spawnSync(process.execPath, [builder, '--bundles', 'nsis'], {
+    cwd: root,
+    encoding: 'utf8',
+    windowsHide: true,
+    env: {
+      ...process.env,
+      npm_execpath: cli,
+      BUILD_ARGS: capture,
+      TAURI_SIGNING_PRIVATE_KEY: 'unit-test-only',
+      TAURI_UPDATER_PUBLIC_KEY: 'public-key',
+    },
+  })
+  assert.equal(result.status, 0, result.stderr)
+  const args = JSON.parse(readFileSync(capture, 'utf8'))
+  assert.deepEqual(args.slice(0, 4), ['exec', 'tauri', 'build', '--config'])
+  const config = JSON.parse(args[4])
+  assert.equal(config.bundle.createUpdaterArtifacts, true)
+  assert.equal(config.plugins.updater.pubkey, 'public-key')
+  assert.deepEqual(args.slice(5), ['--bundles', 'nsis'])
 })
