@@ -6,6 +6,7 @@ import { useDiscardChanges } from '../../composables/useDiscardChanges'
 import { vaultErrorMessage } from '../../utils/vault-error'
 import { useVaultStore } from '../../stores/vault'
 import { useClipboard } from '../../composables/useClipboard'
+import { useOpenUrl } from '../../composables/useOpenUrl'
 import { ENVIRONMENT_OPTIONS, ITEM_TYPE_OPTIONS, TYPE_FIELDS, type FieldDef } from '../../utils/item-fields'
 import type { Environment, ItemInput, ItemType, VaultItem } from '../../types/vault'
 import { ENV_NAME, serializeEnv } from '../../utils/env'
@@ -22,7 +23,8 @@ const emit = defineEmits<{ close: []; duplicate: [item: ItemInput] }>()
 
 const vault = useVaultStore()
 const message = useMessage()
-const { copy } = useClipboard()
+const { copy, copyItem, notice } = useClipboard()
+const { open: openUrl, opening: openingUrl } = useOpenUrl()
 const auth = useAuthStore()
 const importing = ref(false), exporting = ref(false)
 const generating = ref(false)
@@ -142,10 +144,16 @@ async function exportEnv(destination: 'clipboard' | 'file') {
     const result = await callCommand('export_env', { fields: envFields.value, destination, itemId: props.item?.id })
     if (disposed || revision !== auth.sessionRevision || !result) return
     if (props.item && result.usedAt !== null) vault.applyUsage(props.item.id, result.usedAt)
-    message.success(destination === 'clipboard' ? '已复制完整 .env 内容' : `已导出 ${result.name}`)
+    message.success(destination === 'clipboard' ? notice('完整 .env 内容') : `已导出 ${result.name}`)
   } catch {
     if (!disposed && revision === auth.sessionRevision) message.error('导出失败，请确认保险库已解锁且目标文件可写。')
   } finally { exporting.value = false }
+}
+async function copySavedEnv() {
+  if (!props.item || exporting.value) return
+  exporting.value = true
+  try { await copyItem(props.item.id, '完整 .env 内容') }
+  finally { exporting.value = false }
 }
 
 watch(
@@ -262,14 +270,15 @@ async function save() {
         <div class="field-value">
           <pre>{{ (field.sensitive || field.kind === 'password' || field.target === 'notes') && !revealedFields.has(field.key) ? '••••••••' : values[field.key] }}</pre>
           <n-button v-if="field.sensitive || field.kind === 'password' || field.target === 'notes'" size="small" :aria-label="`${revealedFields.has(field.key) ? '隐藏' : '显示'}${field.label}`" @click="revealedFields.has(field.key) ? revealedFields.delete(field.key) : revealedFields.add(field.key)">{{ revealedFields.has(field.key) ? '隐藏' : '显示' }}</n-button>
-          <n-button size="small" :aria-label="`复制${field.label}`" @click="copy(values[field.key] ?? '', item?.id)">复制</n-button>
+          <n-button size="small" :aria-label="`复制${field.label}`" @click="copy(values[field.key] ?? '', item?.id, field.label)">复制</n-button>
+          <n-button v-if="field.target === 'url' || field.key === 'endpoint'" size="small" :loading="openingUrl === item?.id" :aria-label="`打开${field.label}`" @click="openUrl(values[field.key], item?.id)">打开</n-button>
         </div>
       </div>
       <div v-for="field in extraFields" :key="field.id" class="detail-field">
         <n-text depth="3">{{ field.name }}</n-text>
-        <div class="field-value"><pre>{{ field.visible ? field.value || '（空值）' : '••••••••' }}</pre><n-button size="small" :aria-label="`${field.visible ? '隐藏' : '显示'}${field.name}`" @click="field.visible = !field.visible">{{ field.visible ? '隐藏' : '显示' }}</n-button><n-button size="small" :aria-label="`复制${field.name}`" @click="copy(field.value, item?.id)">复制</n-button></div>
+        <div class="field-value"><pre>{{ field.visible ? field.value || '（空值）' : '••••••••' }}</pre><n-button size="small" :aria-label="`${field.visible ? '隐藏' : '显示'}${field.name}`" @click="field.visible = !field.visible">{{ field.visible ? '隐藏' : '显示' }}</n-button><n-button size="small" :aria-label="`复制${field.name}`" @click="copy(field.value, item?.id, field.name || '字段值')">复制</n-button></div>
       </div>
-      <n-space v-if="isEnv"><n-button :disabled="!!exportError" :loading="exporting" @click="exportEnv('clipboard')">复制完整 .env</n-button><n-button :disabled="!!exportError" :loading="exporting" @click="exportEnv('file')">导出 .env 文件</n-button></n-space>
+      <n-space v-if="isEnv"><n-button :disabled="!!exportError" :loading="exporting" @click="copySavedEnv">复制完整 .env</n-button><n-button :disabled="!!exportError" :loading="exporting" @click="exportEnv('file')">导出 .env 文件</n-button></n-space>
       <n-text v-if="tags" depth="3">标签：{{ tags }}</n-text>
       <ItemHistory v-if="item" :key="item.id" :item="item" :can-restore="item.deletedAt === undefined" @restored="emit('close')" />
     </section>
@@ -305,7 +314,7 @@ async function save() {
           <n-input v-else-if="!field.sensitive || revealedFields.has(field.key)" v-model:value="values[field.key]" :type="field.kind" show-password-on="click" :autosize="field.kind === 'textarea' ? { minRows: 3, maxRows: 8 } : false" :placeholder="field.label" />
           <n-input v-else :value="values[field.key] ? '••••••••' : ''" readonly :placeholder="field.label" />
           <n-button v-if="field.sensitive" :aria-label="`${revealedFields.has(field.key) ? '隐藏' : '显示'}${field.label}`" @click="revealedFields.has(field.key) ? revealedFields.delete(field.key) : revealedFields.add(field.key)">{{ revealedFields.has(field.key) ? '隐藏' : '显示' }}</n-button>
-          <n-button :disabled="!values[field.key]" :aria-label="`复制${field.label}`" @click="copy(values[field.key] ?? '', item?.id)">复制</n-button>
+          <n-button :disabled="!values[field.key]" :aria-label="`复制${field.label}`" @click="copy(values[field.key] ?? '', item?.id, field.label)">复制</n-button>
           <n-button v-if="field.target === 'password'" @click="generating = true">生成密码</n-button>
         </div>
       </n-form-item>
@@ -332,7 +341,7 @@ async function save() {
               <n-input v-if="field.visible" v-model:value="field.value" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" :placeholder="field.name || '字段值'" :input-props="{ 'aria-label': `字段值${field.name}` }" />
               <n-input v-else :value="field.value ? '••••••••' : ''" readonly placeholder="空值" :input-props="{ 'aria-label': `字段值${field.name}` }" />
               <n-button :aria-label="`${field.visible ? '隐藏' : '显示'}${field.name}`" @click="field.visible = !field.visible">{{ field.visible ? '隐藏' : '显示' }}</n-button>
-              <n-button :disabled="!isEnv && !field.value" :aria-label="`复制${field.name || '字段值'}`" @click="copy(field.value, item?.id)">复制</n-button>
+              <n-button :disabled="!isEnv && !field.value" :aria-label="`复制${field.name || '字段值'}`" @click="copy(field.value, item?.id, field.name || '字段值')">复制</n-button>
             </div>
           </div>
           <n-alert v-if="fieldError" type="warning" :show-icon="false">{{ fieldError }}</n-alert>

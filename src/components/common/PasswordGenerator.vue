@@ -53,7 +53,7 @@ onUnmounted(() => { request++; generated.value = null })
       <div class="switches"><div v-for="option in switches" :key="option.key" class="switch-row"><n-text>{{ option.label }}</n-text><n-switch v-model:value="options[option.key]" :aria-label="option.label" /></div></div>
       <n-alert v-if="error" type="warning" class="error">{{ error }}</n-alert>
       <template #footer>
-        <n-space><n-button type="primary" :loading="busy" @click="generate">重新生成</n-button><n-button :disabled="!generated || busy" @click="copy(generated!.password)">复制密码</n-button><slot :password="generated?.password" :busy="busy" /></n-space>
+        <n-space><n-button type="primary" :loading="busy" @click="generate">重新生成</n-button><n-button :disabled="!generated || busy" @click="copy(generated!.password, undefined, '密码')">复制密码</n-button><slot :password="generated?.password" :busy="busy" /></n-space>
       </template>
     </n-card>
 </template>

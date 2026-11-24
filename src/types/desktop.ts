@@ -7,7 +7,7 @@ export interface AppSettings {
 export interface DesktopPreferences { silentStart: boolean; closeToTray: boolean }
 export interface DesktopSettings extends DesktopPreferences { openAtLogin: boolean; startupSupported: boolean }
 export type DesktopSetting = keyof DesktopPreferences | 'openAtLogin'
-export type DesktopAction = 'open' | 'quick-search' | 'generator' | 'new-item' | 'new-project'
+export type DesktopAction = 'open' | 'quick-search' | 'quick-search-global' | 'generator' | 'new-item' | 'new-project'
 export interface ProjectInput { name: string; icon?: string; color?: string; description?: string }
 export interface Project extends ProjectInput { id: string; itemCount: number; lastAccessedAt?: number }
 export interface PasswordOptions { length: number; uppercase: boolean; lowercase: boolean; numbers: boolean; symbols: boolean; excludeAmbiguous: boolean }

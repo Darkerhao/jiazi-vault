@@ -82,6 +82,13 @@ async function unlock(value) {
 function clipboard() {
   return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding = [Text.Encoding]::UTF8; [Console]::Write((Get-Clipboard -Raw))'], { encoding: 'utf8', windowsHide: true })
 }
+function setClipboard(value) {
+  execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; [Console]::InputEncoding = [Text.Encoding]::UTF8; $value = [Console]::In.ReadToEnd(); if ($value.Length -eq 0) { [Windows.Forms.Clipboard]::Clear() } else { [Windows.Forms.Clipboard]::SetText($value) }'], { input: value, encoding: 'utf8', windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] })
+}
+function windowVisible() {
+  const script = `Add-Type -TypeDefinition 'using System; using System.Text; using System.Runtime.InteropServices; public static class VaultWindowState { public delegate bool EnumProc(IntPtr h, IntPtr p); [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr p); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid); [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h); [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n); public static bool Visible(uint target) { bool visible = false; EnumWindows((h, p) => { uint pid; GetWindowThreadProcessId(h, out pid); if (pid == target) { var s = new StringBuilder(256); GetWindowText(h, s, 256); if (s.ToString() == "Keystill") visible = IsWindowVisible(h); } return true; }, IntPtr.Zero); return visible; } }'; [Console]::Write([VaultWindowState]::Visible([uint32]${child.pid}))`
+  return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', windowsHide: true }).trim() === 'True'
+}
 function postWindowMessage(message = 16, parameter = 0) {
   const script = `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class VaultWindow { [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l); }'; $p=Get-Process -Id ${child.pid}; if ($p.MainWindowHandle -eq 0) { throw 'Native window handle missing' }; [void][VaultWindow]::PostMessage($p.MainWindowHandle, ${message}, [IntPtr]${parameter}, [IntPtr]::Zero)`
   execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, stdio: 'pipe' })
@@ -107,14 +114,19 @@ try {
   pass('existing Vue form saves through native Tauri IPC into SQLite')
 
   const project = await call('create_project', { project: { name: 'Native project', color: '#C96100' } })
-  const sensitive = await call('create_item', { item: { type: 'login', title: 'Native secret', username: 'fixture-user', password: 'fixture-secret-for-native', notes: 'private fixture', projectId: project.id, favorite: true } })
+  const sensitive = await call('create_item', { item: { type: 'login', title: 'Native secret', username: 'fixture-user', password: 'fixture-secret-for-native', notes: 'private fixture', url: 'https://example.com', projectId: project.id, favorite: true } })
   assert.equal('password' in sensitive, false)
+  const apiItem = await call('create_item', { item: { type: 'api-key', title: 'Native API key', fields: { apiKey: 'fixture-api-key' } } })
+  assert.ok(apiItem)
   await call('update_item', { item: { ...await call('get_item', { id: sensitive.id, recordAccess: false }), password: 'changed-native-secret' } })
   const history = await call('list_item_history', { id: sensitive.id })
   assert.equal((await call('get_item_history', { id: sensitive.id, historyId: history[0].id })).password, 'fixture-secret-for-native')
   assert.ok(Array.isArray(await call('get_credential_health')))
   await refresh()
   await page.getByText('Native secret', { exact: true }).waitFor()
+  await page.getByText('Native API key', { exact: true }).waitFor()
+  assert.equal(await page.getByRole('button', { name: '复制密码 Native secret' }).isVisible(), true)
+  assert.equal(await page.getByRole('button', { name: '复制 API Key Native API key' }).isVisible(), true)
   pass('project, encrypted credentials, summaries, health and history work through real native IPC')
 
   await section('关于')
@@ -139,10 +151,61 @@ try {
     pass('native clipboard copy and timed cleanup work on the actual Windows clipboard')
   } finally {
     const current = clipboard()
-    if (current === '' || current === 'keystill-fixture-clipboard') execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Add-Type -AssemblyName System.Windows.Forms; [Console]::InputEncoding = [Text.Encoding]::UTF8; $value = [Console]::In.ReadToEnd(); if ($value.Length -eq 0) { [Windows.Forms.Clipboard]::Clear() } else { [Windows.Forms.Clipboard]::SetText($value) }'], { input: previousClipboard, encoding: 'utf8', windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] })
+    if (current === '' || current === 'keystill-fixture-clipboard') setClipboard(previousClipboard)
   }
 
   await section('全部条目')
+  assert.equal(await page.getByRole('button', { name: '打开 https://example.com' }).isVisible(), true)
+  const previousQuickSearchClipboard = clipboard()
+  try {
+    await page.keyboard.press('Control+K')
+    const quickSearch = page.getByPlaceholder(/搜索名称、项目、环境、账号/)
+    await quickSearch.waitFor()
+    await quickSearch.fill('Native secret')
+    assert.equal(await page.locator('option[value="primary"]').textContent(), '密码')
+    assert.equal(await page.getByRole('button', { name: '打开', exact: true }).isEnabled(), true)
+    await page.keyboard.press('Enter')
+    await page.getByText(/已复制密码，\d+ 秒后清除/).waitFor()
+    await page.getByText('快捷搜索', { exact: true }).waitFor({ state: 'hidden' })
+    assert.equal(clipboard(), 'changed-native-secret')
+    pass('quick search Enter copies the default password and closes')
+  } finally {
+    setClipboard(previousQuickSearchClipboard)
+  }
+  await page.keyboard.press('Control+K')
+  const detailSearch = page.getByPlaceholder(/搜索名称、项目、环境、账号/)
+  await detailSearch.waitFor()
+  await detailSearch.fill('Native secret')
+  await page.keyboard.press('Control+Enter')
+  await page.getByRole('dialog').getByText('凭证详情', { exact: true }).waitFor()
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click()
+  pass('quick search Ctrl+Enter opens credential details')
+
+  const previousApiClipboard = clipboard()
+  try {
+    const copied = await call('copy_item', { id: apiItem.id })
+    assert.equal(copied.copied, true)
+    assert.equal(clipboard(), 'fixture-api-key')
+  } finally {
+    setClipboard(previousApiClipboard)
+  }
+  pass('native item copy reads the API key in Rust and writes the clipboard')
+
+  for (const url of ['http://', 'javascript:alert(1)', 'file:///C:/secret', 'ftp://example.com']) {
+    await assert.rejects(call('open_url', { url, itemId: sensitive.id }), /INVALID_URL/)
+  }
+  pass('credential URL opening rejects missing hosts and explicit non-http schemes')
+
+  assert.equal(windowVisible(), true)
+  await call('hide_window')
+  await delay(500)
+  assert.equal(windowVisible(), false)
+  const second = spawn(exe, [], { cwd: dirname(exe), windowsHide: true, stdio: 'ignore', env: { ...process.env, KEYSTILL_DATA_DIR: data } })
+  await Promise.race([once(second, 'exit'), delay(5000)])
+  for (let attempt = 0; attempt < 20 && !windowVisible(); attempt++) await delay(250)
+  assert.equal(windowVisible(), true)
+  pass('native hide command hides the window and a second launch restores it')
+
   await page.getByRole('button', { name: '新建', exact: true }).click()
   await page.getByPlaceholder('凭证名称').fill('Unsaved native draft')
   postWindowMessage()

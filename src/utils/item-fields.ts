@@ -1,4 +1,4 @@
-import type { Environment, ItemType, VaultItem } from '../types/vault'
+import type { Environment, ItemType } from '../types/vault'
 
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   login: '登录账号',
@@ -87,15 +87,26 @@ export const TYPE_FIELDS: Record<ItemType, FieldDef[]> = {
   env: [],
 }
 
-/** The value a one-click copy uses for each type; env sets are copied as a whole .env instead. */
-export function primarySecret(item: VaultItem): string | undefined {
-  const fields = item.fields ?? {}
-  switch (item.type) {
-    case 'api-key': return fields.apiKey || fields.secret
-    case 'ssh': return fields.privateKey
-    case 'secure-note': return item.notes
-    case 'database': return item.password || fields.connectionString
-    case 'custom': return item.password || Object.values(fields).find(Boolean)
-    default: return item.password
-  }
+const PRIMARY_COPY = {
+  login: ['复制密码', '密码'],
+  password: ['复制密码', '密码'],
+  server: ['复制密码', '密码'],
+  database: ['复制密码', '密码'],
+  'api-key': ['复制 API Key', 'API Key'],
+  ssh: ['复制私钥', '私钥'],
+  'secure-note': ['复制内容', '内容'],
+  custom: ['复制内容', '内容'],
+  env: ['复制 .env', '完整 .env 内容'],
+} as const satisfies Record<ItemType, readonly [string, string]>
+
+export function primaryLabel(type: ItemType) {
+  return PRIMARY_COPY[type][0]
+}
+
+export function primaryValueLabel(type: ItemType) {
+  return PRIMARY_COPY[type][1]
+}
+
+export function primaryOptionLabel(type: ItemType) {
+  return type === 'env' ? '完整 .env（需确认）' : PRIMARY_COPY[type][1]
 }

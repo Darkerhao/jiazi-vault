@@ -5,7 +5,7 @@ import { NAlert, NButton, NCheckbox, NEmpty, NIcon, NList, NListItem, NModal, NP
 import PlaintextExport from '../components/common/PlaintextExport.vue'
 import { callCommand } from '../services/ipc'
 import type { ItemBatchAction, ItemInput } from '../types/contracts'
-import { CopyOutline, KeyOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
+import { CopyOutline, KeyOutline, OpenOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
 import { expiryState } from '../utils/expiry'
 import AppShell from '../components/common/AppShell.vue'
 import ItemFormModal from '../components/item/ItemFormModal.vue'
@@ -13,7 +13,8 @@ import { useVaultStore } from '../stores/vault'
 import { useAuthStore } from '../stores/auth'
 import { vaultErrorMessage } from '../utils/vault-error'
 import { useClipboard } from '../composables/useClipboard'
-import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, ITEM_TYPE_OPTIONS } from '../utils/item-fields'
+import { useOpenUrl } from '../composables/useOpenUrl'
+import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, ITEM_TYPE_OPTIONS, primaryLabel, primaryValueLabel } from '../utils/item-fields'
 import { ITEM_TYPE_ICONS } from '../utils/item-icons'
 import { projectService } from '../services/project'
 import type { Environment, ItemType, VaultItem, VaultItemSummary } from '../types/vault'
@@ -166,12 +167,16 @@ async function toggle(item: VaultItemSummary) {
 }
 
 const { copy, copyItem } = useClipboard()
+const { open: openUrl, opening: openingUrl } = useOpenUrl()
 const copyingId = ref<string | null>(null)
-async function copyRow(item: VaultItemSummary, field?: 'password') {
+async function copyRow(item: VaultItemSummary) {
   if (copyingId.value) return
   copyingId.value = item.id
-  try { await copyItem(item.id, field) }
+  try { await copyItem(item.id, primaryValueLabel(item.type)) }
   finally { copyingId.value = null }
+}
+async function openRowUrl(item: VaultItemSummary) {
+  if (item.url) await openUrl(item.url, item.id)
 }
 
 function remove(item: VaultItemSummary) {
@@ -252,9 +257,10 @@ async function restore(item: VaultItemSummary) {
             <div class="item-main">
               <n-button text class="item-title" @click="openEdit(item)">{{ item.title }}</n-button>
               <div class="item-sub">
-                <n-button v-if="item.username && vault.filter !== 'trash'" text class="item-account" title="点击复制账号" :aria-label="`复制账号 ${item.username}`" @click="copy(item.username, item.id)">{{ item.username }}</n-button>
+                <n-button v-if="item.username && vault.filter !== 'trash'" text class="item-account" title="点击复制账号" :aria-label="`复制账号 ${item.username}`" @click="copy(item.username, item.id, '账号')">{{ item.username }}</n-button>
                 <n-text v-else depth="3">{{ subtitle(item) }}</n-text>
-                <n-button v-if="item.username && vault.filter !== 'trash'" text size="tiny" class="item-copy-password" title="复制密码" :aria-label="`复制密码 ${item.title}`" :loading="copyingId === item.id" @click.stop="copyRow(item, 'password')"><template #icon><n-icon :size="14"><copy-outline /></n-icon></template>复制密码</n-button>
+                <n-button v-if="item.url && vault.filter !== 'trash'" text size="tiny" class="item-open-url" :title="`在浏览器中打开 ${item.url}`" :aria-label="`打开 ${item.url}`" :loading="openingUrl === item.id" @click.stop="openRowUrl(item)"><template #icon><n-icon :size="14"><open-outline /></n-icon></template>打开</n-button>
+                <n-button v-if="item.hasSensitiveData && vault.filter !== 'trash'" text size="tiny" class="item-copy-primary" :title="primaryLabel(item.type)" :aria-label="`${primaryLabel(item.type)} ${item.title}`" :loading="copyingId === item.id" @click.stop="copyRow(item)"><template #icon><n-icon :size="14"><copy-outline /></n-icon></template>{{ primaryLabel(item.type) }}</n-button>
               </div>
               <div class="item-meta"><n-tag v-if="item.expiresAt" size="small" :type="expiryState(item.expiresAt, now) === 'expired' ? 'error' : ['soon', 'invalid'].includes(expiryState(item.expiresAt, now)) ? 'warning' : 'default'">{{ expiryState(item.expiresAt, now) === 'invalid' ? '日期待修正' : `${expiryState(item.expiresAt, now) === 'expired' ? '已过期' : expiryState(item.expiresAt, now) === 'soon' ? '即将到期' : '到期'}：${item.expiresAt}` }}</n-tag>              <n-tag v-if="item.projectId" size="small">{{ vault.projects.find((p) => p.id === item.projectId)?.name }}</n-tag>
               <n-tag v-if="item.environment" size="small" :type="item.environment === 'production' ? 'error' : 'default'">{{ ENVIRONMENT_OPTIONS.find((option) => option.value === item.environment)?.label }}</n-tag>
@@ -269,7 +275,6 @@ async function restore(item: VaultItemSummary) {
                 <n-button quaternary circle size="small" aria-label="彻底删除凭证" @click="removePermanently(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
               </template>
               <template v-else>
-                <n-button quaternary circle size="small" :loading="copyingId === item.id" :aria-label="`复制${item.title}`" @click="copyRow(item)"><template #icon><n-icon><copy-outline /></n-icon></template></n-button>
                 <n-button :quaternary="!item.favorite" :type="item.favorite ? 'primary' : 'default'" circle size="small" :aria-pressed="item.favorite" :title="item.favorite ? '取消收藏' : '收藏凭证'" :aria-label="item.favorite ? '取消收藏' : '收藏凭证'" @click="toggle(item)"><template #icon><n-icon><star v-if="item.favorite" /><star-outline v-else /></n-icon></template></n-button>
                 <n-button quaternary circle size="small" aria-label="删除凭证" @click="remove(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
               </template>
@@ -307,7 +312,7 @@ async function restore(item: VaultItemSummary) {
 .item-meta :deep(.n-tag__content) { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 .item-sub { display: flex; align-items: center; gap: 8px; font-size: 13px; overflow-wrap: anywhere; }
 .item-account { min-width: 0; max-width: 100%; height: auto; font-size: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.item-copy-password { flex-shrink: 0; font-size: inherit; }
+.item-copy-primary, .item-open-url { flex-shrink: 0; font-size: inherit; }
 .item-account:hover, .item-account:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
 .item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
 .empty { padding: 80px 0 8px; }
