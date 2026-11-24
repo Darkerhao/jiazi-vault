@@ -25,7 +25,8 @@
 
 - Windows 使用 NSIS 与系统 WebView2，应用不包含 Node.js、Chromium 或 .NET helper。缺少 WebView2 时，默认安装器需联网安装它。
 - macOS 输出 dmg/app，Linux 输出 AppImage/deb；平台安装和系统认证需要对应机器验收，不能由 Windows 测试替代。
-- Tauri 自动更新使用独立密钥和 `.sig`，不会读取 Electron 的 `latest.yml`。公钥通过 `TAURI_UPDATER_PUBLIC_KEY` 编译进应用；CI 使用 `TAURI_SIGNING_PRIVATE_KEY` 与可选密码 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 签名，聚合为 `tauri-updater.json`。缺少签名配置的构建明确使用手动安装；Linux deb 也使用手动安装。
+- Tauri 自动更新使用独立密钥和 `.sig`，不会读取 Electron 的 `latest.yml`。公钥通过 `TAURI_UPDATER_PUBLIC_KEY` 同时写入构建配置并编译进应用；CI 使用 `TAURI_SIGNING_PRIVATE_KEY` 与可选密码 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 签名，聚合为 `tauri-updater.json`。缺少签名配置的构建明确使用手动安装；Linux deb 也使用手动安装。
+- Windows 使用 `passive` 安装模式：下载并校验签名后显示进度条，无需手动点击安装向导，完成后自动重启。未配置更新公钥的旧构建无法自举，必须手动安装一次首个签名版本。
 - 更新签名仅证明更新包完整性与来源，不会消除 Windows SmartScreen，也不替代 macOS Developer ID 签名、公证和 Gatekeeper 验收。正式对外分发仍需按 Tauri 的对应平台签名文档配置发布者证书。
 - 本次没有读取或修改远端 Secrets、发布 Release、替换个人安装或迁移真实用户数据库。旧 Electron 用户首次切换应先创建加密备份，退出旧版后手动安装；应用沿用旧数据目录，设备快捷解锁需重新登记。
 

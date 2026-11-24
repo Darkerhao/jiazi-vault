@@ -225,6 +225,6 @@ tests/fixtures/            # 原 Electron 生成的独立兼容夹具
 
 构建发布仍仅由 `main` 推送或手动触发：递增补丁版本，同步 `package.json`、`Cargo.toml`、`Cargo.lock`，创建版本标签并按提交生成说明；四个平台/架构构建全部成功后才发布，再把发布版本号写入 `dev`，不回合并业务代码。
 
-自动更新需要仓库 Secrets `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，以及变量 `TAURI_UPDATER_PUBLIC_KEY`；公私钥必须成对配置。不配置时仍可构建供手动安装的包；不会生成误导性的自动更新清单。更新签名与 Windows 发布者证书、Apple Developer ID 签名/公证是不同事项。
+自动更新需要 Secret `TAURI_SIGNING_PRIVATE_KEY`（可选密码 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`）和变量 `TAURI_UPDATER_PUBLIC_KEY`；公私钥必须成对配置。构建时公钥会同时写入 Tauri 更新器配置并编译进应用，缺少任一密钥仍只生成手动安装包，不会生成误导性的自动更新清单。已经安装的未签名旧版本没有更新公钥，需要最后手动安装一次首个签名版本，之后即可在应用内下载、校验、安装并自动重启。更新签名与 Windows 发布者证书、Apple Developer ID 签名/公证是不同事项。
 
 本地构建不会发布或推送；自动化只操作隔离测试保险库。当前迁移的测量、验收和平台边界见 [DELIVERY.md](./DELIVERY.md)。
