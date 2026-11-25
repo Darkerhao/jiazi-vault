@@ -343,6 +343,11 @@ impl Vault {
                 db.execute("UPDATE items SET favorite=CASE favorite WHEN 1 THEN 0 ELSE 1 END,updated_at=? WHERE id=?",params![db::now(),id])?;
                 items::summary(&items::raw(db, id)?, key)
             }
+            "toggle_pin" => {
+                let id = text(args, "id")?;
+                db.execute("UPDATE items SET pinned=CASE pinned WHEN 1 THEN 0 ELSE 1 END,updated_at=? WHERE id=?",params![db::now(),id])?;
+                items::summary(&items::raw(db, id)?, key)
+            }
             "delete_item" => {
                 let id = text(args, "id")?;
                 if args["permanently"].as_bool().unwrap_or(false) {

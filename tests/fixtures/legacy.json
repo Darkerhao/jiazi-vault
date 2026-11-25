@@ -31,6 +31,7 @@
       "fixture"
     ],
     "favorite": true,
+    "pinned": false,
     "createdAt": 1795073440543,
     "updatedAt": 1795073440546,
     "password": "fixture-secret-B",
@@ -49,6 +50,7 @@
       "fixture"
     ],
     "favorite": true,
+    "pinned": false,
     "createdAt": 1795073440543,
     "updatedAt": 1795073440543,
     "password": "fixture-secret-A",

@@ -182,9 +182,6 @@ fn dispatch(app: &AppHandle, command: &str, args: &Value) -> Result<Value> {
         result = Err(Error("VAULT_LOCKED"));
     }
     let changed = vault.db.as_ref().and_then(|db| database::revision(db).ok()) != before;
-    if changed && vault.active() {
-        let _ = vault.automatic_backup(false);
-    }
     if (was_active && !vault.active()) || command == "lock_vault" {
         desktop::clear_clipboard(app, &mut vault);
         let _ = app.emit("vault_locked", ());

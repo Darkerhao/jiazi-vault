@@ -19,7 +19,7 @@ pub fn open(directory: &Path) -> Result<Connection> {
         CREATE TABLE IF NOT EXISTS vault_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL COLLATE NOCASE UNIQUE, icon TEXT, color TEXT, description TEXT, last_accessed_at INTEGER);
-        CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY NOT NULL, type TEXT NOT NULL, title TEXT NOT NULL, project_id TEXT, environment TEXT, username TEXT, url TEXT, host TEXT, port INTEGER, tags TEXT NOT NULL DEFAULT '[]', secret TEXT NOT NULL, has_secret INTEGER NOT NULL DEFAULT 0, favorite INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER);")?;
+        CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY NOT NULL, type TEXT NOT NULL, title TEXT NOT NULL, project_id TEXT, environment TEXT, username TEXT, url TEXT, host TEXT, port INTEGER, tags TEXT NOT NULL DEFAULT '[]', secret TEXT NOT NULL, has_secret INTEGER NOT NULL DEFAULT 0, favorite INTEGER NOT NULL DEFAULT 0, pinned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER);")?;
     let columns = rows(&db, "PRAGMA table_info(items)", [])?;
     if !columns
         .iter()
@@ -27,9 +27,13 @@ pub fn open(directory: &Path) -> Result<Connection> {
     {
         db.execute_batch("ALTER TABLE items ADD COLUMN last_accessed_at INTEGER;")?;
     }
+    if !columns.iter().any(|column| column["name"] == "pinned") {
+        db.execute_batch("ALTER TABLE items ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;")?;
+    }
     db.execute_batch("CREATE INDEX IF NOT EXISTS items_deleted_at ON items(deleted_at);
         CREATE TABLE IF NOT EXISTS item_history (id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE, saved_at INTEGER NOT NULL, payload TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS history_item ON item_history(item_id,id);
+        CREATE TRIGGER IF NOT EXISTS backup_items_pinned_UPDATE AFTER UPDATE OF pinned ON items BEGIN INSERT INTO settings(key,value) VALUES('backup_revision','1') ON CONFLICT(key) DO UPDATE SET value=CAST(value AS INTEGER)+1; END;
         INSERT OR IGNORE INTO settings (key,value) VALUES ('backup_revision','1');")?;
     for (table, columns) in [
         (

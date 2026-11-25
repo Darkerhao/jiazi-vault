@@ -53,6 +53,8 @@ pub struct Item {
     #[serde(default)]
     pub favorite: bool,
     #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
     pub created_at: i64,
     #[serde(default)]
     pub updated_at: i64,
@@ -201,6 +203,7 @@ fn base(row: &Value) -> Result<Value> {
         }
     }
     value["favorite"] = json!(row["favorite"] == 1);
+    value["pinned"] = json!(row["pinned"] == 1);
     let tags: Value = serde_json::from_str(row["tags"].as_str().unwrap_or("[]"))?;
     if tags.as_array().is_some_and(|values| !values.is_empty()) {
         value["tags"] = tags
@@ -241,7 +244,7 @@ pub fn list(db: &Connection, key: &[u8; 32], trashed: bool) -> Result<Vec<Value>
     let sql = if trashed {
         "SELECT * FROM items WHERE deleted_at IS NOT NULL ORDER BY updated_at DESC"
     } else {
-        "SELECT * FROM items WHERE deleted_at IS NULL ORDER BY updated_at DESC"
+        "SELECT * FROM items WHERE deleted_at IS NULL ORDER BY pinned DESC,updated_at DESC"
     };
     rows(db, sql, [])?
         .iter()
@@ -277,8 +280,8 @@ pub fn create(db: &Connection, key: &[u8; 32], input: &Item) -> Result<Value> {
     let id = Uuid::new_v4().to_string();
     let at = now();
     let (secret, has_secret) = secret(input, key)?;
-    db.execute("INSERT INTO items(id,type,title,project_id,environment,username,url,host,port,tags,secret,has_secret,favorite,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        params![id,input.r#type,input.title,input.project_id,input.environment,input.username,input.url,input.host,input.port,serde_json::to_string(&input.tags.as_deref().unwrap_or(&[]))?,secret,has_secret as i64,input.favorite as i64,at,at])?;
+    db.execute("INSERT INTO items(id,type,title,project_id,environment,username,url,host,port,tags,secret,has_secret,favorite,pinned,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        params![id,input.r#type,input.title,input.project_id,input.environment,input.username,input.url,input.host,input.port,serde_json::to_string(&input.tags.as_deref().unwrap_or(&[]))?,secret,has_secret as i64,input.favorite as i64,input.pinned as i64,at,at])?;
     summary(&raw(db, &id)?, key)
 }
 pub fn update(db: &Connection, key: &[u8; 32], item: &Item) -> Result<Value> {

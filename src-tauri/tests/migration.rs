@@ -169,6 +169,61 @@ fn summaries_do_not_expose_passwords_notes_or_fields() {
     assert!(!serde_json::to_string(&raw).unwrap().contains("test-secret"));
 }
 #[test]
+fn pinned_items_sort_first_and_survive_edits_backups_and_restart_formats() {
+    let (_dir, mut vault) = vault();
+    let pinned = item(&mut vault, "pinned");
+    let other = item(&mut vault, "other");
+    let revision = db::revision(vault.connection().unwrap()).unwrap();
+    assert_eq!(
+        vault
+            .call("toggle_pin", &json!({"id":pinned["id"]}))
+            .unwrap()["pinned"],
+        true
+    );
+    assert!(db::revision(vault.connection().unwrap()).unwrap() > revision);
+    vault
+        .connection()
+        .unwrap()
+        .execute(
+            "UPDATE items SET updated_at=updated_at+10000 WHERE id=?",
+            [other["id"].as_str().unwrap()],
+        )
+        .unwrap();
+    assert_eq!(
+        vault.call("list_items", &json!({})).unwrap()[0]["id"],
+        pinned["id"]
+    );
+    let mut full = vault
+        .call("get_item", &json!({"id":pinned["id"],"recordAccess":false}))
+        .unwrap();
+    full["title"] = json!("edited pinned");
+    assert_eq!(
+        vault.call("update_item", &json!({"item":full})).unwrap()["pinned"],
+        true
+    );
+
+    let contents = backup::create(vault.connection().unwrap(), vault.key().unwrap()).unwrap();
+    let restored = backup::read(&contents, "test-master-password-2026").unwrap();
+    let restored_dir = tempfile::tempdir().unwrap();
+    let restored_db = db::open(restored_dir.path()).unwrap();
+    backup::restore(&restored_db, &restored).unwrap();
+    assert_eq!(
+        db::rows(
+            &restored_db,
+            "SELECT pinned FROM items WHERE id=?",
+            [pinned["id"].as_str().unwrap()],
+        )
+        .unwrap()[0]["pinned"],
+        1
+    );
+    assert_eq!(
+        vault
+            .call("toggle_pin", &json!({"id":pinned["id"]}))
+            .unwrap()["pinned"],
+        false
+    );
+}
+#[test]
 fn encrypted_history_is_capped_and_restorable() {
     let (_dir, mut vault) = vault();
     let created = item(&mut vault, "history");
@@ -473,9 +528,224 @@ fn automatic_backups_track_changes_and_keep_only_owned_files() {
     );
 }
 #[test]
+fn automatic_backups_merge_changes_until_fifteen_minutes_have_elapsed() {
+    let (dir, mut vault) = vault();
+    let folder = dir.path().join("automatic");
+    fs::create_dir(&folder).unwrap();
+    db::save_setting(
+        vault.connection().unwrap(),
+        "automatic_backup",
+        &json!({"directory":folder}),
+    )
+    .unwrap();
+    item(&mut vault, "first");
+    assert!(vault.automatic_backup(false).unwrap());
+    let original = db::setting(vault.connection().unwrap(), "automatic_backup_record")
+        .unwrap()
+        .unwrap();
+    let original_file = folder.join(original["file"].as_str().unwrap());
+    let original_contents = fs::read(&original_file).unwrap();
+
+    item(&mut vault, "second");
+    item(&mut vault, "third");
+    assert!(
+        !vault.automatic_backup(false).unwrap(),
+        "continuous edits must not bypass the 15-minute interval"
+    );
+    assert_eq!(
+        db::setting(vault.connection().unwrap(), "automatic_backup_record")
+            .unwrap()
+            .unwrap(),
+        original
+    );
+    assert_eq!(fs::read(&original_file).unwrap(), original_contents);
+    assert_eq!(fs::read_dir(&folder).unwrap().count(), 1);
+    assert_eq!(
+        db::backup_status(vault.connection().unwrap()).unwrap()["hasChanges"],
+        true
+    );
+
+    let mut record = original.clone();
+    record["at"] = json!(db::now() - 14 * 60 * 1000);
+    db::save_setting(
+        vault.connection().unwrap(),
+        "automatic_backup_record",
+        &record,
+    )
+    .unwrap();
+    assert!(!vault.automatic_backup(false).unwrap());
+    record["at"] = json!(db::now() - 15 * 60 * 1000);
+    db::save_setting(
+        vault.connection().unwrap(),
+        "automatic_backup_record",
+        &record,
+    )
+    .unwrap();
+    assert!(vault.automatic_backup(false).unwrap());
+    let status = backup::automatic_status(vault.connection().unwrap()).unwrap();
+    let current = db::setting(vault.connection().unwrap(), "automatic_backup_record")
+        .unwrap()
+        .unwrap();
+    let contents = fs::read_to_string(folder.join(current["file"].as_str().unwrap())).unwrap();
+    assert_eq!(
+        backup::read(&contents, "test-master-password-2026")
+            .unwrap()
+            .items
+            .len(),
+        3
+    );
+    assert_eq!(status["fileExists"], true);
+    assert_eq!(
+        db::backup_status(vault.connection().unwrap()).unwrap()["hasChanges"],
+        false
+    );
+
+    record = current;
+    record["at"] = json!(db::now() - 15 * 60 * 1000);
+    db::save_setting(
+        vault.connection().unwrap(),
+        "automatic_backup_record",
+        &record,
+    )
+    .unwrap();
+    assert!(
+        !vault.automatic_backup(false).unwrap(),
+        "unchanged content needs no new backup even after the interval"
+    );
+    item(&mut vault, "fourth");
+    vault.call("run_automatic_backup", &Value::Null).unwrap();
+    assert_eq!(
+        db::backup_status(vault.connection().unwrap()).unwrap()["hasChanges"],
+        false
+    );
+    item(&mut vault, "fifth");
+    assert!(!vault.automatic_backup(false).unwrap());
+    vault.call("run_automatic_backup", &Value::Null).unwrap();
+    assert_eq!(
+        db::backup_status(vault.connection().unwrap()).unwrap()["hasChanges"],
+        false
+    );
+}
+#[test]
+fn automatic_backups_recreate_missing_files_and_retry_failed_writes() {
+    let (dir, mut vault) = vault();
+    let folder = dir.path().join("automatic");
+    fs::create_dir(&folder).unwrap();
+    db::save_setting(
+        vault.connection().unwrap(),
+        "automatic_backup",
+        &json!({"directory":folder}),
+    )
+    .unwrap();
+    item(&mut vault, "first");
+    assert!(vault.automatic_backup(false).unwrap());
+    let record = db::setting(vault.connection().unwrap(), "automatic_backup_record")
+        .unwrap()
+        .unwrap();
+    fs::remove_file(folder.join(record["file"].as_str().unwrap())).unwrap();
+    assert!(
+        vault.automatic_backup(false).unwrap(),
+        "missing files must be recreated without waiting 15 minutes"
+    );
+
+    item(&mut vault, "pending");
+    let mut record = db::setting(vault.connection().unwrap(), "automatic_backup_record")
+        .unwrap()
+        .unwrap();
+    record["at"] = json!(db::now() - 15 * 60 * 1000);
+    db::save_setting(
+        vault.connection().unwrap(),
+        "automatic_backup_record",
+        &record,
+    )
+    .unwrap();
+    let disconnected = dir.path().join("disconnected");
+    fs::rename(&folder, &disconnected).unwrap();
+    assert!(vault.automatic_backup(false).is_err());
+    assert_eq!(
+        db::setting(vault.connection().unwrap(), "automatic_backup_record")
+            .unwrap()
+            .unwrap(),
+        record
+    );
+    assert_eq!(
+        backup::automatic_status(vault.connection().unwrap()).unwrap()["error"],
+        true
+    );
+    assert_eq!(
+        db::backup_status(vault.connection().unwrap()).unwrap()["hasChanges"],
+        true
+    );
+    fs::rename(&disconnected, &folder).unwrap();
+    assert!(vault.automatic_backup(false).unwrap());
+    assert!(folder.join(record["file"].as_str().unwrap()).is_file());
+    assert_eq!(
+        backup::automatic_status(vault.connection().unwrap()).unwrap()["error"],
+        false
+    );
+    assert_eq!(
+        db::backup_status(vault.connection().unwrap()).unwrap()["hasChanges"],
+        false
+    );
+}
+#[test]
+fn automatic_backups_resume_pending_changes_after_a_locked_restart() {
+    let (dir, mut vault) = vault();
+    let folder = dir.path().join("automatic");
+    fs::create_dir(&folder).unwrap();
+    db::save_setting(
+        vault.connection().unwrap(),
+        "automatic_backup",
+        &json!({"directory":folder}),
+    )
+    .unwrap();
+    item(&mut vault, "first");
+    assert!(vault.automatic_backup(false).unwrap());
+    let mut record = db::setting(vault.connection().unwrap(), "automatic_backup_record")
+        .unwrap()
+        .unwrap();
+    record["at"] = json!(db::now() - 15 * 60 * 1000);
+    db::save_setting(
+        vault.connection().unwrap(),
+        "automatic_backup_record",
+        &record,
+    )
+    .unwrap();
+    item(&mut vault, "pending");
+    vault.lock();
+    assert!(!vault.automatic_backup(false).unwrap());
+    drop(vault);
+    let mut reopened = Vault::new(dir.path().to_owned(), Arc::new(AtomicU64::new(0)));
+    assert!(!reopened.automatic_backup(false).unwrap());
+    assert_eq!(
+        db::setting(reopened.connection().unwrap(), "automatic_backup_record")
+            .unwrap()
+            .unwrap(),
+        record
+    );
+    assert_eq!(
+        db::backup_status(reopened.connection().unwrap()).unwrap()["hasChanges"],
+        true
+    );
+    assert_eq!(
+        reopened
+            .call(
+                "unlock_vault",
+                &json!({"password":"test-master-password-2026"})
+            )
+            .unwrap()["unlocked"],
+        true
+    );
+    assert!(reopened.automatic_backup(false).unwrap());
+    assert_eq!(
+        db::backup_status(reopened.connection().unwrap()).unwrap()["hasChanges"],
+        false
+    );
+}
+#[test]
 fn import_preview_never_contains_secrets_and_deduplicates_records() {
     let (_dir, vault) = vault();
-    let input = json!([{"type":"login","title":"Imported","password":"never-in-preview"},{"type":"login","title":"Imported","password":"never-in-preview"},{"type":"login","title":"bad","port":99999}]);
+    let input = json!([{"type":"login","title":"Imported","password":"never-in-preview"},{"type":"login","title":"Imported","password":"never-in-preview","pinned":true},{"type":"login","title":"bad","port":99999}]);
     let records = transfer::parse(&input.to_string(), "json").unwrap();
     let preview =
         transfer::preview(vault.connection().unwrap(), vault.key().unwrap(), &records).unwrap();
@@ -506,7 +776,7 @@ fn import_preview_never_contains_secrets_and_deduplicates_records() {
 #[test]
 fn json_and_csv_round_trip_multiline_and_formula_like_values() {
     let (_dir, vault) = vault();
-    let source = json!([{"type":"custom","title":"=SUM(A1)","password":"'sensitive","notes":"line1\nline2","tags":["a","b"],"fields":{"__proto__":"literal-key"},"project":"Project"}]);
+    let source = json!([{"type":"custom","title":"=SUM(A1)","password":"'sensitive","notes":"line1\nline2","tags":["a","b"],"fields":{"__proto__":"literal-key"},"project":"Project","pinned":true}]);
     let records = transfer::parse(&source.to_string(), "json").unwrap();
     assert_eq!(
         transfer::import(
@@ -529,6 +799,7 @@ fn json_and_csv_round_trip_multiline_and_formula_like_values() {
         let parsed = transfer::parse(&output, format).unwrap();
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].item.as_ref().unwrap()["title"], "=SUM(A1)");
+        assert_eq!(parsed[0].item.as_ref().unwrap()["pinned"], true);
         assert_eq!(
             parsed[0].item.as_ref().unwrap()["fields"]["__proto__"],
             "literal-key"

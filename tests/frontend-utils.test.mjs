@@ -50,10 +50,11 @@ test('search ranks exact titles ahead of metadata matches', async () => {
   ]
   assert.equal(searchItems(items, 'alpha', createSearchIndex(items, []))[0].id, 'exact')
   const tieItems = [
-    { id: 'recent', type: 'login', title: 'Alpha service', favorite: false, lastAccessedAt: 300, createdAt: 1, updatedAt: 1 },
-    { id: 'older-favorite', type: 'login', title: 'Alpha service', favorite: true, lastAccessedAt: 100, createdAt: 1, updatedAt: 1 },
-    { id: 'recent-favorite', type: 'login', title: 'Alpha service', favorite: true, lastAccessedAt: 200, createdAt: 1, updatedAt: 1 },
+    { id: 'pinned', type: 'login', title: 'Alpha service', pinned: true, favorite: false, lastAccessedAt: 50, createdAt: 1, updatedAt: 1 },
+    { id: 'recent', type: 'login', title: 'Alpha service', pinned: false, favorite: false, lastAccessedAt: 300, createdAt: 1, updatedAt: 1 },
+    { id: 'older-favorite', type: 'login', title: 'Alpha service', pinned: false, favorite: true, lastAccessedAt: 100, createdAt: 1, updatedAt: 1 },
+    { id: 'recent-favorite', type: 'login', title: 'Alpha service', pinned: false, favorite: true, lastAccessedAt: 200, createdAt: 1, updatedAt: 1 },
   ]
-  assert.deepEqual(searchItems(tieItems, 'alpha', createSearchIndex(tieItems, [])).map((item) => item.id), ['recent-favorite', 'older-favorite', 'recent'])
+  assert.deepEqual(searchItems(tieItems, 'alpha', createSearchIndex(tieItems, [])).map((item) => item.id), ['pinned', 'recent-favorite', 'older-favorite', 'recent'])
   } finally { await server.close() }
 })

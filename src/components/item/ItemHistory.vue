@@ -75,7 +75,7 @@ function restore() {
   const historyId = selected.value
   if (!historyId || busy.value) return
   const prompt = dialog.warning({
-    title: '恢复历史版本？', content: '当前内容会先保留为新的历史版本。收藏状态和使用记录保持不变；历史项目已删除时恢复为未分配项目。',
+    title: '恢复历史版本？', content: '当前内容会先保留为新的历史版本。收藏、置顶状态和使用记录保持不变；历史项目已删除时恢复为未分配项目。',
     positiveText: '确认恢复版本', negativeText: '取消',
     onPositiveClick: async () => {
       if (disposed || !auth.unlocked || busy.value) return false

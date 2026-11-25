@@ -1,5 +1,16 @@
 # Progress Log
 
+## 2026-11-25 自动备份调度修正
+
+- 用户确认先实施架构评估的首选建议；已核对当前工作区及完整备份调用链，保留置顶等既有改动。
+- 采用 diagnosing-bugs 回归流程与既有 planning-with-files-zh 文件；先补能捕获连续修改重复备份的 Rust 测试。
+- 新回归在修改前如预期失败：连续新增三条凭证后仍生成第二份备份。随后在 Rust 自动备份实现增加 15 分钟成功备份间隔，保留文件缺失重建与强制手动备份；删除保存及关闭时的同步自动写入，设置说明同步调整。
+- 自动备份专项 4/4 通过；涵盖未到间隔、14/15 分钟边界、未变化、手动强制、丢失文件、写入失败/恢复、锁定重启及再解锁续检。
+- 全量 `pnpm test` 通过：Rust 40/40，前端/发布 27/27，旧 Electron 数据格式 Rust→Node 加密兼容通过；`pnpm build`、Clippy `-D warnings`、`git diff --check` 通过。
+- 全树 `cargo fmt --check` 仍提示 `desktop.rs` 其他既有区段的格式差异；新增测试经 rustfmt 格式化并保留非本任务改动。未重排整文件。
+- 使用临时 identifier `com.jiazi.vault.desktop-test` 构建本地 debug EXE；真实 Windows WebView2 桌面回归 `20/20` 通过。新场景从 UI 保存凭证，断言备份未同步生成且状态为待处理；将隔离数据库的 `automatic_backup_record.at` 前移 16 分钟，等待实际分钟维护线程生成下一份文件。报告 `output/playwright/tauri-desktop-report.json`。
+- 个人 Keystill 仍在运行，PID 97452，路径 `D:/MyWork/software/Keystill/keystill.exe`；未操作个人数据库，未暂存、提交或推送。
+
 ## 2026-10-21 前四项升级
 
 - 读取现有规划与真实改动，用户确认前三项续验、补齐历史对比，以及迁移/签名规划边界。
@@ -237,3 +248,16 @@
 - `pnpm build`、`cargo fmt --check`、`cargo clippy --all-targets --locked -- -D warnings` 与 `git diff --check` 通过。
 - 本轮未重跑 Windows 原生桌面场景：个人 Keystill 进程仍在运行，桌面用例会操作系统剪贴板；本地已有的先前 13 场景报告不作为本轮新执行证据。
 - 用户本轮明确授权评审后提交代码；只提交到当前本地分支，不推送或发布。
+
+## 2026-11-25 常用凭证置顶
+
+- 工作区起始为干净的 `main` / `abe809a`；用户只授权实现和验证，未授权提交或推送。
+- 已核对截图及真实调用链，确认收藏不能承担置顶语义；实施范围收敛为一个 `pinned` 状态、一条 `toggle_pin` 命令、活动列表/搜索排序和一个列表操作按钮。
+- `.ai_state` 不存在且当前技能集中没有初始化入口，已明确回退到仓库现有文件规划流程；session-catchup 无待恢复输出。
+- 当前进入实现阶段；验证将使用隔离保险库，不停止或操作个人 Keystill 进程。
+- 首次合并补丁因 README 长段落不是独立匹配行而整体拒绝，未产生部分源码修改；已拆分源码、测试、文档补丁按真实上下文落盘。
+- 已完成 SQLite/旧库迁移、备份与明文传输、Rust 命令、Pinia、列表/搜索排序和列表按钮；未新增依赖或页面。
+- 针对性验证通过：`pnpm typecheck`，前端搜索/历史 7 项测试，以及 Rust 置顶全链路测试 1 项。全量 `cargo fmt` 曾顺带重排未触及的 `desktop.rs`，已只恢复该无关格式差异。
+- 全量验证通过：Rust 37/37、前端/发布 27/27、旧 Electron 夹具跨 Rust/Node 加密兼容检查、`pnpm build`、Clippy `-D warnings` 和差异检查。
+- 使用测试专用 `com.jiazi.vault.desktop-test` 标识构建 debug EXE；真实 Windows WebView2 桌面验收 19/19，通过置顶切换、列表第一位、刷新/重启持久化、空搜索第一位和旧 SQLite 自动迁移。报告为 `output/playwright/tauri-desktop-report.json`，900×600 截图无按钮挤压。
+- 最终保留的改动只覆盖本功能、测试和文档；`desktop.rs` 内容哈希与 HEAD 相同且已从 Git 状态移除。未操作个人保险库，未暂存、提交、推送或发布。

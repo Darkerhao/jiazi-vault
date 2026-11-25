@@ -23,11 +23,11 @@ test('history diff compares previous to saved content, including added/deleted e
 
 test('history diff includes restorable metadata, isolates custom names, and excludes usage/favorite timestamps', () => {
   const previous = { ...original, tags: ['a、b'], fields: Object.fromEntries([['title', 'secret-title'], ['__proto__', 'old']]) }
-  const current = { ...previous, type: 'custom', projectId: 'project', environment: undefined, tags: ['a', 'b'], favorite: true, updatedAt: 2, lastAccessedAt: 3,
+  const current = { ...previous, type: 'custom', projectId: 'project', environment: undefined, tags: ['a', 'b'], favorite: true, pinned: true, updatedAt: 2, lastAccessedAt: 3,
     fields: Object.fromEntries([['title', 'secret-title'], ['__proto__', 'new'], ['constructor', '']]) }
   assert.deepEqual(diffItemHistory(previous, current).filter(row => row.kind !== 'unchanged').map(row => [row.key, row.kind]), [
     ['type', 'changed'], ['projectId', 'added'], ['environment', 'removed'], ['tags', 'changed'], ['field:__proto__', 'changed'], ['field:constructor', 'added'],
   ])
   assert.equal(diffItemHistory(previous, current).find(row => row.key === 'field:title').kind, 'unchanged')
-  assert.deepEqual(diffItemHistory(original, { ...original, favorite: true, updatedAt: 5, tags: [] }).filter(row => row.kind !== 'unchanged'), [])
+  assert.deepEqual(diffItemHistory(original, { ...original, favorite: true, pinned: true, updatedAt: 5, tags: [] }).filter(row => row.kind !== 'unchanged'), [])
 })

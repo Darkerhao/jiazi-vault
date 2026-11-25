@@ -22,6 +22,7 @@ const COLUMNS: &[&str] = &[
     "tags",
     "fields",
     "favorite",
+    "pinned",
     "createdAt",
     "updatedAt",
     "lastAccessedAt",
@@ -58,6 +59,9 @@ fn validate(value: &Value) -> Result<Value> {
     let mut value = value.clone();
     if value.get("favorite").is_none() {
         value["favorite"] = json!(false)
+    }
+    if value.get("pinned").is_none() {
+        value["pinned"] = json!(false)
     }
     Ok(value)
 }
@@ -137,19 +141,20 @@ pub fn parse(contents: &str, format: &str) -> Result<Vec<Record>> {
                         if text.is_empty() {
                             continue;
                         }
-                        let parsed = if ["tags", "fields", "favorite"].contains(&name.as_str()) {
-                            serde_json::from_str(text).unwrap_or(Value::Null)
-                        } else if ["port", "createdAt", "updatedAt", "lastAccessedAt"]
-                            .contains(&name.as_str())
-                        {
-                            if text.bytes().all(|byte| byte.is_ascii_digit()) {
-                                text.parse::<u64>().map_or(Value::Null, |v| json!(v))
+                        let parsed =
+                            if ["tags", "fields", "favorite", "pinned"].contains(&name.as_str()) {
+                                serde_json::from_str(text).unwrap_or(Value::Null)
+                            } else if ["port", "createdAt", "updatedAt", "lastAccessedAt"]
+                                .contains(&name.as_str())
+                            {
+                                if text.bytes().all(|byte| byte.is_ascii_digit()) {
+                                    text.parse::<u64>().map_or(Value::Null, |v| json!(v))
+                                } else {
+                                    Value::Null
+                                }
                             } else {
-                                Value::Null
-                            }
-                        } else {
-                            json!(text)
-                        };
+                                json!(text)
+                            };
                         value[name] = parsed;
                     }
                     Ok(value)
@@ -238,7 +243,13 @@ fn values(db: &Connection, key: &[u8; 32], scope: &Value) -> Result<Vec<Value>> 
 fn fingerprint(item: &Value) -> Result<Vec<u8>> {
     let mut value = item.clone();
     let object = value.as_object_mut().ok_or(Error("INVALID_IMPORT"))?;
-    for key in ["favorite", "createdAt", "updatedAt", "lastAccessedAt"] {
+    for key in [
+        "favorite",
+        "pinned",
+        "createdAt",
+        "updatedAt",
+        "lastAccessedAt",
+    ] {
         object.remove(key);
     }
     object.retain(|_, v| v != "" && !v.is_null());

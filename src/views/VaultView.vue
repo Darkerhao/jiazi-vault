@@ -5,7 +5,7 @@ import { NAlert, NButton, NCheckbox, NEmpty, NIcon, NList, NListItem, NModal, NP
 import PlaintextExport from '../components/common/PlaintextExport.vue'
 import { callCommand } from '../services/ipc'
 import type { ItemBatchAction, ItemInput } from '../types/contracts'
-import { CopyOutline, KeyOutline, OpenOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
+import { CopyOutline, KeyOutline, OpenOutline, Pin, PinOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
 import { expiryState } from '../utils/expiry'
 import AppShell from '../components/common/AppShell.vue'
 import ItemFormModal from '../components/item/ItemFormModal.vue'
@@ -166,6 +166,11 @@ async function toggle(item: VaultItemSummary) {
   catch (cause) { message.error(vaultErrorMessage(cause, '操作失败，请重试。')) }
 }
 
+async function togglePin(item: VaultItemSummary) {
+  try { await vault.togglePin(item.id) }
+  catch (cause) { message.error(vaultErrorMessage(cause, '操作失败，请重试。')) }
+}
+
 const { copy, copyItem } = useClipboard()
 const { open: openUrl, opening: openingUrl } = useOpenUrl()
 const copyingId = ref<string | null>(null)
@@ -275,6 +280,7 @@ async function restore(item: VaultItemSummary) {
                 <n-button quaternary circle size="small" aria-label="彻底删除凭证" @click="removePermanently(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
               </template>
               <template v-else>
+                <n-button :quaternary="!item.pinned" :type="item.pinned ? 'primary' : 'default'" circle size="small" :aria-pressed="item.pinned" :title="item.pinned ? '取消置顶' : '置顶凭证'" :aria-label="`${item.pinned ? '取消置顶' : '置顶凭证'} ${item.title}`" @click="togglePin(item)"><template #icon><n-icon><pin v-if="item.pinned" /><pin-outline v-else /></n-icon></template></n-button>
                 <n-button :quaternary="!item.favorite" :type="item.favorite ? 'primary' : 'default'" circle size="small" :aria-pressed="item.favorite" :title="item.favorite ? '取消收藏' : '收藏凭证'" :aria-label="item.favorite ? '取消收藏' : '收藏凭证'" @click="toggle(item)"><template #icon><n-icon><star v-if="item.favorite" /><star-outline v-else /></n-icon></template></n-button>
                 <n-button quaternary circle size="small" aria-label="删除凭证" @click="remove(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
               </template>

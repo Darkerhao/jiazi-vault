@@ -65,6 +65,7 @@ export interface IpcCommands {
   list_items: { args: { trashed?: boolean }; result: VaultItemSummary[] }
   get_credential_health: { args: undefined; result: CredentialHealthEntry[] }
   toggle_favorite: { args: { id: string }; result: VaultItemSummary }
+  toggle_pin: { args: { id: string }; result: VaultItemSummary }
   create_project: { args: { project: ProjectInput }; result: Project }
   update_project: { args: { project: ProjectInput & { id: string } }; result: Project }
   visit_project: { args: { id: string }; result: Project }

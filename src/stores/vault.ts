@@ -108,5 +108,16 @@ export const useVaultStore = defineStore('vault', () => {
     void useBackupStore().load()
   }
 
-  return { items, trashed, projects, error, filter, loading, filteredItems, search, clear, load, get, applyUsage, createItem, updateItem, removeItem, restoreItem, toggleFavorite }
+  async function togglePin(id: string) {
+    const requestRevision = revision
+    const updated = await vaultService.togglePin(id)
+    if (requestRevision !== revision) return
+    if (!updated) throw new Error('ITEM_NOT_FOUND')
+    items.value = items.value
+      .map((item) => item.id === id ? updated : item)
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
+    void useBackupStore().load()
+  }
+
+  return { items, trashed, projects, error, filter, loading, filteredItems, search, clear, load, get, applyUsage, createItem, updateItem, removeItem, restoreItem, toggleFavorite, togglePin }
 })
