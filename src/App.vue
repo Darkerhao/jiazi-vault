@@ -8,23 +8,37 @@ import DesktopActions from './components/common/DesktopActions.vue'
 const settings = useSettingsStore()
 const auth = useAuthStore()
 const theme = computed(() => (settings.isDark ? darkTheme : null))
+const colors = computed(() => settings.isDark ? {
+  background: '#171d1a', surface: '#202722', elevated: '#28312b', input: '#1b221e',
+  text: '#eff3ee', secondary: '#c9d3cb', muted: '#9aa99e', border: '#3d4a41', divider: '#303c33',
+  hover: '#2b372e', accent: '#c7ef68', active: '#35462b',
+} : {
+  background: '#f4f6f1', surface: '#ffffff', elevated: '#ffffff', input: '#f7f9f4',
+  text: '#202a22', secondary: '#46554a', muted: '#67776a', border: '#cfd8cb', divider: '#e2e8dd',
+  hover: '#edf2e7', accent: '#466823', active: '#e6efd8',
+})
+const themeVariables = computed(() => Object.fromEntries(Object.entries(colors.value).map(([key, value]) => [`--app-${key}`, value])))
 const themeOverrides = computed<GlobalThemeOverrides>(() => ({
   common: {
-    primaryColor: settings.isDark ? '#c7ef68' : '#4a681d',
+    primaryColor: colors.value.accent,
     primaryColorHover: settings.isDark ? '#d4f878' : '#587c23',
     primaryColorPressed: settings.isDark ? '#b6e650' : '#3b5416',
     primaryColorSuppl: '#4a681d',
-    bodyColor: settings.isDark ? '#20251f' : '#efeee8',
-    cardColor: settings.isDark ? '#292f26' : '#fafaf6',
-    modalColor: settings.isDark ? '#292f26' : '#fafaf6',
-    popoverColor: settings.isDark ? '#30382b' : '#fafaf6',
-    textColor1: settings.isDark ? '#f3f5ed' : '#20251f',
-    textColor2: settings.isDark ? '#d5dccd' : '#3f4838',
-    textColor3: settings.isDark ? '#a4b198' : '#66705d',
-    borderColor: settings.isDark ? '#48533f' : '#cbd2bf',
-    dividerColor: settings.isDark ? '#3a4334' : '#dde1d4',
-    hoverColor: settings.isDark ? '#343e2d' : '#e6ebdd',
+    bodyColor: colors.value.background,
+    cardColor: colors.value.surface,
+    modalColor: colors.value.surface,
+    popoverColor: colors.value.elevated,
+    inputColor: colors.value.input,
+    textColor1: colors.value.text,
+    textColor2: colors.value.secondary,
+    textColor3: colors.value.muted,
+    placeholderColor: colors.value.muted,
+    borderColor: colors.value.border,
+    dividerColor: colors.value.divider,
+    hoverColor: colors.value.hover,
     borderRadius: '10px',
+    fontSize: '14px',
+    heightMedium: '36px',
   },
   Button: {
     colorPrimary: '#c7ef68',
@@ -44,19 +58,24 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => ({
     borderDisabledPrimary: '1px solid #c7ef68',
   },
   Layout: {
-    siderColor: settings.isDark ? '#292f26' : '#e8ecdf',
+    siderColor: colors.value.surface,
+    headerColor: colors.value.surface,
   },
   Menu: {
-    itemColorActive: settings.isDark ? '#424f31' : '#d5e4bb',
-    itemColorActiveHover: settings.isDark ? '#4b5b36' : '#ccdda9',
-    itemColorActiveCollapsed: settings.isDark ? '#424f31' : '#d5e4bb',
+    itemColorActive: colors.value.active,
+    itemColorActiveHover: colors.value.active,
+    itemColorActiveCollapsed: colors.value.active,
+    itemHeight: '42px',
+    borderRadius: '10px',
   },
+  Card: { borderRadius: '14px', titleFontSizeMedium: '16px', titleFontWeight: '600' },
+  Tag: { borderRadius: '5px' },
 }))
 
 </script>
 
 <template>
-  <n-config-provider :theme="theme" :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
+  <n-config-provider :theme="theme" :theme-overrides="themeOverrides" :style="themeVariables" :locale="zhCN" :date-locale="dateZhCN">
     <n-dialog-provider :key="auth.sessionRevision">
       <n-message-provider>
         <DesktopActions />

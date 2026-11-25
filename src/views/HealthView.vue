@@ -58,7 +58,7 @@ onBeforeUnmount(() => { disposed = true; entries.value = [] })
 
 <template>
   <AppShell>
-    <div class="health-heading">
+    <div class="page-heading">
       <div><n-text depth="3">本地基础检查</n-text><h1>凭证健康</h1></div>
       <n-button :loading="loading" @click="load">重新检查</n-button>
     </div>
@@ -84,15 +84,17 @@ onBeforeUnmount(() => { disposed = true; entries.value = [] })
 </template>
 
 <style scoped>
-.health-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.health-heading h1 { margin: 4px 0 20px; font-size: 26px; }
 .checked-at { display: block; margin-top: 12px; }
-.health-filter { display: flex; align-items: center; gap: 16px; margin: 24px 0 12px; }
+.health-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 16px; margin: 24px 0 16px; border: 1px solid var(--app-divider); border-radius: 14px; background: var(--app-surface); }
 .health-filter .n-select { max-width: 300px; }
-.health-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; border-bottom: 1px solid rgba(128, 128, 128, .16); }
+.health-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; border: 1px solid var(--app-divider); border-radius: 14px; background: var(--app-surface); margin-bottom: 12px; }
 .health-entry { display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
 .health-issues { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .health-row > .n-button { flex-shrink: 0; }
 .health-state { margin: 24px 0; }
 .health-pagination { margin-top: 24px; }
+@container workspace (max-width: 560px) {
+  .health-row { flex-direction: column; align-items: stretch; }
+  .health-row > .n-button { align-self: flex-end; }
+}
 </style>

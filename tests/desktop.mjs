@@ -8,6 +8,7 @@ import { resolve, dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { chromium } from 'playwright-core'
 import { createVaultThroughUI } from './onboarding.mjs'
+import { verifyResponsiveLayout } from './responsive-layout.mjs'
 
 if (process.platform !== 'win32') throw new Error('This native CDP acceptance runner targets Windows WebView2')
 const root = process.cwd(), output = resolve('output/playwright')
@@ -281,6 +282,9 @@ try {
     await Promise.all(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {})))
   })
   await page.screenshot({ path: resolve(run, 'vault-900x600.png'), fullPage: true })
+  await call('create_item', { item: { type: 'login', title: '用于验证窄窗口长标题换行与操作按钮位置的示例凭证名称', username: 'long-account-name-for-responsive-layout-checks@example.keystill.test', password: 'responsive-fixture-only', projectId: project.id, environment: 'development', favorite: false, pinned: false } })
+  await verifyResponsiveLayout(page, run)
+  pass('all primary pages adapt to sidebar toggles and 900–1920px viewports without unused width or horizontal overflow')
   await stop()
   await launch(data)
   await unlock(password)

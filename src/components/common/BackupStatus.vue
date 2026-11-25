@@ -44,4 +44,7 @@ async function create() {
 .backup-status > div { min-width: 0; }
 .backup-status .n-button { flex-shrink: 0; }
 .backup-date { display: block; margin-top: 4px; font-size: 12px; }
+@container workspace (max-width: 560px) {
+  .backup-status { flex-wrap: wrap; }
+}
 </style>

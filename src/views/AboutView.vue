@@ -45,7 +45,7 @@ onMounted(loadInfo)
 
 <template>
   <AppShell>
-    <div class="page-heading"><n-text depth="3">认识 Keystill</n-text><h1>关于</h1></div>
+    <div class="page-heading"><div><n-text depth="3">认识 Keystill</n-text><h1>关于</h1></div></div>
     <div class="about-content">
       <n-card class="about-brand" bordered>
         <div class="product-heading">
@@ -82,7 +82,7 @@ onMounted(loadInfo)
         </details>
       </n-card>
 
-      <n-card title="数据与隐私" bordered>
+      <n-card title="数据与隐私" class="privacy-card" bordered>
         <p class="privacy-description">凭证保存在本机，密码、备注等敏感字段加密存储；名称、用户名等元数据以明文保存。应用不提供云端同步或主密码找回。</p>
         <n-text depth="3">检查更新时访问 GitHub，不上传保险库数据。建议定期创建加密备份，并保存在另一块磁盘或外部设备。</n-text>
         <div class="privacy-actions"><n-button @click="router.push('/settings')">查看安全与备份设置</n-button></div>
@@ -92,8 +92,8 @@ onMounted(loadInfo)
 </template>
 
 <style scoped>
-.page-heading h1 { margin: 4px 0 24px; font-size: 26px; }
-.about-content { display: grid; gap: 20px; max-width: 960px; }
+.about-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.about-content > :deep(.n-card) { min-width: 0; }
 .product-heading { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .product-heading img { flex-shrink: 0; }
 .product-heading h2 { margin: 0 0 4px; font-size: 26px; line-height: 1.3; }
@@ -115,7 +115,11 @@ onMounted(loadInfo)
 .environment dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
 .privacy-description { margin-top: 0; line-height: 1.8; }
 .privacy-actions { margin-top: 16px; }
-@media (max-width: 720px) {
+@container workspace (min-width: 1080px) {
+  .about-content { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .about-brand, .privacy-card { grid-column: 1 / -1; }
+}
+@container workspace (max-width: 720px) {
   .resource-grid, .environment dl { grid-template-columns: 1fr; }
 }
 </style>

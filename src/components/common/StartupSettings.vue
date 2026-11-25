@@ -51,7 +51,6 @@ async function update(key: DesktopSetting, value: boolean) {
 </template>
 
 <style scoped>
-.startup-card { margin-top: 24px; max-width: 700px; }
 .startup-error { margin-bottom: 16px; }
 .preference-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 0; }
 .preference-row:first-of-type { padding-top: 0; }
