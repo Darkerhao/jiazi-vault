@@ -32,6 +32,7 @@ export interface VaultItem {
   notes?: string
   tags?: string[]
   favorite: boolean
+  pinned: boolean
   createdAt: number
   updatedAt: number
   lastAccessedAt?: number

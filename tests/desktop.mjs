@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 import { once } from 'node:events'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { resolve, dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -21,6 +21,9 @@ let completed = false
 let failure
 const pass = name => { report.push(name); console.log('PASS ' + name) }
 const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+async function automaticBackupCount(directory) {
+  return (await readdir(directory)).filter(name => name.startsWith('auto-') && name.endsWith('.jvault')).length
+}
 async function port() {
   const server = createServer().listen(0, '127.0.0.1')
   await once(server, 'listening')
@@ -105,10 +108,36 @@ try {
   assert.ok((await call('database_info')).path.startsWith(data))
   pass('native runtime reports Tauri and uses only the isolated test data directory')
 
+  const automaticDirectory = resolve(run, 'automatic-backups')
+  await mkdir(automaticDirectory, { recursive: true })
+  const databasePath = (await call('database_info')).path
+  let testDatabase = new DatabaseSync(databasePath)
+  testDatabase.prepare('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)').run('automatic_backup', JSON.stringify({ directory: automaticDirectory }))
+  testDatabase.close()
+  await call('run_automatic_backup')
+  assert.equal(await automaticBackupCount(automaticDirectory), 1)
+  testDatabase = new DatabaseSync(databasePath)
+  let automaticRecord = JSON.parse(testDatabase.prepare('SELECT value FROM settings WHERE key=?').get('automatic_backup_record').value)
+  automaticRecord.at = Date.now() + 60_000
+  testDatabase.prepare('UPDATE settings SET value=? WHERE key=?').run(JSON.stringify(automaticRecord), 'automatic_backup_record')
+  testDatabase.close()
+
   await page.getByRole('button', { name: '新建', exact: true }).click()
   await page.getByPlaceholder('凭证名称').fill('Native UI credential')
   await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
   await page.getByText('Native UI credential', { exact: true }).waitFor()
+  assert.equal(await automaticBackupCount(automaticDirectory), 1, 'saving a credential must not write an automatic backup synchronously')
+  assert.equal((await call('get_backup_status')).hasChanges, true)
+  testDatabase = new DatabaseSync(databasePath)
+  automaticRecord = JSON.parse(testDatabase.prepare('SELECT value FROM settings WHERE key=?').get('automatic_backup_record').value)
+  automaticRecord.at = Date.now() - 16 * 60 * 1000
+  testDatabase.prepare('UPDATE settings SET value=? WHERE key=?').run(JSON.stringify(automaticRecord), 'automatic_backup_record')
+  testDatabase.close()
+  const backupDeadline = Date.now() + 65_000
+  while (await automaticBackupCount(automaticDirectory) === 1 && Date.now() < backupDeadline) await delay(250)
+  assert.equal(await automaticBackupCount(automaticDirectory), 2, 'the unlocked minute scheduler must back up a due revision')
+  assert.equal((await call('get_backup_status')).hasChanges, false)
+  pass('native save returns without a backup write and the minute scheduler backs up a due revision')
   const created = (await call('list_items')).find(item => item.title === 'Native UI credential')
   assert.ok(created)
   pass('existing Vue form saves through native Tauri IPC into SQLite')
@@ -128,6 +157,14 @@ try {
   assert.equal(await page.getByRole('button', { name: '复制密码 Native secret' }).isVisible(), true)
   assert.equal(await page.getByRole('button', { name: '复制 API Key Native API key' }).isVisible(), true)
   pass('project, encrypted credentials, summaries, health and history work through real native IPC')
+
+  await page.getByRole('button', { name: '置顶凭证 Native secret' }).click()
+  await page.getByRole('button', { name: '取消置顶 Native secret' }).waitFor()
+  assert.equal((await call('list_items'))[0].id, sensitive.id)
+  assert.equal((await page.locator('.item-list .item-title').allTextContents())[0], 'Native secret')
+  await refresh()
+  await page.getByRole('button', { name: '取消置顶 Native secret' }).waitFor()
+  pass('pinning a credential persists and moves it to the top of the active list')
 
   await section('关于')
   await page.getByText('密钥有序，专注如常。', { exact: true }).waitFor()
@@ -161,6 +198,7 @@ try {
     await page.keyboard.press('Control+K')
     const quickSearch = page.getByPlaceholder(/搜索名称、项目、环境、账号/)
     await quickSearch.waitFor()
+    assert.match(await page.locator('.result').first().innerText(), /Native secret/)
     await quickSearch.fill('Native secret')
     assert.equal(await page.locator('option[value="primary"]').textContent(), '密码')
     assert.equal(await page.getByRole('button', { name: '打开', exact: true }).isEnabled(), true)
@@ -248,6 +286,7 @@ try {
   await unlock(password)
   await page.getByRole('heading', { name: '全部条目', exact: true }).waitFor()
   assert.equal((await call('get_item', { id: sensitive.id, recordAccess: false })).password, 'changed-native-secret')
+  assert.equal((await call('get_item', { id: sensitive.id, recordAccess: false })).pinned, true)
   pass('restart preserves encrypted credentials and requires authentication again')
   await stop()
 

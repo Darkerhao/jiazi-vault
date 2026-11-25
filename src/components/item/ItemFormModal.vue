@@ -214,6 +214,7 @@ function buildItem(): ItemInput {
     type: type.value,
     title: title.value.trim(),
     favorite: props.item?.favorite ?? false,
+    pinned: props.item?.pinned ?? false,
   }
   if (environment.value) item.environment = environment.value
   if (projectId.value) item.projectId = projectId.value
@@ -356,7 +357,7 @@ async function save() {
       <n-space justify="end" :wrap-item="false">
         <n-button :disabled="saving || exporting" @click="requestClose">{{ viewing ? '关闭' : '取消' }}</n-button>
         <n-button v-if="viewing && !item?.deletedAt" type="primary" @click="viewing = false">编辑凭证</n-button>
-        <n-button v-if="viewing && !item?.deletedAt" @click="emit('duplicate', { ...buildItem(), title: `${title}（副本）`, favorite: false })">创建副本</n-button>
+        <n-button v-if="viewing && !item?.deletedAt" @click="emit('duplicate', { ...buildItem(), title: `${title}（副本）`, favorite: false, pinned: false })">创建副本</n-button>
         <n-button v-if="!viewing" type="primary" :loading="saving" :disabled="invalid || exporting || creatingProject" @click="save">保存</n-button>
       </n-space>
     </template>

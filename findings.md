@@ -1,5 +1,16 @@
 # Findings
 
+## 2026-11-25 自动备份调度
+
+- `lib.rs::dispatch` 在备份版本变化后同步调用自动备份；`desktop.rs::confirm_close` 关闭前也调用同一函数。`backup::automatic` 仅跳过版本相同且文件存在的情形，没有文档承诺的 15 分钟间隔。
+- 已有分钟维护循环和持久化的 `backup_revision` / `automatic_backup_record` 足以完成调度、未备份状态与重启后续检，不需要新队列或新状态。配置启用和手动立即备份使用 `force=true`，保持即时执行。
+- 普通保存与关闭现在不做自动文件写入；分钟维护在保险库解锁时检查。变更满 15 分钟后生成文件；文件缺失时立即重建；期间已提交的内容留在数据库并显示待备份，锁定/退出后下次解锁继续检查。
+- 回归先在旧实现失败，修复后自动备份专项 4/4、全 Rust 集成 40/40、前端 27/27、原 Electron 密文夹具经 Rust 写入再由 Node 独立解密通过；生产构建、Clippy `-D warnings`、`git diff --check` 通过。
+- 临时应用标识和隔离数据库下真实 Windows WebView2 桌面测试 `20/20`，实际验证 Vue 保存后备份文件数不变、待备份状态存在；将测试库最近备份时间前移 16 分钟后，真实分钟维护任务创建下一份备份并清除待备份状态。个人 Keystill 进程保持运行。
+- 全树 `cargo fmt --check` 仍会标出 `desktop.rs` / `migration.rs` 中本次未格式化的其他区段，未扩大格式化修改。
+- `.ai_state` 不存在；沿用本项目已有的文件规划和当前用户授权，不另建工作流状态。使用 diagnosing-bugs 复现与回归；规划续接脚本无待恢复输出。
+- 个人 Keystill 正在 `D:/MyWork/software/Keystill/keystill.exe` 运行；桌面测试需独立 identifier 和数据目录，不能终止或操作个人保险库。
+
 ## 2026-10-21 前四项升级
 
 - 当前工作区保留前三项尚未收尾的实现与专项测试；无仓库内 AGENTS.md。用户确认本轮扩展至历史版本对比，迁移和正式签名仅做规划/核对。
@@ -186,3 +197,12 @@
 - 兼容底线：`%APPDATA%/jiazi-vault/vault.db`、旧 schema、Argon2id 参数、AES-GCM JSON 格式、.jvault v1–v4、设备偏好与恢复快照。
 - 本机具备 Rust 1.99.1、Cargo、pnpm 9.12.1、Node 和 .NET；无 `.ai_state`，沿用仓库现有文件规划工作流。
 - 官方 Tauri 文档核对入口：Vite、calling-rust、global-shortcut、updater。更新插件的签名协议与 Electron latest.yml 不同，必须防止下载旧 Electron 安装包。
+
+## 2026-11-25 常用凭证置顶
+
+- `src-tauri/src/items.rs::list` 是空搜索和活动列表的顺序来源；有关键词时 `src/utils/search.ts::searchItems` 再排序，因此两处都必须识别置顶。
+- 当前星标是收藏并有独立收藏夹语义，不能复用为置顶。最佳边界是同一 `items` 行新增 `pinned INTEGER NOT NULL DEFAULT 0`，通过 `toggle_pin` 修改，不新增表或设置项。
+- `update_item` 已刻意保留收藏等组织状态；置顶也应由独立命令维护。历史比较/恢复不包含置顶，避免恢复内容时改变用户当前整理结果。
+- `.jvault` v1-v4 直接备份 SQLite 行；旧备份没有 `pinned`。读取时补 0、恢复列加入 `pinned` 即可保持旧格式兼容，无需升级备份版本。
+- JSON/CSV 已包含收藏和时间等组织元数据。置顶应同样可往返，但完全重复判断需忽略收藏、置顶和时间。
+- 最近使用页面已有明确的时间排序，回收站已有删除/更新时间语义；这两处不应被置顶覆盖。

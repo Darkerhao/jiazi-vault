@@ -109,10 +109,6 @@ pub fn confirm_close(app: &AppHandle) -> Result<bool> {
     }
     let mut vault = state.vault.lock().map_err(|_| Error("VAULT_BUSY"))?;
     ensure(!state.busy.load(Ordering::SeqCst), "VAULT_BUSY")?;
-    // Every save already awaits its automatic backup; do not discard an outstanding revision.
-    if vault.active() {
-        let _ = vault.automatic_backup(false);
-    }
     vault.lock();
     clear_clipboard(app, &mut vault);
     drop(vault);

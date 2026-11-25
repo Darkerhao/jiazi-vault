@@ -16,6 +16,7 @@ use std::{
 use uuid::Uuid;
 
 pub const MAX_BYTES: u64 = 256 * 1024 * 1024;
+const AUTOMATIC_BACKUP_INTERVAL_MS: i64 = 15 * 60 * 1000;
 const ITEM_COLUMNS: &[&str] = &[
     "id",
     "type",
@@ -30,6 +31,7 @@ const ITEM_COLUMNS: &[&str] = &[
     "secret",
     "has_secret",
     "favorite",
+    "pinned",
     "created_at",
     "updated_at",
     "deleted_at",
@@ -94,6 +96,9 @@ fn read_inner(contents: &str, password: &str) -> Result<Backup> {
         if version < 3 && item.get("last_accessed_at").is_none() {
             item["last_accessed_at"] = Value::Null
         }
+        if item.get("pinned").is_none() {
+            item["pinned"] = json!(0)
+        }
         for name in ["id", "type", "title", "tags", "secret"] {
             ensure(item[name].is_string(), "INVALID_BACKUP")?
         }
@@ -108,7 +113,7 @@ fn read_inner(contents: &str, password: &str) -> Result<Backup> {
                 "INVALID_BACKUP",
             )?
         }
-        for name in ["favorite", "has_secret"] {
+        for name in ["favorite", "pinned", "has_secret"] {
             ensure(item[name] == 0 || item[name] == 1, "INVALID_BACKUP")?
         }
         for name in ["created_at", "updated_at"] {
@@ -365,13 +370,19 @@ pub fn automatic(db: &Connection, key: &[u8; 32], force: bool) -> Result<bool> {
     let result = (|| {
         let record = db::setting(db, "automatic_backup_record")?.unwrap_or(Value::Null);
         let revision = db::revision(db)?;
-        if !force
-            && record["revision"].as_i64() == Some(revision)
-            && record["file"]
+        if !force {
+            let file_exists = record["file"]
                 .as_str()
-                .is_some_and(|file| directory.join(file).is_file())
-        {
-            return Ok(false);
+                .is_some_and(|file| directory.join(file).is_file());
+            if file_exists {
+                if record["revision"].as_i64() == Some(revision) {
+                    return Ok(false);
+                }
+                let elapsed = db::now().saturating_sub(record["at"].as_i64().unwrap_or(0));
+                if elapsed < AUTOMATIC_BACKUP_INTERVAL_MS {
+                    return Ok(false);
+                }
+            }
         }
         let at = db::now();
         let name = format!("auto-{at}-{}.jvault", Uuid::new_v4());

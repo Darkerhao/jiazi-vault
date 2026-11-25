@@ -20,7 +20,8 @@ export function searchItems(items: VaultItemSummary[], query: string, index: Map
     results.push({ item, rank: title === normalized ? 0 : title.startsWith(normalized) ? 1 : terms.every((term) => title.includes(term)) ? 2 : 3 })
   }
   return results.sort((a, b) =>
-    a.rank - b.rank
+    Number(b.item.pinned) - Number(a.item.pinned)
+    || a.rank - b.rank
     || Number(b.item.favorite) - Number(a.item.favorite)
     || (b.item.lastAccessedAt ?? 0) - (a.item.lastAccessedAt ?? 0)
     || b.item.updatedAt - a.item.updatedAt,

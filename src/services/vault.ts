@@ -19,4 +19,5 @@ export const vaultService = {
   deleteItem: (id: string, permanently = false) => callCommand('delete_item', { id, permanently }),
   restoreItem: (id: string) => callCommand('restore_item', { id }),
   toggleFavorite: (id: string): Promise<VaultItemSummary> => callCommand('toggle_favorite', { id }),
+  togglePin: (id: string): Promise<VaultItemSummary> => callCommand('toggle_pin', { id }),
 }

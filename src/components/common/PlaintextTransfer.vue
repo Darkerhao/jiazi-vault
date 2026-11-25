@@ -69,7 +69,7 @@ async function confirmImport() {
     <p><n-text depth="3">导出有效凭证及项目名称，不含回收站。导入前可预览记录、检查格式错误，并选择跳过完全重复的凭证。</n-text></p>
     <details>
       <summary>导入格式说明</summary>
-      <p>支持本应用导出的文件。JSON 为对象数组；CSV 首行为字段名，必填 type、title。项目使用 project 名称；tags 为 JSON 数组，fields 为 JSON 对象；favorite 为 true 或 false。</p>
+      <p>支持本应用导出的文件。JSON 为对象数组；CSV 首行为字段名，必填 type、title。项目使用 project 名称；tags 为 JSON 数组，fields 为 JSON 对象；favorite、pinned 为 true 或 false。</p>
       <p>示例：<code>[{"type":"login","title":"示例账号","username":"user","password":"secret"}]</code></p>
       <p>CSV 中以公式符号或单引号开头的文本使用单引号转义，重新导入时还原。建议使用 JSON 保留完整文本。完整加密备份请使用上方备份功能。</p>
     </details>
@@ -83,7 +83,7 @@ async function confirmImport() {
     <template v-if="preview">
       <p>{{ preview.name }} · 有效 {{ preview.validCount }} 条 · 重复 {{ preview.duplicateCount }} 条 · 错误 {{ preview.invalidCount }} 条</p>
       <n-checkbox v-model:checked="skipDuplicates" :disabled="busy">跳过完全重复的记录</n-checkbox>
-      <p><n-text depth="3">与当前有效凭证或文件内前面的记录比较内容，忽略收藏和时间。同名但内容不同会新增；现有凭证不会被覆盖。预览不显示密码。记录号从 1 开始，CSV 不含表头。</n-text></p>
+      <p><n-text depth="3">与当前有效凭证或文件内前面的记录比较内容，忽略收藏、置顶和时间。同名但内容不同会新增；现有凭证不会被覆盖。预览不显示密码。记录号从 1 开始，CSV 不含表头。</n-text></p>
       <n-alert v-if="preview.invalidCount" type="warning">无效记录将跳过；请按记录号修正源文件后重新导入。</n-alert>
       <table class="preview-table"><thead><tr><th>记录</th><th>名称 / 类型</th><th>检查结果</th></tr></thead><tbody><tr v-for="row in previewRows" :key="row.row"><td>{{ row.row }}</td><td>{{ row.title }}<div>{{ ITEM_TYPE_LABELS[row.type as ItemType] || '—' }}</div></td><td>{{ row.error || (row.duplicate ? '内容完全重复' : '可导入') }}</td></tr></tbody></table>
       <n-pagination v-if="preview.rows.length > 50" v-model:page="page" :page-size="50" :item-count="preview.rows.length" />

@@ -126,7 +126,7 @@ Windows 实测：旧 0.1.2 NSIS → 同目录安装当前 0.1.8 本地构建，�
 - 自动加密备份：默认关闭，用户选择目录后在独立文件夹创建首份；解锁期间每分钟检查、有修改且间隔 15 分钟时备份，保留最近 10 份。缺失文件检测、错误状态、立即重试、停用/更换目录保留原文件。目录属于设备配置，不写入可移植备份。
 - 恢复前快照：正常库在替换前通过 SQLite `VACUUM INTO` 保留一致快照（包含 WAL 已提交内容），失败阻止覆盖。恢复窗口列出本机快照，验证原主密码后复用完整备份校验与事务恢复。锁定状态仍可恢复；损坏数据库沿用原文件保留流程。
 - 快照保存在用户数据目录 `recovery/snapshot-*.db`，沿用原库字段级加密与明文元数据保护范围，不是整体加密导出；不会自动删除。快照恢复仍保留当前库，避免第二次覆盖丢失数据。
-- 凭证历史：更新与保存旧版本同一事务，最多保留 20 份完整加密内容；详情可选版本、逐字段显示及确认恢复，回收站只读。恢复保留当前收藏/使用记录，删除的项目不自动重建；永久删除与到期清理通过外键级联清理历史。
+- 凭证历史：更新与保存旧版本同一事务，最多保留 20 份完整加密内容；详情可选版本、逐字段显示及确认恢复，回收站只读。恢复保留当前收藏/置顶/使用记录，删除的项目不自动重建；永久删除与到期清理通过外键级联清理历史。
 - `.jvault` 写入 v4，包含历史版本，继续读取 v1/v2/v3；旧应用不能读取 v4。主密码轮换同一事务更新条目与历史，失败整体回滚。文件原子写入由手动、自动、明文导出共用。
 - 新测试：`tests/item-history.test.mjs`、`tests/backup-reliability.test.mjs`；桌面场景 `tests/data-recovery.mjs` 接入 `tests/desktop.mjs`，覆盖历史预览恢复、自动备份文件、缺失重试、停用、锁定拒绝访问、快照恢复及保存失败阻止覆盖。
 - 验证结果：最终 `pnpm test` 67/67 通过（日志 `output/data-recovery-unit-tests.log`），包含新增 12 项数据/文件回归；`pnpm typecheck`、Vite 前端生产构建及 Electron 编译通过，`git diff --check` 与新增桌面脚本语法检查通过。旧 API Key 无效日期修正后，历史保留旧值且不阻断备份恢复。
@@ -282,7 +282,7 @@ Windows 本轮已实测：独立进程占用全局快捷键时有可见提示且
 
 ## 已有功能
 
-- 最近使用记录实际打开凭证和成功复制的时间，持久化为 `last_accessed_at`。创建、修改、收藏、列表查询、导出不更新该时间；从未使用的条目不进入最近使用。旧库迁移不伪造历史记录。
+- 最近使用记录实际打开凭证和成功复制的时间，持久化为 `last_accessed_at`。创建、修改、收藏、置顶、列表查询、导出不更新该时间；从未使用的条目不进入最近使用。旧库迁移不伪造历史记录。
 - 回收站按首次删除时间保留 30 天。启动、读取条目、备份恢复、系统恢复运行和每分钟定时检查会永久删除过期条目。应用关闭期间在下次启动补做清理；运行时定时检查最多约延迟一分钟。
 - 加密备份升级为 v3，保留使用时间；仍读取 v1/v2 备份。恢复旧备份不会重新延长回收站期限。旧版本应用不支持读取 v3 备份。
 - 设置页提供 JSON/CSV 明文导入导出。导出二次确认由主进程执行，默认取消；锁定使等待中的文件操作失效。明文文件包含密码、私钥等敏感数据，完整备份仍应使用 `.jvault`。
@@ -306,19 +306,20 @@ JSON 为对象数组，例如：
     "password": "example-secret",
     "tags": ["example"],
     "fields": {"token": "example-token"},
-    "favorite": false
+    "favorite": false,
+    "pinned": false
   }
 ]
 ```
 
 CSV 使用 UTF-8，可包含 BOM；第一行为字段名，必填列为 `type,title`，其他列可省略或调整顺序。支持引号、逗号、CRLF/LF、多行内容；引号以两个引号转义。
 
-允许字段：`type,title,project,environment,username,password,url,host,port,notes,tags,fields,favorite,createdAt,updatedAt,lastAccessedAt`。
+允许字段：`type,title,project,environment,username,password,url,host,port,notes,tags,fields,favorite,pinned,createdAt,updatedAt,lastAccessedAt`。
 
 - `type`：login、password、server、database、api-key、ssh、secure-note、custom。
 - `title`：非空字符串。
 - `environment`：development、testing、staging、production、other。
-- `port`：0–65535 整数；`favorite`：布尔值，省略为 false。
+- `port`：0–65535 整数；`favorite`、`pinned`：布尔值，省略为 false。
 - `tags`：字符串数组；`fields`：字符串值对象；在 CSV 中均使用 JSON 文本。
 - 时间字段：非负整数，Unix 毫秒。缺少创建/修改时间则使用导入时间；缺少使用时间则保持未使用。
 - CSV 单元格以 `= + - @`、制表符、回车、换行或单引号开头时，导出增加一个单引号，导入按相同规则去掉转义。这是本应用的可逆文本约定。外部 CSV 需遵守此约定；推荐 JSON 做无歧义的数据交换。
@@ -384,6 +385,6 @@ Windows 11（10.0.22631），i9-13900H，20 逻辑核，约 31.7 GiB 内存。�
 - 从全局快捷键或托盘唤起快捷搜索时，复制成功或按 Esc 收起主窗口；应用内 Ctrl K 打开的搜索保持窗口。查看详情和“查看全部结果”不会触发收起。新增 Rust `hide_window` 命令，仍只接受应用主窗口调用。
 - 列表、详情和快捷搜索支持直接打开凭证 URL；快捷搜索 Ctrl/Cmd+O 打开并收起，API Key 的 Endpoint 可在详情和快捷搜索中打开；仅接受 http/https，使用系统默认浏览器。成功打开会更新最近使用。
 - 列表每行只保留一个主复制入口，按类型显示复制密码 / 复制 API Key / 复制私钥 / 复制 .env / 复制内容；快捷搜索默认字段沿用相同命名。
-- 搜索结果同分时收藏优先、其次最近使用，最后按更新时间；复制提示显示复制内容与剪贴板清除时间，环境变量集导出提示保持一致。
+- 置顶凭证在活动列表和匹配搜索中优先；随后按匹配度、收藏、最近使用和更新时间排序。最近使用页面仍按真实使用时间排序；复制提示显示复制内容与剪贴板清除时间，环境变量集导出提示保持一致。
 - 列表和快捷搜索的主字段复制改为 Rust 单次 `copy_item`：解密、写入剪贴板和记录最近使用一次完成，密码不经过 WebView；已保存环境变量集沿用同一路径并保留明文确认。
 - 验收：`cargo test`（36 项）、`pnpm test:frontend`（26 项）与旧版兼容测试通过；`node tests/desktop.mjs` 在临时 `com.jiazi.vault.desktop-test` 标识的调试产物上全部通过，新增覆盖 Enter 复制、Ctrl+Enter 详情、Rust 主字段复制、非 http/https URL 拒绝、类型命名复制入口、复制提示、原生隐藏窗口及二次启动唤回。测试使用独立保险库和真实 Windows 剪贴板。
