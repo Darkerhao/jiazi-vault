@@ -13,6 +13,8 @@ import { callCommand } from '../services/ipc'
 import { DEFAULT_SEARCH_SHORTCUT, validateSearchShortcut, type AppSettings } from '../types/desktop'
 
 const settings = useSettingsStore()
+const group = ref('general')
+const groups = [{ value: 'general', label: '通用' }, { value: 'security', label: '安全' }, { value: 'data', label: '备份与数据' }, { value: 'shortcuts', label: '快捷键' }]
 const shortcut = ref<{ shortcut: string | null; shortcutRegistered: boolean } | null>(null)
 const shortcutDraft = ref<string | null>(null), shortcutError = ref(''), shortcutBusy = ref(false)
 const shortcutLabel = (value: string | null) => value?.replace('CommandOrControl', navigator.platform.includes('Mac') ? '⌘' : 'Ctrl').replace(/\+/g, ' + ') ?? '已停用'
@@ -64,29 +66,42 @@ function updateAutoLock(value: number) {
 <template>
   <AppShell>
     <div class="page-heading"><div><n-text depth="3">偏好设置</n-text><h1>设置</h1></div></div>
+    <nav class="settings-nav" aria-label="设置分组"><n-button v-for="entry in groups" :key="entry.value" :type="group === entry.value ? 'primary' : 'default'" :aria-pressed="group === entry.value" @click="group = entry.value">{{ entry.label }}</n-button></nav>
+    <n-alert v-if="settings.error" type="error" class="settings-error">{{ settings.error }} <n-button v-if="!settings.preferences" text @click="settings.load">重试</n-button></n-alert>
     <div class="settings-grid">
+    <template v-if="group === 'general'">
     <n-card title="通用偏好" class="settings-card" bordered>
-      <n-alert v-if="settings.error" type="error" class="settings-error">{{ settings.error }} <n-button v-if="!settings.preferences" text @click="settings.load">重试</n-button></n-alert>
       <n-form v-if="settings.preferences" label-placement="left" label-width="180" :disabled="settings.busy">
-        <n-form-item label="主题"><n-select :value="settings.preferences.themeMode" :options="themeOptions" @update:value="(value) => settings.update({ themeMode: value })" /></n-form-item>
-        <n-form-item label="剪贴板清除时间"><n-select :value="settings.preferences.clipboardClearTimeout" :options="clipboardOptions" @update:value="(value) => settings.update({ clipboardClearTimeout: value })" /></n-form-item>
-        <n-form-item label="自动锁定"><n-select :value="settings.preferences.autoLockMinutes ?? 0" :options="autoLockOptions" @update:value="updateAutoLock" /></n-form-item>
+        <n-form-item label="主题"><n-select :input-props="{ 'aria-label': '主题' }" :value="settings.preferences.themeMode" :options="themeOptions" @update:value="(value) => settings.update({ themeMode: value })" /></n-form-item>
       </n-form>
-      <n-text depth="3">设置自动保存。无操作或切换应用后按所选时间锁定；系统锁屏、休眠时立即锁定。锁定和退出时也会清理本应用复制的内容。</n-text>
+      <n-text depth="3" role="status">{{ settings.busy ? '正在保存…' : settings.saved ? '已保存' : '修改后自动保存' }}</n-text>
     </n-card>
     <StartupSettings />
+    </template>
+    <template v-if="group === 'security'">
+    <n-card title="锁定与剪贴板" class="settings-card" bordered>
+      <n-form v-if="settings.preferences" label-placement="left" label-width="180" :disabled="settings.busy">
+        <n-form-item label="剪贴板清除时间"><n-select :input-props="{ 'aria-label': '剪贴板清除时间' }" :value="settings.preferences.clipboardClearTimeout" :options="clipboardOptions" @update:value="(value) => settings.update({ clipboardClearTimeout: value })" /></n-form-item>
+        <n-form-item label="自动锁定"><n-select filterable :input-props="{ 'aria-label': '自动锁定' }" :value="settings.preferences.autoLockMinutes ?? 0" :options="autoLockOptions" @update:value="updateAutoLock" /></n-form-item>
+      </n-form>
+      <n-text depth="3" role="status">{{ settings.busy ? '正在保存…' : settings.saved ? '已保存' : '修改后自动保存' }}</n-text>
+      <p>无操作或切换应用后按所选时间锁定；系统锁屏、休眠时立即锁定。锁定和退出时也会清理本应用复制的内容。</p>
+    </n-card>
     <VaultSecurity />
     <n-card title="本地加密的保护范围" class="settings-card backup-card" bordered>
       <p>密码、备注和自定义字段（包括私钥、API Key、环境变量）经过加密保存。主密码不以明文保存。</p>
       <p>凭证名称、用户名、URL、主机、端口、标签、项目名称和使用时间等元数据以明文保存在本地数据库中。获得数据库文件的人可能读取这些信息；锁定保险库不会加密这些元数据。</p>
       <n-text depth="3">加密备份会加密上述全部业务数据。应用不提供云端同步或主密码找回。</n-text>
     </n-card>
+    </template>
+    <template v-if="group === 'data'">
     <n-card title="加密备份与恢复" class="settings-card backup-card" bordered>
-      <BackupStatus detailed><BackupRestore /></BackupStatus>
+      <BackupStatus detailed><BackupRestore verify-only /><BackupRestore /></BackupStatus>
       <AutomaticBackup />
     </n-card>
     <PlaintextTransfer />
-    <n-card title="快捷键与托盘" class="settings-card backup-card" bordered>
+    </template>
+    <n-card v-if="group === 'shortcuts'" title="快捷键与托盘" class="settings-card backup-card" bordered>
       <n-alert v-if="shortcutError" type="error">{{ shortcutError }}</n-alert>
       <n-alert v-if="shortcut?.shortcut && !shortcut.shortcutRegistered" type="warning">{{ shortcutLabel(shortcut.shortcut) }} 注册失败，可能已被其他应用占用。请更换快捷键；也可使用托盘菜单或应用内 Ctrl K。</n-alert>
       <n-text v-if="shortcut">全局快捷搜索：{{ shortcutLabel(shortcut.shortcut) }}</n-text>
@@ -96,7 +111,7 @@ function updateAutoLock(value: number) {
         <n-button :disabled="shortcutBusy || !shortcut" @click="saveShortcut(null)">停用</n-button>
         <n-button :disabled="shortcutBusy || !shortcut" @click="saveShortcut(DEFAULT_SEARCH_SHORTCUT)">恢复默认</n-button>
       </n-space>
-      <p>应用内：Ctrl K 搜索 · Ctrl N 新建凭证 · Ctrl Shift N 新建项目 · Ctrl G 生成密码 · Ctrl Shift L 锁定（macOS 使用 ⌘）。</p>
+      <p>应用内：Ctrl K 搜索 · Ctrl N 新建凭证 · Ctrl Shift N 新建项目 · Ctrl G 生成密码 · Ctrl S 保存凭证 · Ctrl Shift L 锁定（macOS 使用 ⌘）。</p>
       <n-text depth="3">双击托盘图标可重新打开窗口；使用托盘菜单“退出”结束应用。关闭窗口的行为可在“启动与窗口”中设置。</n-text>
     </n-card>
     </div>
@@ -104,14 +119,11 @@ function updateAutoLock(value: number) {
 </template>
 
 <style scoped>
+.settings-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
 .settings-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
 .settings-grid > :deep(.n-card) { min-width: 0; }
 .settings-error { margin-bottom: 16px; }
 .shortcut-input { margin: 12px 0; }
-@container workspace (min-width: 1080px) {
-  .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .settings-grid > :deep(.security-card) { grid-row: span 2; }
-}
 @container workspace (max-width: 500px) {
   .settings-card :deep(.n-form-item) { grid-template-areas: "label" "blank" "feedback"; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
   .settings-card :deep(.n-form-item-label) { width: auto !important; text-align: left; padding: 0 0 8px; }

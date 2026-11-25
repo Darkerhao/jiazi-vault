@@ -3,6 +3,7 @@ export interface AppSettings {
   themeMode: 'system' | 'light' | 'dark'
   clipboardClearTimeout: 'never' | 5 | 10 | 15 | 30 | 60
   autoLockMinutes: 5 | 15 | 30 | 60 | null
+  passwordGenerator: PasswordOptions
 }
 export interface DesktopPreferences { silentStart: boolean; closeToTray: boolean }
 export interface DesktopSettings extends DesktopPreferences { openAtLogin: boolean; startupSupported: boolean }
@@ -11,6 +12,7 @@ export type DesktopAction = 'open' | 'quick-search' | 'quick-search-global' | 'g
 export interface ProjectInput { name: string; icon?: string; color?: string; description?: string }
 export interface Project extends ProjectInput { id: string; itemCount: number; lastAccessedAt?: number }
 export interface PasswordOptions { length: number; uppercase: boolean; lowercase: boolean; numbers: boolean; symbols: boolean; excludeAmbiguous: boolean }
+export const DEFAULT_PASSWORD_OPTIONS: PasswordOptions = { length: 18, uppercase: true, lowercase: true, numbers: true, symbols: true, excludeAmbiguous: true }
 export interface GeneratedPassword { password: string; entropy: number; strength: '弱' | '一般' | '强' | '非常强' }
 export interface AppRelease { tag: string; version: string; notes: string; publishedAt: string | null }
 export interface AppUpdate { version: string; newer: boolean; notes: string }

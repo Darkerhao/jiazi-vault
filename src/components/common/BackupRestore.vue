@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../stores/settings'
 import { callCommand } from '../../services/ipc'
 import type { RecoverySnapshot, BackupSource, BackupPreview } from '../../types/contracts'
 
+const props = defineProps<{ verifyOnly?: boolean }>()
 const auth = useAuthStore(), settings = useSettingsStore()
 const show = ref(false), busy = ref(false), password = ref(''), error = ref('')
 const snapshots = ref<RecoverySnapshot[]>([]), source = ref('file'), snapshotError = ref('')
@@ -62,7 +63,7 @@ async function verify() {
   finally { password.value = ''; busy.value = false }
 }
 async function restore() {
-  if (busy.value || !preview.value) return
+  if (props.verifyOnly || busy.value || !preview.value) return
   busy.value = true
   error.value = ''
   try {
@@ -80,9 +81,9 @@ onBeforeUnmount(() => { disposed = true; reset() })
 </script>
 
 <template>
-  <n-button :disabled="auth.busy" @click="open">从加密备份恢复</n-button>
-  <n-modal :show="show" preset="card" title="恢复加密备份" style="width: 520px; max-width: calc(100vw - 40px)" :content-style="{ maxHeight: 'calc(100dvh - 180px)', overflowY: 'auto' }" :closable="!busy" :mask-closable="!busy" :close-on-esc="!busy" @update:show="(value) => !value && close()">
-    <n-alert type="warning" :show-icon="false" class="restore-notice">{{ auth.databaseError ? '恢复后使用备份创建时的主密码解锁。原数据库文件将保留在数据目录的 recovery 文件夹中。' : '恢复将整体替换当前凭证、项目、历史版本、回收站和偏好设置；覆盖前自动保留本机快照，保存失败则停止恢复。' }}</n-alert>
+  <n-button :disabled="auth.busy" @click="open">{{ verifyOnly ? '验证备份' : '从加密备份恢复' }}</n-button>
+  <n-modal :show="show" preset="card" :title="verifyOnly ? '验证备份' : '恢复加密备份'" style="width: 520px; max-width: calc(100vw - 40px)" :content-style="{ maxHeight: 'calc(100dvh - 180px)', overflowY: 'auto' }" :closable="!busy" :mask-closable="!busy" :close-on-esc="!busy" @update:show="(value) => !value && close()">
+    <n-alert :type="verifyOnly ? 'info' : 'warning'" :show-icon="false" class="restore-notice">{{ verifyOnly ? '使用备份创建时的主密码验证能否解密和读取内容。此操作仅检查所选备份，不会覆盖当前保险库。' : auth.databaseError ? '恢复后使用备份创建时的主密码解锁。原数据库文件将保留在数据目录的 recovery 文件夹中。' : '恢复将整体替换当前凭证、项目、历史版本、回收站和偏好设置；覆盖前自动保留本机快照，保存失败则停止恢复。' }}</n-alert>
     <n-alert v-if="snapshotError" type="error">{{ snapshotError }}</n-alert>
     <template v-if="!chosen">
       <n-form-item label="恢复来源"><n-select v-model:value="source" :disabled="busy" :options="[{ label: '加密备份文件（.jvault）', value: 'file' }, ...snapshots.map((snapshot) => ({ label: `恢复前快照 · ${new Date(snapshot.createdAt).toLocaleString()}`, value: snapshot.id }))]" aria-label="恢复来源" /></n-form-item>
@@ -92,7 +93,7 @@ onBeforeUnmount(() => { disposed = true; reset() })
     <template v-else>
       <p class="backup-name">已选择：{{ chosen.name }}</p>
       <n-form v-if="!preview" @submit.prevent="verify">
-        <n-form-item label="备份主密码"><n-input v-model:value="password" type="password" placeholder="备份创建时使用的主密码" :disabled="busy" autofocus /></n-form-item>
+        <n-form-item label="备份主密码"><n-input v-model:value="password" type="password" placeholder="备份创建时使用的主密码" :input-props="{ 'aria-label': '备份主密码' }" :disabled="busy" autofocus /></n-form-item>
         <n-button type="primary" attr-type="submit" :loading="busy">验证并预览</n-button>
       </n-form>
       <template v-else>
@@ -102,7 +103,7 @@ onBeforeUnmount(() => { disposed = true; reset() })
       </template>
     </template>
     <n-alert v-if="error" type="error" class="restore-error">{{ error }}</n-alert>
-    <template #footer><n-space justify="end" :wrap-item="false"><n-button :disabled="busy" @click="close">取消</n-button><n-button v-if="chosen" :disabled="busy" @click="reset">重新选择</n-button><n-button v-if="preview" type="primary" :loading="busy" @click="restore">确认替换并恢复</n-button></n-space></template>
+    <template #footer><n-space justify="end" :wrap-item="false"><n-button :disabled="busy" @click="close">{{ verifyOnly && preview ? '完成验证' : '取消' }}</n-button><n-button v-if="chosen" :disabled="busy" @click="reset">重新选择</n-button><n-button v-if="preview && !verifyOnly" type="primary" :loading="busy" @click="restore">确认替换并恢复</n-button></n-space></template>
   </n-modal>
 </template>
 

@@ -34,7 +34,7 @@ async function exportFile() {
   <n-button :disabled="disabled || (ids !== undefined && !ids.length)" @click="open">{{ ids ? '导出所选' : '导出 JSON / CSV' }}</n-button>
   <n-modal v-model:show="show" preset="card" title="导出凭证" style="width: 520px; max-width: calc(100vw - 40px)" :closable="!busy" :mask-closable="!busy" :close-on-esc="!busy">
     <n-alert type="warning">导出文件包含明文密码和私钥，请妥善保管。</n-alert>
-    <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text :disabled="busy" @click="vault.load">重试</n-button></n-alert>
+    <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text :disabled="busy" @click="vault.load(true)">重试</n-button></n-alert>
     <n-form-item v-if="!selected" label="导出范围" class="export-scope"><n-select v-model:value="project" :disabled="busy" clearable filterable placeholder="全部有效凭证" :options="vault.projects.map((item) => ({ label: item.name, value: item.id }))" aria-label="导出项目" /></n-form-item>
     <p>{{ selected ? '所选凭证' : project ? `项目：${vault.projects.find((item) => item.id === project)?.name}` : '全部有效凭证' }} · 共 {{ count }} 条（不含回收站）</p>
     <n-form-item label="文件格式"><n-select v-model:value="format" :disabled="busy" :options="[{ label: 'JSON', value: 'json' }, { label: 'CSV', value: 'csv' }]" /></n-form-item>

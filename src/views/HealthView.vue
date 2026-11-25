@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { NAlert, NButton, NEmpty, NPagination, NSelect, NTag, NText } from 'naive-ui'
 import AppShell from '../components/common/AppShell.vue'
 import { useAuthStore } from '../stores/auth'
@@ -9,8 +8,15 @@ import { callCommand } from '../services/ipc'
 import { ITEM_TYPE_LABELS } from '../utils/item-fields'
 import { vaultErrorMessage } from '../utils/vault-error'
 import type { CredentialHealthEntry, CredentialHealthIssue } from '../types/contracts'
+import type { VaultItem } from '../types/vault'
+import ItemFormModal from '../components/item/ItemFormModal.vue'
 
-const router = useRouter(), auth = useAuthStore(), vault = useVaultStore()
+const auth = useAuthStore(), vault = useVaultStore()
+const editing = ref<VaultItem | null>(null)
+async function edit(id: string) {
+  try { editing.value = await vault.get(id, false) }
+  catch (cause) { error.value = vaultErrorMessage(cause, '读取凭证失败，请重试。') }
+}
 const entries = ref<CredentialHealthEntry[]>([])
 const loading = ref(false), error = ref(''), checkedAt = ref<Date | null>(null)
 const filter = ref<CredentialHealthIssue | null>(null), page = ref(1)
@@ -37,8 +43,6 @@ async function load() {
   if (loading.value) return
   loading.value = true
   error.value = ''
-  entries.value = []
-  checkedAt.value = null
   const revision = auth.sessionRevision
   try {
     await vault.load()
@@ -75,11 +79,12 @@ onBeforeUnmount(() => { disposed = true; entries.value = [] })
         <n-text depth="3">{{ ITEM_TYPE_LABELS[row.item.type] }}<template v-if="row.item.projectId"> · {{ vault.projects.find(project => project.id === row.item.projectId)?.name }}</template></n-text>
         <div class="health-issues"><n-tag v-for="issue in row.issues" :key="issue" size="small" :type="issue === 'expired' ? 'error' : 'warning'">{{ labels[issue] }}</n-tag></div>
       </div>
-      <n-button :aria-label="`处理凭证${row.item.title}`" @click="router.push({ name: 'vault', query: { item: row.id } })">查看与修改</n-button>
+      <n-button :aria-label="`处理凭证${row.item.title}`" @click="edit(row.id)">查看与修改</n-button>
     </div>
     <n-empty v-if="checkedAt && !rows.length" class="health-state" :description="filter ? '没有符合该问题类型的凭证' : '本次基础检查未发现问题'" />
     <n-text v-if="loading" class="health-state">正在本地检查…</n-text>
     <n-pagination v-if="rows.length > pageSize" v-model:page="page" :page-size="pageSize" :item-count="rows.length" show-quick-jumper class="health-pagination" />
+    <ItemFormModal v-if="editing" :show="true" :item="editing" start-editing @close="editing = null" @saved="load" />
   </AppShell>
 </template>
 

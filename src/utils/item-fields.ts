@@ -1,4 +1,5 @@
 import type { Environment, ItemType } from '../types/vault'
+import type { PrimaryCopyKind } from '../types/contracts'
 
 export const ITEM_TYPE_LABELS: Record<ItemType, string> = {
   login: '登录账号',
@@ -18,11 +19,11 @@ export const ITEM_TYPE_OPTIONS = (Object.keys(ITEM_TYPE_LABELS) as ItemType[]).m
 }))
 
 export const ENVIRONMENT_OPTIONS: { label: string; value: Environment }[] = [
-  { label: 'Development', value: 'development' },
-  { label: 'Testing', value: 'testing' },
-  { label: 'Staging', value: 'staging' },
-  { label: 'Production', value: 'production' },
-  { label: 'Other', value: 'other' },
+  { label: '开发', value: 'development' },
+  { label: '测试', value: 'testing' },
+  { label: '预发布', value: 'staging' },
+  { label: '生产', value: 'production' },
+  { label: '其他', value: 'other' },
 ]
 
 export interface FieldDef {
@@ -88,25 +89,23 @@ export const TYPE_FIELDS: Record<ItemType, FieldDef[]> = {
 }
 
 const PRIMARY_COPY = {
-  login: ['复制密码', '密码'],
   password: ['复制密码', '密码'],
-  server: ['复制密码', '密码'],
-  database: ['复制密码', '密码'],
-  'api-key': ['复制 API Key', 'API Key'],
-  ssh: ['复制私钥', '私钥'],
-  'secure-note': ['复制内容', '内容'],
-  custom: ['复制内容', '内容'],
+  apiKey: ['复制 API Key', 'API Key'],
+  secret: ['复制 Secret', 'Secret'],
+  privateKey: ['复制私钥', '私钥'],
+  connectionString: ['复制连接串', '连接串'],
+  content: ['复制内容', '内容'],
   env: ['复制 .env', '完整 .env 内容'],
-} as const satisfies Record<ItemType, readonly [string, string]>
+} as const satisfies Record<PrimaryCopyKind, readonly [string, string]>
 
-export function primaryLabel(type: ItemType) {
+export function primaryLabel(type: PrimaryCopyKind) {
   return PRIMARY_COPY[type][0]
 }
 
-export function primaryValueLabel(type: ItemType) {
+export function primaryValueLabel(type: PrimaryCopyKind) {
   return PRIMARY_COPY[type][1]
 }
 
-export function primaryOptionLabel(type: ItemType) {
+export function primaryOptionLabel(type: PrimaryCopyKind) {
   return type === 'env' ? '完整 .env（需确认）' : PRIMARY_COPY[type][1]
 }

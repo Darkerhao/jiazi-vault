@@ -18,7 +18,7 @@ const desktop = useDesktopStore()
 const updates = useUpdatesStore()
 desktopBridge.onUpdateState((state) => { updates.state = state })
 void updates.load()
-desktopBridge.onItemsChanged(() => { if (auth.unlocked) void vault.load() })
+desktopBridge.onItemsChanged(() => { if (auth.unlocked) void vault.load(true) })
 desktopBridge.onBackupChanged(() => { if (auth.unlocked) void useBackupStore().load() })
 desktopBridge.onDesktopAction(desktop.request)
 desktopBridge.onLocked(() => {

@@ -23,7 +23,8 @@ pub struct PendingImport {
     pub token: String,
     pub epoch: u64,
     pub name: String,
-    pub records: Vec<Record>,
+    pub records: Option<Vec<Record>>,
+    pub csv: Option<transfer::CsvSource>,
 }
 pub struct PendingRestore {
     pub token: String,
@@ -58,6 +59,42 @@ pub fn id() -> String {
 }
 
 impl Vault {
+    pub fn prepare_import(&mut self, name: String, contents: &str, format: &str) -> Result<Value> {
+        let epoch = self.generation();
+        self.key()?;
+        self.pending_import = None;
+        let csv = if format == "csv" {
+            Some(transfer::CsvSource::parse(contents)?)
+        } else {
+            None
+        };
+        let records = if let Some(csv) = &csv {
+            if csv.native_format() {
+                Some(csv.records(None)?)
+            } else {
+                None
+            }
+        } else {
+            Some(transfer::parse(contents, format)?)
+        };
+        let mut result = if let Some(records) = &records {
+            transfer::preview(self.connection()?, self.key()?, records)?
+        } else {
+            let csv = csv.as_ref().ok_or(Error("INVALID_IMPORT"))?;
+            json!({"columns":csv.headers,"rowCount":csv.rows.len()})
+        };
+        let token = id();
+        result["token"] = json!(token);
+        result["name"] = json!(name);
+        self.pending_import = Some(PendingImport {
+            token,
+            epoch,
+            name,
+            records,
+            csv,
+        });
+        Ok(result)
+    }
     pub fn new(directory: PathBuf, epoch: Arc<AtomicU64>) -> Self {
         let opened = db::open(&directory)
             .and_then(|db| {
@@ -425,6 +462,21 @@ impl Vault {
                 self.automatic_backup(true)?;
                 Ok(Value::Null)
             }
+            "map_import" => {
+                let pending = self
+                    .pending_import
+                    .as_ref()
+                    .filter(|pending| pending.token == args["token"])
+                    .ok_or(Error("IMPORT_EXPIRED"))?;
+                self.check_epoch(pending.epoch)?;
+                let csv = pending.csv.as_ref().ok_or(Error("INVALID_MAPPING"))?;
+                let records = csv.records(Some(&args["mapping"]))?;
+                let mut preview = transfer::preview(db, key, &records)?;
+                preview["token"] = json!(pending.token);
+                preview["name"] = json!(pending.name);
+                self.pending_import.as_mut().unwrap().records = Some(records);
+                Ok(preview)
+            }
             "confirm_import" => {
                 let pending = self
                     .pending_import
@@ -435,7 +487,11 @@ impl Vault {
                 let skip = args["skipDuplicates"]
                     .as_bool()
                     .ok_or(Error("INVALID_DATA"))?;
-                let result = transfer::import(db, key, &pending.records, skip)?;
+                let records = pending
+                    .records
+                    .as_ref()
+                    .ok_or(Error("IMPORT_MAPPING_REQUIRED"))?;
+                let result = transfer::import(db, key, records, skip)?;
                 self.pending_import = None;
                 Ok(json!(result))
             }
@@ -455,19 +511,8 @@ impl Vault {
 }
 
 pub fn generate_password(options: &Value) -> Result<Value> {
-    let length = options["length"]
-        .as_u64()
-        .filter(|n| (8..=128).contains(n))
-        .ok_or(Error("INVALID_GENERATOR_OPTIONS"))? as usize;
-    for name in [
-        "uppercase",
-        "lowercase",
-        "numbers",
-        "symbols",
-        "excludeAmbiguous",
-    ] {
-        ensure(options[name].is_boolean(), "INVALID_GENERATOR_OPTIONS")?;
-    }
+    let options = db::validate_generator_options(options)?;
+    let length = options["length"].as_u64().unwrap() as usize;
     let mut groups = Vec::new();
     for (name, characters) in [
         ("uppercase", "ABCDEFGHIJKLMNOPQRSTUVWXYZ"),

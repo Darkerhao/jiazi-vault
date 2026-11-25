@@ -1,25 +1,14 @@
 <script setup lang="ts">
-import { desktopBridge } from '../../services/desktop'
-
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { NAlert, NButton, NSpace, NText } from 'naive-ui'
 import { callCommand } from '../../services/ipc'
-import { useAuthStore } from '../../stores/auth'
-import type { AutomaticBackupStatus } from '../../types/contracts'
+import { useBackupStore } from '../../stores/backup'
 
-const auth = useAuthStore()
-const status = ref<AutomaticBackupStatus | null>(null)
+const backup = useBackupStore()
+const status = computed(() => backup.automatic)
 const busy = ref(false), error = ref('')
-let disposed = false, request = 0
-async function load() {
-  const current = ++request, revision = auth.sessionRevision
-  try {
-    const result = await callCommand('get_automatic_backup_status')
-    if (!disposed && current === request && revision === auth.sessionRevision) { status.value = result; error.value = '' }
-  } catch {
-    if (!disposed && current === request && revision === auth.sessionRevision) error.value = '无法读取自动备份状态，请重试。'
-  }
-}
+let disposed = false
+const load = () => backup.load()
 async function perform(action: 'configure' | 'disable' | 'run') {
   if (busy.value) return
   busy.value = true
@@ -33,9 +22,7 @@ async function perform(action: 'configure' | 'disable' | 'run') {
     if (!disposed) error.value = '操作未完成，请确认保险库已解锁、没有其他备份操作，并检查目录权限或外部磁盘连接后重试。'
   } finally { busy.value = false }
 }
-const unsubscribe = desktopBridge.onBackupChanged(load)
-onMounted(load)
-onBeforeUnmount(() => { disposed = true; request++; unsubscribe?.() })
+onBeforeUnmount(() => { disposed = true })
 </script>
 
 <template>
@@ -45,9 +32,6 @@ onBeforeUnmount(() => { disposed = true; request++; unsubscribe?.() })
     <template v-if="status">
       <p v-if="status.directory" class="backup-directory"><n-text depth="3">备份目录：</n-text>{{ status.directory }}</p>
       <p v-else><n-text depth="3">尚未启用。选择备份位置后，会创建本应用专用的备份文件夹。</n-text></p>
-      <n-alert v-if="status.error" type="warning">自动备份或文件检查未完成。请检查目标磁盘与目录权限，然后重试。</n-alert>
-      <n-alert v-else-if="status.directory && status.lastBackupAt && !status.fileExists" type="warning">最近的自动备份文件已不存在，请立即重新备份。</n-alert>
-      <p v-if="status.lastBackupAt">最近自动备份：{{ new Date(status.lastBackupAt).toLocaleString() }} · {{ status.fileExists ? '文件存在' : '文件缺失' }}</p>
       <n-space>
         <n-button :disabled="busy" @click="perform('configure')">{{ status.directory ? '更换备份位置' : '选择目录并启用' }}</n-button>
         <n-button v-if="status.directory" :loading="busy" @click="perform('run')">立即自动备份</n-button>

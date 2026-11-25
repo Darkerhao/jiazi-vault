@@ -122,10 +122,10 @@ async function submit() {
         </template>
         <template v-else>
         <n-form-item v-if="!isCreating || step === 'password'" :show-label="false">
-          <n-input ref="passwordInput" v-model:value="password" type="password" show-password-on="click" placeholder="主密码" autofocus :input-props="{ autocomplete: isCreating ? 'new-password' : 'current-password' }" />
+          <n-input ref="passwordInput" v-model:value="password" type="password" show-password-on="click" placeholder="主密码" autofocus :input-props="{ 'aria-label': '主密码', autocomplete: isCreating ? 'new-password' : 'current-password' }" />
         </n-form-item>
         <n-form-item v-if="isCreating && step === 'confirm'" :show-label="false">
-          <n-input v-model:value="confirmation" type="password" show-password-on="click" placeholder="确认主密码" autofocus :input-props="{ autocomplete: 'new-password' }" />
+          <n-input v-model:value="confirmation" type="password" show-password-on="click" placeholder="确认主密码" autofocus :input-props="{ 'aria-label': '确认主密码', autocomplete: 'new-password' }" />
         </n-form-item>
         <template v-if="isCreating && step === 'security'">
           <n-alert type="warning" :show-icon="false" class="security-note">主密码无法找回。忘记主密码后，保险库将无法解锁。请牢记主密码并定期创建加密备份；恢复备份需要备份创建时的主密码。</n-alert>

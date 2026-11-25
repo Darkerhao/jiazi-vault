@@ -84,7 +84,7 @@ function restore() {
       try {
         await callCommand('restore_item_history', { id: props.item.id, historyId })
         if (disposed || revision !== auth.sessionRevision) return
-        await vault.load()
+        await vault.load(true)
         if (disposed || revision !== auth.sessionRevision) return
         message.success('已恢复历史版本')
         emit('restored')

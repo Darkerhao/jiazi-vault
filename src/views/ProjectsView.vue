@@ -50,7 +50,7 @@ async function save() {
     if (editingId.value) await projectService.update({ ...form, id: editingId.value })
     else await projectService.create({ ...form })
     show.value = false
-    await vault.load()
+    await vault.load(true)
     message.success('项目已保存')
   } catch (cause) {
     error.value = vaultErrorMessage(cause, '保存失败，请重试。')
@@ -60,7 +60,7 @@ async function save() {
 function remove(project: Project) {
   dialog.warning({ title: '删除项目', content: `删除「${project.name}」？凭证和回收站条目会保留，并解除项目归属。`, positiveText: '删除项目', negativeText: '取消',
     onPositiveClick: async () => {
-      try { await projectService.remove(project.id); await vault.load() }
+      try { await projectService.remove(project.id); await vault.load(true) }
       catch (cause) { message.error(vaultErrorMessage(cause, '删除失败，请重试。')); return false }
     },
   })
@@ -70,7 +70,7 @@ function remove(project: Project) {
 <template>
   <AppShell>
     <div class="page-heading"><div><n-text depth="3">工作区</n-text><h1>项目</h1></div><n-button type="primary" @click="edit()">新建项目</n-button></div>
-    <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text @click="vault.load">重试</n-button></n-alert>
+    <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text @click="vault.load(true)">重试</n-button></n-alert>
     <n-spin :show="vault.loading">
       <n-empty v-if="!vault.loading && !visibleProjects.length" :description="query ? '没有匹配的项目' : '还没有项目'" />
       <n-list v-else bordered>

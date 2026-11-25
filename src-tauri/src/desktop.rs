@@ -2,7 +2,7 @@ use crate::{
     State, backup, database as db,
     error::{Error, Result, ensure},
     items, transfer,
-    vault::{self, PendingImport, PendingRestore},
+    vault::{self, PendingRestore},
 };
 use serde_json::{Value, json};
 use std::{
@@ -395,14 +395,11 @@ pub fn dispatch(app: &AppHandle, command: &str, args: &Value) -> Result<Value> {
             let id = vault::text(args, "id")?;
             let mut vault = state.vault.lock().map_err(|_| Error("VAULT_BUSY"))?;
             let key = vault.key()?;
-            let item = items::get(vault.connection()?, key, id, false)?
-                .ok_or(Error("ITEM_NOT_FOUND"))?;
+            let item =
+                items::get(vault.connection()?, key, id, false)?.ok_or(Error("ITEM_NOT_FOUND"))?;
             if item.r#type == "env" {
-                let contents = items::serialize_env(
-                    item.fields
-                        .as_ref()
-                        .ok_or(Error("ENV_EXPORT_FAILED"))?,
-                )?;
+                let contents =
+                    items::serialize_env(item.fields.as_ref().ok_or(Error("ENV_EXPORT_FAILED"))?)?;
                 drop(vault);
                 if !confirm(
                     app,
@@ -415,14 +412,14 @@ pub fn dispatch(app: &AppHandle, command: &str, args: &Value) -> Result<Value> {
                 vault.key()?;
                 write_clipboard(app, &mut vault, contents)?;
                 let used = items::mark_used(vault.connection()?, id)?;
-                return Ok(json!({"copied": true, "usedAt": used}));
+                return Ok(json!({"copied": true, "usedAt": used, "kind": "env"}));
             }
-            let Some(secret) = items::primary(&item) else {
-                return Ok(json!({"copied": false, "usedAt": null}));
+            let Some((kind, secret)) = items::primary(&item) else {
+                return Ok(json!({"copied": false, "usedAt": null, "kind": null}));
             };
-            write_clipboard(app, &mut vault, secret)?;
+            write_clipboard(app, &mut vault, secret.to_owned())?;
             let used = items::mark_used(vault.connection()?, id)?;
-            Ok(json!({"copied": true, "usedAt": used}))
+            Ok(json!({"copied": true, "usedAt": used, "kind": kind}))
         }
         "read_env_file" => {
             let epoch = checkpoint(app)?;
@@ -445,7 +442,11 @@ pub fn dispatch(app: &AppHandle, command: &str, args: &Value) -> Result<Value> {
             };
             if !confirm(
                 app,
-                if to_file { "导出明文 .env" } else { "复制完整 .env" },
+                if to_file {
+                    "导出明文 .env"
+                } else {
+                    "复制完整 .env"
+                },
                 if to_file {
                     "即将以明文导出全部环境变量。文件可被其他应用读取，请妥善保管并避免提交到版本库。"
                 } else {
@@ -590,20 +591,9 @@ pub fn dispatch(app: &AppHandle, command: &str, args: &Value) -> Result<Value> {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_ascii_lowercase();
-            let records = transfer::parse(&contents, &format)?;
             let mut vault = state.vault.lock().map_err(|_| Error("VAULT_BUSY"))?;
             vault.check_epoch(epoch)?;
-            let mut preview = transfer::preview(vault.connection()?, vault.key()?, &records)?;
-            let token = vault::id();
-            preview["token"] = json!(token);
-            preview["name"] = json!(name(&path));
-            vault.pending_import = Some(PendingImport {
-                token,
-                epoch,
-                name: name(&path),
-                records,
-            });
-            Ok(preview)
+            vault.prepare_import(name(&path), &contents, &format)
         }
         "export_plaintext" => {
             let epoch = checkpoint(app)?;

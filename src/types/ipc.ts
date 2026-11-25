@@ -1,6 +1,8 @@
 import type { AppInfo, AppLink, ImportPreview, ItemHistorySummary, AutomaticBackupStatus, RecoverySnapshot, ItemBatchAction, ExportScope, BackupSource, BackupPreview, CredentialHealthEntry, TransferFormat, BiometricStatus } from './contracts'
 import type { BackupStatus, AppRelease, UpdateState, AppSettings, DesktopSetting, DesktopSettings, GeneratedPassword, PasswordOptions, DesktopAction } from './desktop'
 import type { Project, ProjectInput, VaultItem, VaultItemSummary } from './vault'
+import type { PrimaryCopyKind } from './contracts'
+import type { ImportColumns, ImportMapping } from './contracts'
 
 export type VaultError =
   | 'INVALID_PASSWORD'
@@ -75,7 +77,7 @@ export interface IpcCommands {
   get_settings: { args: undefined; result: AppSettings }
   update_settings: { args: { settings: AppSettings }; result: AppSettings }
   copy_to_clipboard: { args: { text: string; itemId?: string }; result: number | null }
-  copy_item: { args: { id: string }; result: { copied: boolean; usedAt: number | null } | null }
+  copy_item: { args: { id: string }; result: { copied: boolean; usedAt: number | null; kind: PrimaryCopyKind | null } | null }
   get_backup_status: { args: undefined; result: BackupStatus }
   create_backup: { args: undefined; result: string | null }
   select_backup_source: { args: { snapshotId?: string }; result: BackupSource | null }
@@ -87,7 +89,8 @@ export interface IpcCommands {
   run_automatic_backup: { args: undefined; result: void }
   list_recovery_snapshots: { args: undefined; result: RecoverySnapshot[] }
   export_plaintext: { args: { format: TransferFormat; scope?: ExportScope }; result: string | null }
-  preview_import: { args: undefined; result: ImportPreview | null }
+  preview_import: { args: undefined; result: ImportPreview | ImportColumns | null }
+  map_import: { args: { token: string; mapping: ImportMapping }; result: ImportPreview }
   confirm_import: { args: { token: string; skipDuplicates: boolean }; result: number }
   cancel_import: { args: { token: string }; result: void }
   read_env_file: { args: undefined; result: { name: string; contents: string } | null }

@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { chromium } from 'playwright-core'
 import { createVaultThroughUI } from './onboarding.mjs'
 import { verifyResponsiveLayout } from './responsive-layout.mjs'
+import { verifyUpgradeWorkflow } from './upgrade-workflow.mjs'
 
 if (process.platform !== 'win32') throw new Error('This native CDP acceptance runner targets Windows WebView2')
 const root = process.cwd(), output = resolve('output/playwright')
@@ -78,7 +79,11 @@ async function stop() {
   browser = page = child = undefined
 }
 async function section(name) { await page.getByRole('link', { name, exact: true }).click() }
-async function refresh() { await section('设置'); await section('全部条目') }
+async function refresh() {
+  await section('全部条目')
+  await page.getByRole('button', { name: '刷新凭证列表' }).click()
+  await page.locator('.n-spin-body:visible').waitFor({ state: 'hidden' })
+}
 async function unlock(value) {
   await page.getByPlaceholder('主密码', { exact: true }).fill(value)
   await page.getByRole('button', { name: '解锁', exact: true }).click()
@@ -113,11 +118,13 @@ try {
   await mkdir(automaticDirectory, { recursive: true })
   const databasePath = (await call('database_info')).path
   let testDatabase = new DatabaseSync(databasePath)
+  testDatabase.exec('PRAGMA busy_timeout=5000')
   testDatabase.prepare('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)').run('automatic_backup', JSON.stringify({ directory: automaticDirectory }))
   testDatabase.close()
   await call('run_automatic_backup')
   assert.equal(await automaticBackupCount(automaticDirectory), 1)
   testDatabase = new DatabaseSync(databasePath)
+  testDatabase.exec('PRAGMA busy_timeout=5000')
   let automaticRecord = JSON.parse(testDatabase.prepare('SELECT value FROM settings WHERE key=?').get('automatic_backup_record').value)
   automaticRecord.at = Date.now() + 60_000
   testDatabase.prepare('UPDATE settings SET value=? WHERE key=?').run(JSON.stringify(automaticRecord), 'automatic_backup_record')
@@ -130,6 +137,7 @@ try {
   assert.equal(await automaticBackupCount(automaticDirectory), 1, 'saving a credential must not write an automatic backup synchronously')
   assert.equal((await call('get_backup_status')).hasChanges, true)
   testDatabase = new DatabaseSync(databasePath)
+  testDatabase.exec('PRAGMA busy_timeout=5000')
   automaticRecord = JSON.parse(testDatabase.prepare('SELECT value FROM settings WHERE key=?').get('automatic_backup_record').value)
   automaticRecord.at = Date.now() - 16 * 60 * 1000
   testDatabase.prepare('UPDATE settings SET value=? WHERE key=?').run(JSON.stringify(automaticRecord), 'automatic_backup_record')
@@ -159,12 +167,13 @@ try {
   assert.equal(await page.getByRole('button', { name: '复制 API Key Native API key' }).isVisible(), true)
   pass('project, encrypted credentials, summaries, health and history work through real native IPC')
 
-  await page.getByRole('button', { name: '置顶凭证 Native secret' }).click()
-  await page.getByRole('button', { name: '取消置顶 Native secret' }).waitFor()
+  await page.getByRole('button', { name: '更多操作 Native secret' }).click()
+  await page.getByRole('menuitem', { name: '置顶凭证', exact: true }).click()
+  await page.locator('.item-row').filter({ hasText: 'Native secret' }).locator('[aria-label="已置顶"]').waitFor()
   assert.equal((await call('list_items'))[0].id, sensitive.id)
   assert.equal((await page.locator('.item-list .item-title').allTextContents())[0], 'Native secret')
   await refresh()
-  await page.getByRole('button', { name: '取消置顶 Native secret' }).waitFor()
+  await page.locator('.item-row').filter({ hasText: 'Native secret' }).locator('[aria-label="已置顶"]').waitFor()
   pass('pinning a credential persists and moves it to the top of the active list')
 
   await section('关于')
@@ -175,6 +184,7 @@ try {
   await page.getByRole('heading', { name: '关于', exact: true }).scrollIntoViewIfNeeded()
   await page.screenshot({ path: resolve(run, 'about-top.png') })
   await section('设置')
+  await page.getByRole('navigation', { name: '设置分组' }).getByRole('button', { name: '安全', exact: true }).click()
   await page.getByRole('heading', { name: 'Windows Hello', exact: true }).waitFor()
   pass('About and settings render with the Rust runtime and native biometric availability')
 
@@ -194,6 +204,14 @@ try {
 
   await section('全部条目')
   assert.equal(await page.getByRole('button', { name: '打开 https://example.com' }).isVisible(), true)
+  await page.evaluate(() => {
+    const invoke = window.__TAURI_INTERNALS__.invoke
+    window.credentialAuditCommands = []
+    window.__TAURI_INTERNALS__.invoke = function (command, args, options) {
+      if (command === 'vault_command') window.credentialAuditCommands.push(args.command)
+      return invoke.call(this, command, args, options)
+    }
+  })
   const previousQuickSearchClipboard = clipboard()
   try {
     await page.keyboard.press('Control+K')
@@ -201,8 +219,15 @@ try {
     await quickSearch.waitFor()
     assert.match(await page.locator('.result').first().innerText(), /Native secret/)
     await quickSearch.fill('Native secret')
-    assert.equal(await page.locator('option[value="primary"]').textContent(), '密码')
-    assert.equal(await page.getByRole('button', { name: '打开', exact: true }).isEnabled(), true)
+    assert.equal(await page.locator('.result mark').first().evaluate(mark => getComputedStyle(mark).fontWeight), '700')
+    await page.screenshot({ path: resolve(run, 'quick-search-highlight.png') })
+    assert.deepEqual(await page.evaluate(() => window.credentialAuditCommands.filter(command => ['list_items', 'list_projects', 'get_item'].includes(command))), [], 'opening and searching must reuse summaries without prefetching secrets')
+    assert.equal(await page.getByRole('dialog').getByRole('button', { name: '复制密码并关闭' }).isEnabled(), true)
+    assert.equal(await page.getByRole('dialog').getByRole('button', { name: '打开', exact: true }).isEnabled(), true)
+    await quickSearch.evaluate(input => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 229, isComposing: true, bubbles: true, cancelable: true })))
+    assert.equal(await quickSearch.isVisible(), true, 'IME confirmation must keep quick search open')
+    assert.equal(clipboard(), previousQuickSearchClipboard, 'IME confirmation must not copy a credential')
+    pass('composing Enter leaves quick search and the system clipboard unchanged')
     await page.keyboard.press('Enter')
     await page.getByText(/已复制密码，\d+ 秒后清除/).waitFor()
     await page.getByText('快捷搜索', { exact: true }).waitFor({ state: 'hidden' })
@@ -220,6 +245,30 @@ try {
   await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click()
   pass('quick search Ctrl+Enter opens credential details')
 
+  await page.keyboard.press('Control+K')
+  await detailSearch.fill('Native secret')
+  await page.getByRole('dialog').getByRole('button', { name: '选择字段', exact: true }).click()
+  await page.getByRole('combobox', { name: '选择复制字段' }).waitFor()
+  assert.equal(await page.locator('option[value="username"]').count(), 1)
+  await page.keyboard.press('Escape')
+  pass('quick search reads additional fields only after explicit selection')
+
+  const notesOnly = await call('create_item', { item: { type: 'login', title: 'Notes only fixture', notes: 'private fixture note' } })
+  const connection = await call('create_item', { item: { type: 'database', title: 'Connection fixture', fields: { connectionString: 'postgresql://fixture-db' } } })
+  await refresh()
+  assert.equal(await page.locator('.item-row').filter({ hasText: 'Notes only fixture' }).getByRole('button', { name: /复制密码/ }).count(), 0)
+  const connectionCopy = page.getByRole('button', { name: '复制连接串 Connection fixture' })
+  const previousConnectionClipboard = clipboard()
+  try {
+    await connectionCopy.click()
+    await connectionCopy.getByText('已复制', { exact: true }).waitFor()
+    assert.equal(clipboard(), 'postgresql://fixture-db')
+  } finally { setClipboard(previousConnectionClipboard) }
+  await call('delete_item', { id: notesOnly.id, permanently: true })
+  await call('delete_item', { id: connection.id, permanently: true })
+  await refresh()
+  pass('copy actions match real content, hide absent passwords and show inline success')
+
   const previousApiClipboard = clipboard()
   try {
     const copied = await call('copy_item', { id: apiItem.id })
@@ -234,6 +283,12 @@ try {
     await assert.rejects(call('open_url', { url, itemId: sensitive.id }), /INVALID_URL/)
   }
   pass('credential URL opening rejects missing hosts and explicit non-http schemes')
+
+  const clipboardBeforeUpgrade = clipboard()
+  try {
+    const timings = await verifyUpgradeWorkflow({ page, call, run, pid: child.pid, password, automaticDirectory, clipboard })
+    pass(`remaining upgrade workflows: settings, keyboard save, detail navigation, health repair, backup verification, CSV mapping, saved generator rules; timings ${JSON.stringify(timings)}`)
+  } finally { setClipboard(clipboardBeforeUpgrade) }
 
   assert.equal(windowVisible(), true)
   await call('hide_window')
@@ -283,6 +338,17 @@ try {
   })
   await page.screenshot({ path: resolve(run, 'vault-900x600.png'), fullPage: true })
   await call('create_item', { item: { type: 'login', title: '用于验证窄窗口长标题换行与操作按钮位置的示例凭证名称', username: 'long-account-name-for-responsive-layout-checks@example.keystill.test', password: 'responsive-fixture-only', projectId: project.id, environment: 'development', favorite: false, pinned: false } })
+  for (let index = 0; index < 10; index++) await call('create_item', { item: { type: 'login', title: `示例工作账号 ${index + 1}`, username: `demo${index}@example.test`, password: 'layout-fixture-only', projectId: project.id, environment: 'production', url: 'https://example.test' } })
+  await refresh()
+  await page.setViewportSize({ width: 1200, height: 760 })
+  await page.evaluate(async () => { await Promise.all(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))) })
+  const density = await page.evaluate(() => ({
+    rowHeight: document.querySelector('.item-list .n-list-item').getBoundingClientRect().height,
+    visibleRows: [...document.querySelectorAll('.item-list .n-list-item')].filter(row => row.getBoundingClientRect().top >= 0 && row.getBoundingClientRect().bottom <= innerHeight).length,
+  }))
+  assert.ok(density.visibleRows >= 5, JSON.stringify(density))
+  await page.screenshot({ path: resolve(run, 'vault-1200x760.png') })
+  pass(`compact list displays ${density.visibleRows} complete rows at 1200×760 (${density.rowHeight}px first row)`)
   await verifyResponsiveLayout(page, run)
   pass('all primary pages adapt to sidebar toggles and 900–1920px viewports without unused width or horizontal overflow')
   await stop()
@@ -292,6 +358,15 @@ try {
   assert.equal((await call('get_item', { id: sensitive.id, recordAccess: false })).password, 'changed-native-secret')
   assert.equal((await call('get_item', { id: sensitive.id, recordAccess: false })).pinned, true)
   pass('restart preserves encrypted credentials and requires authentication again')
+  await call('update_settings', { settings: { ...settings, themeMode: 'dark' } })
+  await page.reload()
+  await page.getByRole('heading', { name: '解锁保险库', exact: true }).waitFor()
+  await unlock(password)
+  await page.getByRole('heading', { name: '全部条目', exact: true }).waitFor()
+  await page.locator('.n-spin-body:visible').waitFor({ state: 'hidden' })
+  await page.screenshot({ path: resolve(run, 'vault-dark-1200.png') })
+  await call('update_settings', { settings })
+  pass('compact list and primary actions render in the persisted dark theme')
   await stop()
 
   const legacyData = resolve(run, 'legacy')
