@@ -206,3 +206,14 @@
 - `.jvault` v1-v4 直接备份 SQLite 行；旧备份没有 `pinned`。读取时补 0、恢复列加入 `pinned` 即可保持旧格式兼容，无需升级备份版本。
 - JSON/CSV 已包含收藏和时间等组织元数据。置顶应同样可往返，但完全重复判断需忽略收藏、置顶和时间。
 - 最近使用页面已有明确的时间排序，回收站已有删除/更新时间语义；这两处不应被置顶覆盖。
+
+## 2026-11-25 升级评估续做
+
+- HEAD af056b5，main，起始包含前一轮未提交实现；第 1–5 项已基本覆盖，第 6–10 项仍有实际缺口。
+- 设置为长单列；健康页跳转到 vault 后未保留原列表；详情仅独立弹窗无前后切换。
+- 备份已有 select_backup_source / preview_backup / cancel_backup_restore，可直接复用为只验证模式。
+- 不使用新的 PACE 状态目录，沿用仓库文件规划。
+
+- Naive UI 本地 2.45.3 的 NInput/NSelect 均经 inputProps 传递原生输入属性，NModal 已提供焦点陷阱和回焦机制。
+- SSH 官方参数文档：https://man.openbsd.org/ssh.1；PowerShell 单引号转义文档：https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_quoting_rules。生成命令仅复制，使用 -l / -p 和 --，不包含密码私钥。
+- CSV 与备份密码不进入额外前端持久化状态；列映射继续走原 Record 校验/去重/事务。导入令牌按现有会话锁定时清理。

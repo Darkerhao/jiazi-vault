@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NAlert, NButton, NEmpty, NIcon, NInput, NModal, NSpin, NText, type InputInst } from 'naive-ui'
+import { NAlert, NButton, NEmpty, NHighlight, NIcon, NInput, NModal, NSpin, NText, type InputInst } from 'naive-ui'
 import { OpenOutline } from '@vicons/ionicons5'
 import { useVaultStore } from '../../stores/vault'
 import { useAuthStore } from '../../stores/auth'
 import { useClipboard } from '../../composables/useClipboard'
 import { useOpenUrl } from '../../composables/useOpenUrl'
-import { ITEM_TYPE_LABELS, TYPE_FIELDS, primaryOptionLabel, primaryValueLabel } from '../../utils/item-fields'
+import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, TYPE_FIELDS, primaryOptionLabel } from '../../utils/item-fields'
 import { vaultService } from '../../services/vault'
 import { vaultErrorMessage } from '../../utils/vault-error'
 import { ITEM_TYPE_ICONS } from '../../utils/item-icons'
@@ -24,11 +24,13 @@ const selected = ref(0)
 const input = ref<InputInst | null>(null)
 const resultsElement = ref<HTMLElement | null>(null)
 const copying = ref(false)
-const matches = computed(() => vault.search(vault.items, query.value))
+const matches = computed(() => query.value.trim() ? vault.search(vault.items, query.value) : [...vault.items].sort((a, b) =>
+  Number(b.pinned) - Number(a.pinned) || (b.lastAccessedAt ?? 0) - (a.lastAccessedAt ?? 0) || Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt))
+const patterns = computed(() => query.value.trim().split(/\s+/).filter(Boolean))
 const results = computed(() => matches.value.slice(0, 50))
 const active = computed(() => results.value[selected.value])
 const details = ref<VaultItem | null>(null)
-const activeUrl = computed(() => active.value?.url ?? (details.value?.id === active.value?.id ? details.value.fields?.endpoint : undefined))
+const activeUrl = computed(() => active.value?.hasUrl)
 const fieldsLoading = ref(false)
 const fieldsError = ref('')
 const selectedField = ref('primary')
@@ -48,6 +50,7 @@ const copyFields = computed(() => {
 })
 
 async function loadFields() {
+  if (fieldsLoading.value || details.value?.id === active.value?.id) return
   const current = ++request
   const revision = auth.sessionRevision
   const id = active.value?.id
@@ -65,13 +68,18 @@ async function loadFields() {
     if (current === request && revision === auth.sessionRevision) fieldsError.value = vaultErrorMessage(cause, '读取字段失败，请重试。')
   } finally { if (current === request) fieldsLoading.value = false }
 }
-watch(() => active.value?.id, loadFields, { immediate: true })
+watch(() => active.value?.id, () => {
+  request++
+  details.value = null
+  selectedField.value = 'primary'
+  fieldsError.value = ''
+  fieldsLoading.value = false
+})
 onBeforeUnmount(() => { request++; details.value = null })
 
 watch(query, () => { selected.value = 0 })
-watch(results, (items, previous) => {
-  const id = previous[selected.value]?.id
-  selected.value = Math.max(0, items.findIndex((item) => item.id === id))
+watch(results, (items) => {
+  selected.value = Math.min(selected.value, Math.max(0, items.length - 1))
 })
 watch(selected, async () => {
   await nextTick()
@@ -87,13 +95,13 @@ function open(item = active.value) {
 
 async function copySelected(): Promise<boolean> {
   const item = active.value
-  if (!item || copying.value || !auth.unlocked) return false
+  if (!item || copying.value || !auth.unlocked || (selectedField.value === 'primary' && !item.primaryKind)) return false
   const field = copyFields.value.find((field) => field.key === selectedField.value)
   if (selectedField.value !== 'primary' && (!field || details.value?.id !== item.id)) return false
   copying.value = true
   try {
     return selectedField.value === 'primary'
-      ? await copyItem(item.id, primaryValueLabel(item.type))
+      ? await copyItem(item.id)
       : await copy(field!.value, item.id, field!.label)
   }
   finally { copying.value = false }
@@ -105,10 +113,15 @@ async function copyAndClose() {
 
 async function openActiveUrl() {
   const item = active.value
-  if (item && await openUrl(activeUrl.value, item.id)) emit('close', true)
+  if (!item) return
+  if (!item.url) await loadFields()
+  if (active.value?.id !== item.id) return
+  const url = item.url || (details.value?.id === item.id ? details.value.fields?.endpoint : undefined)
+  if (url && await openUrl(url, item.id)) emit('close', true)
 }
 
 function keydown(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) return
   const interactive = !!(event.target as HTMLElement).closest('select, button')
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     if (interactive) return
@@ -129,20 +142,21 @@ function keydown(event: KeyboardEvent) {
 }
 
 function subtitle(item: VaultItemSummary) {
-  return [vault.projects.find((p) => p.id === item.projectId)?.name, item.environment, item.username || item.host || item.url].filter(Boolean).join(' / ')
+  return [vault.projects.find((p) => p.id === item.projectId)?.name, ENVIRONMENT_OPTIONS.find(option => option.value === item.environment)?.label, item.username || item.host || item.url].filter(Boolean).join(' / ')
 }
 </script>
 
 <template>
   <n-modal :show="true" preset="card" title="快捷搜索" style="width: 640px; max-width: calc(100vw - 40px)" @update:show="(show) => !show && emit('close', true)">
     <div @keydown="keydown">
-      <n-input ref="input" v-model:value="query" placeholder="搜索名称、项目、环境、账号…" clearable :input-props="{ role: 'combobox', 'aria-controls': 'quick-search-results', 'aria-expanded': true, 'aria-activedescendant': active ? `quick-result-${active.id}` : undefined }" />
-      <n-alert v-if="vault.error" type="error" class="search-state">{{ vault.error }} <n-button text @click="vault.load">重试</n-button></n-alert>
+      <n-input ref="input" v-model:value="query" placeholder="搜索名称、项目、环境、账号…" clearable :input-props="{ 'aria-label': '搜索凭证', role: 'combobox', 'aria-controls': 'quick-search-results', 'aria-expanded': true, 'aria-activedescendant': active ? `quick-result-${active.id}` : undefined }" />
+      <n-text v-if="!query.trim()" depth="3" class="search-caption">置顶与最近使用</n-text>
+      <n-alert v-if="vault.error" type="error" class="search-state">{{ vault.error }} <n-button text @click="vault.load(true)">重试</n-button></n-alert>
       <n-spin :show="vault.loading">
         <div id="quick-search-results" ref="resultsElement" class="results" role="listbox" aria-label="搜索结果">
           <div v-for="(item, index) in results" :id="`quick-result-${item.id}`" :key="item.id" role="option" :aria-selected="selected === index" class="result" @mousemove="selected = index" @click="open(item)">
             <n-icon :size="24" aria-hidden="true"><component :is="ITEM_TYPE_ICONS[item.type]" /></n-icon>
-            <div class="result-content"><n-text strong>{{ item.title }}</n-text><n-text depth="3" class="subtitle">{{ subtitle(item) }}</n-text></div>
+            <div class="result-content"><n-text strong><n-highlight :text="item.title" :patterns="patterns" /></n-text><n-text depth="3" class="subtitle"><n-highlight :text="subtitle(item)" :patterns="patterns" /></n-text></div>
             <n-text depth="3" class="result-type">{{ ITEM_TYPE_LABELS[item.type] }}</n-text>
           </div>
           <n-empty v-if="!vault.loading && !results.length" class="search-state" description="没有匹配的凭证" />
@@ -150,14 +164,16 @@ function subtitle(item: VaultItemSummary) {
       </n-spin>
       <n-alert v-if="fieldsError" type="error">{{ fieldsError }} <n-button text @click="loadFields">重试</n-button></n-alert>
       <div class="search-footer">
-        <n-text depth="3">↑ ↓ 选择 · Enter / Ctrl Shift C 复制并关闭 · Ctrl O 打开 · Ctrl Enter 查看详情（macOS 使用 ⌘）· Esc 关闭</n-text>
+        <n-text depth="3">↑ ↓ 选择 · Enter 复制 · Ctrl Enter 查看详情 · Ctrl O 打开 · Esc 关闭（macOS 使用 ⌘）</n-text>
         <div class="copy-controls">
-          <select v-model="selectedField" aria-label="选择复制字段" :disabled="!details || fieldsLoading || copying">
-            <option value="primary">{{ active ? primaryOptionLabel(active.type) : '默认内容' }}</option>
+          <select v-if="details" v-model="selectedField" aria-label="选择复制字段" :disabled="fieldsLoading || copying">
+            <option value="primary" :disabled="!active?.primaryKind">{{ active?.primaryKind ? primaryOptionLabel(active.primaryKind) : '无默认复制内容' }}</option>
             <option v-for="field in copyFields" :key="field.key" :value="field.key">{{ field.label }}</option>
           </select>
+          <n-button v-else size="small" :disabled="!active" :loading="fieldsLoading" @click="loadFields">选择字段</n-button>
+          <n-button size="small" :disabled="!active" @click="open()">详情</n-button>
           <n-button size="small" :disabled="!activeUrl" :loading="openingUrl === active?.id" @click="openActiveUrl"><template #icon><n-icon><open-outline /></n-icon></template>打开</n-button>
-          <n-button size="small" :disabled="!active" :loading="copying" @click="copyAndClose">复制并关闭</n-button>
+          <n-button type="primary" size="small" :disabled="!active || (selectedField === 'primary' && !active.primaryKind)" :loading="copying" @click="copyAndClose">{{ selectedField === 'primary' && active?.primaryKind ? `复制${primaryOptionLabel(active.primaryKind)}并关闭` : '复制并关闭' }}</n-button>
         </div>
       </div>
       <n-button v-if="matches.length > 50" text class="all-results" @click="emit('close', false); router.push({ name: 'vault', query: { q: query || undefined } })">查看全部 {{ matches.length }} 条结果</n-button>
@@ -174,7 +190,9 @@ function subtitle(item: VaultItemSummary) {
 .subtitle { display: block; margin-top: 4px; font-size: 12px; overflow-wrap: anywhere; }
 .search-state { margin: 20px 0; }
 .search-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
-.copy-controls { display: flex; align-items: center; gap: 8px; }
+.copy-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.search-caption { display: block; margin-top: 12px; font-size: 12px; }
+.result :deep(mark) { background: transparent; color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .all-results { margin-top: 16px; }
 .copy-controls select { max-width: 220px; min-width: 120px; height: 30px; border-radius: 6px; padding: 0 8px; color: inherit; background: var(--n-color); border: 1px solid var(--n-border-color); color-scheme: light dark; }
 </style>

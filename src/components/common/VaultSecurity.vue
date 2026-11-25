@@ -12,6 +12,7 @@ const currentPassword = ref('')
 const newPassword = ref('')
 const confirmation = ref('')
 const enrollmentPassword = ref('')
+const changingPassword = ref(false)
 const busy = ref(false)
 const error = ref('')
 
@@ -66,16 +67,16 @@ async function toggleBiometric() {
     <n-form v-if="biometric" class="security-form" :disabled="busy" @submit.prevent="toggleBiometric">
       <n-alert v-if="!biometric.available" type="info" class="security-error">此设备暂不可用，请在系统设置中配置 Windows Hello 或 Touch ID。你仍可使用主密码。</n-alert>
       <n-form-item v-if="!biometric.enabled && biometric.available" label="当前主密码">
-        <n-input v-model:value="enrollmentPassword" type="password" placeholder="启用前验证主密码" show-password-on="click" :input-props="{ autocomplete: 'current-password' }" />
+        <n-input v-model:value="enrollmentPassword" type="password" placeholder="启用前验证主密码" show-password-on="click" :input-props="{ autocomplete: 'current-password', 'aria-label': '当前主密码' }" />
       </n-form-item>
       <n-button :loading="busy" :disabled="!biometric.enabled && !biometric.available" attr-type="submit">{{ biometric.enabled ? '关闭系统快捷解锁' : '启用系统快捷解锁' }}</n-button>
     </n-form>
-    <h2 class="password-heading">修改主密码</h2>
+    <div class="password-heading"><n-button :disabled="busy" :aria-expanded="changingPassword" @click="changingPassword = !changingPassword; currentPassword = ''; newPassword = ''; confirmation = ''; error = ''">{{ changingPassword ? '取消修改主密码' : '修改主密码' }}</n-button></div>
     <n-text depth="3">修改后需重新解锁，并重新启用系统快捷解锁。已有加密备份仍使用创建备份时的主密码。</n-text>
-    <n-form class="security-form" :disabled="busy" @submit.prevent="changePassword">
-      <n-form-item label="当前主密码"><n-input v-model:value="currentPassword" type="password" placeholder="当前主密码" show-password-on="click" :input-props="{ autocomplete: 'current-password' }" /></n-form-item>
-      <n-form-item label="新主密码"><n-input v-model:value="newPassword" type="password" placeholder="新主密码（至少 8 个字符）" show-password-on="click" :input-props="{ autocomplete: 'new-password' }" /></n-form-item>
-      <n-form-item label="确认新主密码"><n-input v-model:value="confirmation" type="password" placeholder="确认新主密码" show-password-on="click" :input-props="{ autocomplete: 'new-password' }" /></n-form-item>
+    <n-form v-if="changingPassword" class="security-form" :disabled="busy" @submit.prevent="changePassword">
+      <n-form-item label="当前主密码"><n-input v-model:value="currentPassword" type="password" placeholder="当前主密码" show-password-on="click" :input-props="{ autocomplete: 'current-password', 'aria-label': '当前主密码' }" /></n-form-item>
+      <n-form-item label="新主密码"><n-input v-model:value="newPassword" type="password" placeholder="新主密码（至少 8 个字符）" show-password-on="click" :input-props="{ autocomplete: 'new-password', 'aria-label': '新主密码' }" /></n-form-item>
+      <n-form-item label="确认新主密码"><n-input v-model:value="confirmation" type="password" placeholder="确认新主密码" show-password-on="click" :input-props="{ autocomplete: 'new-password', 'aria-label': '确认新主密码' }" /></n-form-item>
       <n-button type="primary" :loading="busy" attr-type="submit">修改主密码并锁定</n-button>
     </n-form>
   </n-card>

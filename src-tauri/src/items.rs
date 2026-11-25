@@ -102,24 +102,42 @@ pub fn serialize_env(fields: &BTreeMap<String, String>) -> Result<String> {
     Ok(output)
 }
 
-pub fn primary(item: &Item) -> Option<String> {
+pub fn primary(item: &Item) -> Option<(&'static str, &str)> {
     let field = |key: &str| {
         item.fields
             .as_ref()
             .and_then(|fields| fields.get(key))
             .filter(|value| !value.is_empty())
-            .cloned()
+            .map(String::as_str)
     };
-    let password = || item.password.clone().filter(|value| !value.is_empty());
+    let password = || {
+        item.password
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .map(|value| ("password", value))
+    };
     match item.r#type.as_str() {
-        "api-key" => field("apiKey").or_else(|| field("secret")),
-        "ssh" => field("privateKey"),
-        "secure-note" => item.notes.clone().filter(|value| !value.is_empty()),
-        "database" => password().or_else(|| field("connectionString")),
+        "api-key" => field("apiKey")
+            .map(|value| ("apiKey", value))
+            .or_else(|| field("secret").map(|value| ("secret", value))),
+        "ssh" => field("privateKey").map(|value| ("privateKey", value)),
+        "secure-note" => item
+            .notes
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .map(|value| ("content", value)),
+        "database" => password()
+            .or_else(|| field("connectionString").map(|value| ("connectionString", value))),
         "custom" => password().or_else(|| {
             item.fields
                 .as_ref()
-                .and_then(|fields| fields.values().find(|value| !value.is_empty()).cloned())
+                .and_then(|fields| {
+                    fields
+                        .values()
+                        .find(|value| !value.is_empty())
+                        .map(String::as_str)
+                })
+                .map(|value| ("content", value))
         }),
         "env" => None,
         _ => password(),
@@ -224,9 +242,26 @@ pub fn from_row(row: &Value, key: &[u8; 32]) -> Result<Item> {
 }
 pub fn summary(row: &Value, key: &[u8; 32]) -> Result<Value> {
     let mut value = base(row)?;
-    value["hasSensitiveData"] = json!(row["has_secret"] == 1);
+    let item = from_row(row, key)?;
+    let primary_kind = if item.r#type == "env" {
+        item.fields
+            .as_ref()
+            .and_then(|fields| serialize_env(fields).ok())
+            .map(|_| "env")
+    } else {
+        primary(&item).map(|(kind, _)| kind)
+    };
+    value["primaryKind"] = json!(primary_kind);
+    value["hasUrl"] = json!(
+        item.url.as_ref().is_some_and(|url| !url.trim().is_empty())
+            || item
+                .fields
+                .as_ref()
+                .and_then(|fields| fields.get("endpoint"))
+                .is_some_and(|url| !url.trim().is_empty())
+    );
     if row["type"] == "api-key"
-        && let Some(expiry) = from_row(row, key)?
+        && let Some(expiry) = item
             .fields
             .and_then(|fields| fields.get("expiresAt").cloned())
             .filter(|v| !v.is_empty())

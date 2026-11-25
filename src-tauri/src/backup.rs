@@ -358,7 +358,7 @@ pub fn automatic_status(db: &Connection) -> Result<Value> {
         .zip(record["file"].as_str())
         .is_some_and(|(path, file)| path.join(file).is_file());
     Ok(
-        json!({"directory":config["directory"],"lastBackupAt":record["at"],"fileExists":exists,"error":db::setting(db,"automatic_backup_error")?.is_some()}),
+        json!({"directory":config["directory"],"directoryAvailable":path.as_ref().is_some_and(|path| path.is_dir()),"lastBackupAt":record["at"],"fileExists":exists,"error":db::setting(db,"automatic_backup_error")?.is_some()}),
     )
 }
 pub fn automatic(db: &Connection, key: &[u8; 32], force: bool) -> Result<bool> {

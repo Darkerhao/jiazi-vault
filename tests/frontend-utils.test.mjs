@@ -5,6 +5,17 @@ import { validExpiry, expiryState } from '../src/utils/expiry.ts'
 import { primaryLabel, primaryOptionLabel, primaryValueLabel } from '../src/utils/item-fields.ts'
 import { normalizeExternalUrl } from '../src/utils/links.ts'
 import { validateSearchShortcut, DEFAULT_SEARCH_SHORTCUT } from '../src/types/desktop.ts'
+import { sshCommand } from '../src/utils/ssh.ts'
+
+test('SSH commands quote shell arguments, separate options and never include secrets', () => {
+  const item = { host: '2001:db8::1', username: "o'brien;$(echo nope)", port: 2222, password: 'must-not-appear' }
+  assert.equal(sshCommand(item, true), "ssh -p 2222 -l 'o''brien;$(echo nope)' -- '2001:db8::1'")
+  assert.equal(sshCommand(item, false), "ssh -p 2222 -l 'o'\\''brien;$(echo nope)' -- '2001:db8::1'")
+  assert.equal(sshCommand({ host: '-oProxyCommand=bad' }, true), null)
+  assert.equal(sshCommand({ host: 'host\ncommand' }, false), null)
+  assert.equal(sshCommand({ host: 'host', username: 'user\ncommand' }, true), null)
+  assert.equal(sshCommand({ host: 'example.test' }, false), "ssh -- 'example.test'")
+})
 
 test('expiry uses calendar dates and local end of day', () => {
   assert.equal(validExpiry('2026-02-30'), false)
@@ -19,13 +30,15 @@ test('device shortcut validation keeps reserved app actions available', () => {
   assert.throws(() => validateSearchShortcut('CommandOrControl+Shift+L'), /RESERVED_SHORTCUT/)
   assert.throws(() => validateSearchShortcut('A'), /INVALID_SHORTCUT/)
 })
-test('primary copy labels follow credential types', () => {
-  assert.equal(primaryLabel('login'), '复制密码')
-  assert.equal(primaryLabel('api-key'), '复制 API Key')
-  assert.equal(primaryLabel('ssh'), '复制私钥')
+test('primary copy labels follow the native selected value', () => {
+  assert.equal(primaryLabel('password'), '复制密码')
+  assert.equal(primaryLabel('apiKey'), '复制 API Key')
+  assert.equal(primaryLabel('privateKey'), '复制私钥')
+  assert.equal(primaryLabel('connectionString'), '复制连接串')
+  assert.equal(primaryLabel('secret'), '复制 Secret')
   assert.equal(primaryLabel('env'), '复制 .env')
   assert.equal(primaryOptionLabel('env'), '完整 .env（需确认）')
-  assert.equal(primaryValueLabel('api-key'), 'API Key')
+  assert.equal(primaryValueLabel('apiKey'), 'API Key')
 })
 test('credential URLs normalize bare hosts and reject explicit non-http schemes', () => {
   assert.equal(normalizeExternalUrl('example.com'), 'https://example.com/')
@@ -40,13 +53,13 @@ test('credential URLs normalize bare hosts and reject explicit non-http schemes'
   assert.equal(normalizeExternalUrl('  '), null)
 })
 test('search ranks exact titles ahead of metadata matches', async () => {
-  const server = await createServer({ configFile: false, optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, watch: null } })
+  const server = await createServer({ configFile: false, optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, watch: null, hmr: false } })
   try {
   const { createSearchIndex, searchItems } = await server.ssrLoadModule('/src/utils/search.ts')
   const items = [
-    { id: 'metadata', type: 'login', title: 'Other', username: 'alpha', favorite: false, createdAt: 1, updatedAt: 1 },
-    { id: 'prefix', type: 'login', title: 'Alpha service', favorite: false, createdAt: 1, updatedAt: 1 },
-    { id: 'exact', type: 'login', title: 'Alpha', favorite: false, createdAt: 1, updatedAt: 1 },
+    { id: 'metadata', type: 'login', title: 'Other', username: 'alpha', pinned: true, favorite: false, createdAt: 1, updatedAt: 1 },
+    { id: 'prefix', type: 'login', title: 'Alpha service', pinned: false, favorite: false, createdAt: 1, updatedAt: 1 },
+    { id: 'exact', type: 'login', title: 'Alpha', pinned: false, favorite: false, createdAt: 1, updatedAt: 1 },
   ]
   assert.equal(searchItems(items, 'alpha', createSearchIndex(items, []))[0].id, 'exact')
   const tieItems = [

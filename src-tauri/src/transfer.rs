@@ -91,7 +91,7 @@ fn parse_csv(contents: &str) -> Result<Vec<Vec<String>>> {
                 closed = true;
             }
         } else if [',', '\r', '\n'].contains(&character) {
-            row.push(csv_unescape(&cell).to_owned());
+            row.push(cell.clone());
             cell.clear();
             closed = false;
             if character != ',' {
@@ -109,60 +109,118 @@ fn parse_csv(contents: &str) -> Result<Vec<Vec<String>>> {
     }
     ensure(!quoted, "INVALID_IMPORT")?;
     if !cell.is_empty() || closed || !row.is_empty() {
-        row.push(csv_unescape(&cell).to_owned());
+        row.push(cell.clone());
         rows.push(row);
     }
     Ok(rows)
 }
 
+pub struct CsvSource {
+    pub headers: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+}
+impl CsvSource {
+    pub fn parse(contents: &str) -> Result<Self> {
+        ensure(contents.len() <= 64 * 1024 * 1024, "INVALID_IMPORT")?;
+        let mut rows = parse_csv(contents.trim_start_matches('\u{feff}'))?.into_iter();
+        let headers = rows.next().ok_or(Error("INVALID_IMPORT"))?;
+        ensure(!headers.is_empty(), "INVALID_IMPORT")?;
+        Ok(Self {
+            headers,
+            rows: rows.collect(),
+        })
+    }
+    pub fn native_format(&self) -> bool {
+        self.headers.iter().any(|v| v == "type")
+            && self.headers.iter().any(|v| v == "title")
+            && self.headers.iter().all(|v| COLUMNS.contains(&v.as_str()))
+            && self.headers.iter().collect::<HashSet<_>>().len() == self.headers.len()
+    }
+    pub fn records(&self, mapping: Option<&Value>) -> Result<Vec<Record>> {
+        let mut columns = Vec::new();
+        let default_type = if let Some(mapping) = mapping {
+            let fields = mapping["columns"]
+                .as_object()
+                .ok_or(Error("INVALID_MAPPING"))?;
+            ensure(fields.contains_key("title"), "INVALID_MAPPING")?;
+            let mut used = HashSet::new();
+            for (name, index) in fields {
+                let index = index.as_u64().ok_or(Error("INVALID_MAPPING"))? as usize;
+                ensure(
+                    ["title", "username", "password", "url", "type"].contains(&name.as_str())
+                        && index < self.headers.len()
+                        && used.insert(index),
+                    "INVALID_MAPPING",
+                )?;
+                columns.push((name.as_str(), index));
+            }
+            let kind = mapping["defaultType"]
+                .as_str()
+                .ok_or(Error("INVALID_MAPPING"))?;
+            validate(&json!({"type":kind,"title":"mapping"}))?;
+            Some(kind)
+        } else {
+            ensure(self.native_format(), "INVALID_IMPORT")?;
+            columns.extend(
+                self.headers
+                    .iter()
+                    .enumerate()
+                    .map(|(index, name)| (name.as_str(), index)),
+            );
+            None
+        };
+        let values = self
+            .rows
+            .iter()
+            .map(|row| {
+                if row.len() != self.headers.len() {
+                    return Value::Null;
+                }
+                let mut value = json!({});
+                if let Some(kind) = default_type {
+                    value["type"] = json!(kind);
+                }
+                for &(name, index) in &columns {
+                    let text = if mapping.is_none() {
+                        csv_unescape(&row[index])
+                    } else {
+                        &row[index]
+                    };
+                    if text.is_empty() {
+                        continue;
+                    }
+                    let parsed = if ["tags", "fields", "favorite", "pinned"].contains(&name) {
+                        serde_json::from_str(text).unwrap_or(Value::Null)
+                    } else if ["port", "createdAt", "updatedAt", "lastAccessedAt"].contains(&name) {
+                        if text.bytes().all(|byte| byte.is_ascii_digit()) {
+                            text.parse::<u64>().map_or(Value::Null, |v| json!(v))
+                        } else {
+                            Value::Null
+                        }
+                    } else {
+                        json!(text)
+                    };
+                    value[name] = parsed;
+                }
+                value
+            })
+            .collect();
+        records(values)
+    }
+}
+
 pub fn parse(contents: &str, format: &str) -> Result<Vec<Record>> {
     ensure(contents.len() <= 64 * 1024 * 1024, "INVALID_IMPORT")?;
-    let text = contents.trim_start_matches('\u{feff}');
-    let values = match format {
-        "json" => serde_json::from_str::<Vec<Value>>(text).map_err(|_| Error("INVALID_IMPORT"))?,
-        "csv" => {
-            let mut records = parse_csv(text)?.into_iter();
-            let headers = records.next().ok_or(Error("INVALID_IMPORT"))?;
-            ensure(
-                headers.iter().any(|v| v == "type")
-                    && headers.iter().any(|v| v == "title")
-                    && headers.iter().all(|v| COLUMNS.contains(&v.as_str()))
-                    && headers.iter().collect::<HashSet<_>>().len() == headers.len(),
-                "INVALID_IMPORT",
-            )?;
-            records
-                .map(|record| {
-                    if record.len() != headers.len() {
-                        return Ok(Value::Null);
-                    }
-                    let mut value = json!({});
-                    for (name, text) in headers.iter().zip(record.iter()) {
-                        let text = csv_unescape(text);
-                        if text.is_empty() {
-                            continue;
-                        }
-                        let parsed =
-                            if ["tags", "fields", "favorite", "pinned"].contains(&name.as_str()) {
-                                serde_json::from_str(text).unwrap_or(Value::Null)
-                            } else if ["port", "createdAt", "updatedAt", "lastAccessedAt"]
-                                .contains(&name.as_str())
-                            {
-                                if text.bytes().all(|byte| byte.is_ascii_digit()) {
-                                    text.parse::<u64>().map_or(Value::Null, |v| json!(v))
-                                } else {
-                                    Value::Null
-                                }
-                            } else {
-                                json!(text)
-                            };
-                        value[name] = parsed;
-                    }
-                    Ok(value)
-                })
-                .collect::<Result<Vec<_>>>()?
-        }
-        _ => return Err(Error("INVALID_TRANSFER_FORMAT")),
-    };
+    match format {
+        "json" => records(
+            serde_json::from_str::<Vec<Value>>(contents.trim_start_matches('\u{feff}'))
+                .map_err(|_| Error("INVALID_IMPORT"))?,
+        ),
+        "csv" => CsvSource::parse(contents)?.records(None),
+        _ => Err(Error("INVALID_TRANSFER_FORMAT")),
+    }
+}
+fn records(values: Vec<Value>) -> Result<Vec<Record>> {
     Ok(values
         .into_iter()
         .enumerate()

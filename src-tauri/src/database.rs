@@ -145,7 +145,36 @@ pub fn purge(db: &Connection) -> Result<usize> {
     )?)
 }
 pub fn default_settings() -> Value {
-    json!({"themeMode":"system","clipboardClearTimeout":15,"autoLockMinutes":15})
+    json!({"themeMode":"system","clipboardClearTimeout":15,"autoLockMinutes":15,"passwordGenerator":default_generator_options()})
+}
+pub fn default_generator_options() -> Value {
+    json!({"length":18,"uppercase":true,"lowercase":true,"numbers":true,"symbols":true,"excludeAmbiguous":true})
+}
+pub fn validate_generator_options(value: &Value) -> Result<Value> {
+    ensure(
+        value["length"]
+            .as_u64()
+            .is_some_and(|n| (8..=128).contains(&n)),
+        "INVALID_GENERATOR_OPTIONS",
+    )?;
+    let mut options = json!({"length":value["length"]});
+    for name in [
+        "uppercase",
+        "lowercase",
+        "numbers",
+        "symbols",
+        "excludeAmbiguous",
+    ] {
+        ensure(value[name].is_boolean(), "INVALID_GENERATOR_OPTIONS")?;
+        options[name] = value[name].clone();
+    }
+    ensure(
+        ["uppercase", "lowercase", "numbers", "symbols"]
+            .iter()
+            .any(|name| value[name] == true),
+        "INVALID_GENERATOR_OPTIONS",
+    )?;
+    Ok(options)
 }
 pub fn validate_settings(value: &Value) -> Result<Value> {
     ensure(
@@ -164,8 +193,13 @@ pub fn validate_settings(value: &Value) -> Result<Value> {
             && value.get("autoLockMinutes").is_some(),
         "INVALID_SETTINGS",
     )?;
+    let generator = value
+        .get("passwordGenerator")
+        .map(validate_generator_options)
+        .transpose()?
+        .unwrap_or_else(default_generator_options);
     Ok(
-        json!({"themeMode":value["themeMode"],"clipboardClearTimeout":value["clipboardClearTimeout"],"autoLockMinutes":value["autoLockMinutes"]}),
+        json!({"themeMode":value["themeMode"],"clipboardClearTimeout":value["clipboardClearTimeout"],"autoLockMinutes":value["autoLockMinutes"],"passwordGenerator":generator}),
     )
 }
 pub fn settings(db: &Connection) -> Result<Value> {

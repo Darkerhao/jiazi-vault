@@ -162,7 +162,7 @@ fn summaries_do_not_expose_passwords_notes_or_fields() {
     for field in ["password", "notes", "fields"] {
         assert!(created.get(field).is_none());
     }
-    assert_eq!(created["hasSensitiveData"], true);
+    assert_eq!(created["primaryKind"], "password");
     let rows = vault.call("list_items", &json!({})).unwrap();
     assert!(!rows.to_string().contains("test-secret"));
     let raw = db::rows(vault.connection().unwrap(), "SELECT secret FROM items", []).unwrap();
@@ -422,7 +422,10 @@ fn preferences_persist_and_invalid_settings_do_not_overwrite_them() {
     );
     drop(vault);
     let mut vault = Vault::new(dir.path().to_owned(), Arc::new(AtomicU64::new(0)));
-    assert_eq!(vault.call("get_settings", &Value::Null).unwrap(), settings);
+    assert_eq!(
+        vault.call("get_settings", &Value::Null).unwrap(),
+        db::validate_settings(&settings).unwrap()
+    );
 }
 #[test]
 fn corrupt_database_still_exposes_the_recovery_entry() {
@@ -800,6 +803,7 @@ fn json_and_csv_round_trip_multiline_and_formula_like_values() {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].item.as_ref().unwrap()["title"], "=SUM(A1)");
         assert_eq!(parsed[0].item.as_ref().unwrap()["pinned"], true);
+        assert_eq!(parsed[0].item.as_ref().unwrap()["password"], "'sensitive");
         assert_eq!(
             parsed[0].item.as_ref().unwrap()["fields"]["__proto__"],
             "literal-key"
@@ -998,23 +1002,24 @@ fn corrupted_ciphertext_returns_the_safe_recovery_error_code() {
 
 #[test]
 fn primary_copy_values_follow_item_types() {
-    let item = |kind: &str, password: Option<&str>, notes: Option<&str>, fields: &[(&str, &str)]| {
-        items::Item {
-            r#type: kind.into(),
-            title: "fixture".into(),
-            password: password.map(str::to_string),
-            notes: notes.map(str::to_string),
-            fields: (!fields.is_empty()).then(|| {
-                fields
-                    .iter()
-                    .map(|(key, value)| (key.to_string(), value.to_string()))
-                    .collect()
-            }),
-            ..Default::default()
-        }
-    };
+    let item =
+        |kind: &str, password: Option<&str>, notes: Option<&str>, fields: &[(&str, &str)]| {
+            items::Item {
+                r#type: kind.into(),
+                title: "fixture".into(),
+                password: password.map(str::to_string),
+                notes: notes.map(str::to_string),
+                fields: (!fields.is_empty()).then(|| {
+                    fields
+                        .iter()
+                        .map(|(key, value)| (key.to_string(), value.to_string()))
+                        .collect()
+                }),
+                ..Default::default()
+            }
+        };
     assert_eq!(
-        items::primary(&item("login", Some("pw"), None, &[])).as_deref(),
+        items::primary(&item("login", Some("pw"), None, &[])).map(|(_, value)| value),
         Some("pw")
     );
     assert_eq!(
@@ -1024,29 +1029,25 @@ fn primary_copy_values_follow_item_types() {
             None,
             &[("apiKey", "key"), ("secret", "secret")]
         ))
-        .as_deref(),
+        .map(|(_, value)| value),
         Some("key")
     );
     assert_eq!(
-        items::primary(&item("api-key", None, None, &[("secret", "secret")])).as_deref(),
+        items::primary(&item("api-key", None, None, &[("secret", "secret")]))
+            .map(|(_, value)| value),
         Some("secret")
     );
     assert_eq!(
-        items::primary(&item("ssh", None, None, &[("privateKey", "pem")])).as_deref(),
+        items::primary(&item("ssh", None, None, &[("privateKey", "pem")])).map(|(_, value)| value),
         Some("pem")
     );
     assert_eq!(
-        items::primary(&item("secure-note", None, Some("note"), &[])).as_deref(),
+        items::primary(&item("secure-note", None, Some("note"), &[])).map(|(_, value)| value),
         Some("note")
     );
     assert_eq!(
-        items::primary(&item(
-            "database",
-            None,
-            None,
-            &[("connectionString", "db")]
-        ))
-        .as_deref(),
+        items::primary(&item("database", None, None, &[("connectionString", "db")]))
+            .map(|(_, value)| value),
         Some("db")
     );
     assert_eq!(
@@ -1056,17 +1057,12 @@ fn primary_copy_values_follow_item_types() {
             None,
             &[("connectionString", "db")]
         ))
-        .as_deref(),
+        .map(|(_, value)| value),
         Some("pw")
     );
     assert_eq!(
-        items::primary(&item(
-            "custom",
-            None,
-            None,
-            &[("a", ""), ("b", "value")]
-        ))
-        .as_deref(),
+        items::primary(&item("custom", None, None, &[("a", ""), ("b", "value")]))
+            .map(|(_, value)| value),
         Some("value")
     );
     assert_eq!(
@@ -1077,4 +1073,191 @@ fn primary_copy_values_follow_item_types() {
         items::primary(&item("env", None, None, &[("A", "1")])),
         None
     );
+}
+
+#[test]
+fn summaries_describe_the_actual_primary_copy_without_exposing_secrets() {
+    let (_directory, mut vault) = vault();
+    for (input, kind) in [
+        (
+            json!({"type":"login","title":"Notes only","notes":"private"}),
+            Value::Null,
+        ),
+        (
+            json!({"type":"login","title":"Password","password":"pw"}),
+            json!("password"),
+        ),
+        (
+            json!({"type":"database","title":"Connection","fields":{"connectionString":"db-secret"}}),
+            json!("connectionString"),
+        ),
+        (
+            json!({"type":"api-key","title":"Secret","fields":{"secret":"api-secret"}}),
+            json!("secret"),
+        ),
+        (
+            json!({"type":"env","title":"Environment","environment":"development","fields":{"EMPTY":""}}),
+            json!("env"),
+        ),
+    ] {
+        let summary = vault.call("create_item", &json!({"item":input})).unwrap();
+        assert_eq!(summary["primaryKind"], kind);
+        assert!(summary.get("password").is_none());
+        assert!(summary.get("fields").is_none());
+        assert!(summary.get("notes").is_none());
+    }
+}
+
+#[test]
+fn mapped_csv_uses_existing_preview_transaction_and_lock_cleanup() {
+    let (_dir, mut vault) = vault();
+    let csv = "名称,账号,口令,地址\r\nImported,alice,\"'=secret\nsecond\",https://example.test\r\nImported,alice,\"'=secret\nsecond\",https://example.test\r\n,missing,secret,\r\n";
+    let source = vault
+        .prepare_import("external.csv".into(), csv, "csv")
+        .unwrap();
+    assert_eq!(source["rowCount"], 3);
+    assert!(!source.to_string().contains("secret"));
+    let token = source["token"].clone();
+    assert!(
+        vault
+            .call(
+                "confirm_import",
+                &json!({"token":token,"skipDuplicates":true})
+            )
+            .is_err()
+    );
+    for mapping in [
+        json!({"columns":{"password":2},"defaultType":"login"}),
+        json!({"columns":{"title":0,"password":0},"defaultType":"login"}),
+        json!({"columns":{"title":40},"defaultType":"login"}),
+        json!({"columns":{"title":0},"defaultType":"unknown"}),
+    ] {
+        assert!(
+            vault
+                .call("map_import", &json!({"token":token,"mapping":mapping}))
+                .is_err()
+        );
+    }
+    let mapping =
+        json!({"columns":{"title":0,"username":1,"password":2,"url":3},"defaultType":"login"});
+    let preview = vault
+        .call("map_import", &json!({"token":token,"mapping":mapping}))
+        .unwrap();
+    assert_eq!(preview["validCount"], 2);
+    assert_eq!(preview["duplicateCount"], 1);
+    assert_eq!(preview["invalidCount"], 1);
+    assert!(!preview.to_string().contains("secret"));
+    assert_eq!(
+        vault
+            .call(
+                "confirm_import",
+                &json!({"token":token,"skipDuplicates":true})
+            )
+            .unwrap(),
+        1
+    );
+    let list = vault.call("list_items", &Value::Null).unwrap();
+    let full = vault
+        .call(
+            "get_item",
+            &json!({"id":list[0]["id"],"recordAccess":false}),
+        )
+        .unwrap();
+    assert_eq!(full["password"], "'=secret\nsecond");
+    assert_eq!(full["username"], "alice");
+    let source = vault
+        .prepare_import("external.csv".into(), csv, "csv")
+        .unwrap();
+    let preview = vault
+        .call(
+            "map_import",
+            &json!({"token":source["token"],"mapping":mapping}),
+        )
+        .unwrap();
+    assert_eq!(preview["duplicateCount"], 2);
+    vault.lock();
+    assert!(vault.pending_import.is_none());
+    assert!(
+        vault
+            .call(
+                "map_import",
+                &json!({"token":source["token"],"mapping":mapping})
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn native_csv_unescapes_once_and_external_csv_can_map_a_type_column() {
+    let rows = transfer::parse("type,title,password\nlogin,Quoted,'''=literal\n", "csv").unwrap();
+    assert_eq!(rows[0].item.as_ref().unwrap()["password"], "''=literal");
+    let source =
+        transfer::CsvSource::parse("标题,类型,口令\nA,password,abc\nB,,def\nC,wrong,ghi\n")
+            .unwrap();
+    let records = source
+        .records(Some(
+            &json!({"columns":{"title":0,"type":1,"password":2},"defaultType":"login"}),
+        ))
+        .unwrap();
+    assert_eq!(records[0].item.as_ref().unwrap()["type"], "password");
+    assert_eq!(records[1].item.as_ref().unwrap()["type"], "login");
+    assert!(records[2].error.is_some());
+}
+
+#[test]
+fn generator_rules_persist_validate_and_survive_backup() {
+    let (dir, mut vault) = vault();
+    let mut settings = vault.settings();
+    assert_eq!(settings["passwordGenerator"]["length"], 18);
+    settings["passwordGenerator"] = json!({"length":31,"uppercase":false,"lowercase":true,"numbers":true,"symbols":false,"excludeAmbiguous":true});
+    vault
+        .call("update_settings", &json!({"settings":settings}))
+        .unwrap();
+    let mut invalid = settings.clone();
+    invalid["passwordGenerator"]["length"] = json!(0);
+    assert!(
+        vault
+            .call("update_settings", &json!({"settings":invalid}))
+            .is_err()
+    );
+    let encoded = backup::create(vault.connection().unwrap(), vault.key().unwrap()).unwrap();
+    let restored = backup::read(&encoded, "test-master-password-2026").unwrap();
+    assert_eq!(restored.settings, settings);
+    drop(vault);
+    let vault = Vault::new(dir.path().to_owned(), Arc::new(AtomicU64::new(0)));
+    assert_eq!(vault.settings(), settings);
+}
+
+#[test]
+fn verifying_backup_does_not_change_current_items_or_settings() {
+    let (dir, mut vault) = vault();
+    item(&mut vault, "Current vault item");
+    let before = vault.call("list_items", &Value::Null).unwrap();
+    let settings = vault.settings();
+    let revision = db::revision(vault.connection().unwrap()).unwrap();
+    let path = dir.path().join("verify.jvault");
+    fs::write(&path, legacy(4)).unwrap();
+    vault.pending_restore = Some(keystill_lib::vault::PendingRestore {
+        token: "verify-only".into(),
+        epoch: vault.generation(),
+        name: "verify.jvault".into(),
+        path: Some(path),
+        snapshot_id: None,
+        backup: None,
+    });
+    let preview = vault
+        .call(
+            "preview_backup",
+            &json!({"token":"verify-only","password":fixture()["password"]}),
+        )
+        .unwrap();
+    assert!(preview["itemCount"].as_u64().unwrap() > 0);
+    vault
+        .call("cancel_backup_restore", &json!({"token":"verify-only"}))
+        .unwrap();
+    assert!(vault.pending_restore.is_none());
+    assert_eq!(vault.call("list_items", &Value::Null).unwrap(), before);
+    assert_eq!(vault.settings(), settings);
+    assert_eq!(db::revision(vault.connection().unwrap()).unwrap(), revision);
+    assert!(vault.active());
 }

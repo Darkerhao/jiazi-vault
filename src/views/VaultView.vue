@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NAlert, NButton, NCheckbox, NEmpty, NIcon, NList, NListItem, NModal, NPagination, NSelect, NSpace, NSpin, NTag, NText, useDialog, useMessage } from 'naive-ui'
+import { NAlert, NButton, NCheckbox, NDropdown, NEmpty, NIcon, NList, NListItem, NModal, NPagination, NSelect, NSpace, NSpin, NTag, NText, useDialog, useMessage } from 'naive-ui'
 import PlaintextExport from '../components/common/PlaintextExport.vue'
 import { callCommand } from '../services/ipc'
 import type { ItemBatchAction, ItemInput } from '../types/contracts'
-import { CopyOutline, KeyOutline, OpenOutline, Pin, PinOutline, Star, StarOutline, TrashOutline } from '@vicons/ionicons5'
+import { CheckmarkOutline, CopyOutline, EllipsisHorizontal, KeyOutline, OpenOutline, Pin, RefreshOutline, Star, TrashOutline } from '@vicons/ionicons5'
 import { expiryState } from '../utils/expiry'
 import AppShell from '../components/common/AppShell.vue'
 import ItemFormModal from '../components/item/ItemFormModal.vue'
@@ -14,10 +14,11 @@ import { useAuthStore } from '../stores/auth'
 import { vaultErrorMessage } from '../utils/vault-error'
 import { useClipboard } from '../composables/useClipboard'
 import { useOpenUrl } from '../composables/useOpenUrl'
-import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, ITEM_TYPE_OPTIONS, primaryLabel, primaryValueLabel } from '../utils/item-fields'
+import { ENVIRONMENT_OPTIONS, ITEM_TYPE_LABELS, ITEM_TYPE_OPTIONS, primaryLabel } from '../utils/item-fields'
 import { ITEM_TYPE_ICONS } from '../utils/item-icons'
 import { projectService } from '../services/project'
 import type { Environment, ItemType, VaultItem, VaultItemSummary } from '../types/vault'
+import { sshCommand } from '../utils/ssh'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,6 +31,10 @@ const modalShow = ref(false)
 const editing = ref<VaultItem | null>(null)
 const newEditorKey = ref(0)
 const duplicateDraft = ref<ItemInput | null>(null)
+const detailIds = ref<string[]>([])
+const detailIndex = computed(() => detailIds.value.indexOf(editing.value?.id ?? ''))
+const navigating = ref(false)
+let returnFocus: HTMLElement | null = null
 const projectId = computed(() => typeof route.query.project === 'string' ? route.query.project : undefined)
 const environment = computed(() => ENVIRONMENT_OPTIONS.some((o) => o.value === route.query.environment) ? route.query.environment as Environment : undefined)
 const currentProject = computed(() => vault.projects.find((p) => p.id === projectId.value))
@@ -45,6 +50,7 @@ const page = ref(1)
 const pageSize = 25
 const pageItems = computed(() => displayedItems.value.slice((page.value - 1) * pageSize, page.value * pageSize))
 const selected = ref<string[]>([])
+const selecting = ref(false)
 const batchBusy = ref(false), batchChange = ref<'project' | 'environment' | null>(null)
 const batchValue = ref<string | null>(null)
 const pageSelected = computed(() => pageItems.value.filter((item) => selected.value.includes(item.id)).length)
@@ -64,7 +70,7 @@ async function batch(action: ItemBatchAction) {
     const count = await callCommand('batch_items', { ids: [...selected.value], action })
     selected.value = []
     batchChange.value = null
-    await vault.load()
+    await vault.load(true)
     message.success(`已处理 ${count} 条凭证`)
     return true
   } catch (error) {
@@ -136,8 +142,18 @@ watch(() => route.query.item, async (id) => {
   void router.replace({ name: 'vault', query })
 }, { immediate: true })
 onMounted(() => vault.load())
+watch(() => vault.filter, () => { void vault.load(); selecting.value = false })
 
-function closeEditor() { modalShow.value = false; editing.value = null; duplicateDraft.value = null }
+async function closeEditor() {
+  modalShow.value = false; editing.value = null; duplicateDraft.value = null
+  await nextTick()
+  if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true })
+  returnFocus = null
+}
+async function navigateDetail(direction: -1 | 1) {
+  const id = detailIds.value[detailIndex.value + direction]
+  if (id) await openEdit(id)
+}
 function duplicate(item: ItemInput) {
   duplicateDraft.value = item
   editing.value = null
@@ -150,6 +166,12 @@ function subtitle(item: VaultItemSummary) {
 }
 
 async function openEdit(item: VaultItemSummary | string) {
+  if (navigating.value) return
+  if (!modalShow.value) {
+    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    detailIds.value = displayedItems.value.map(item => item.id)
+  }
+  navigating.value = true
   const revision = auth.sessionRevision
   try {
     const full = await vault.get(typeof item === 'string' ? item : item.id)
@@ -158,7 +180,7 @@ async function openEdit(item: VaultItemSummary | string) {
     modalShow.value = true
   } catch (cause) {
     if (revision === auth.sessionRevision) message.error(vaultErrorMessage(cause, '读取凭证失败，请重试。'))
-  }
+  } finally { navigating.value = false }
 }
 
 async function toggle(item: VaultItemSummary) {
@@ -174,14 +196,58 @@ async function togglePin(item: VaultItemSummary) {
 const { copy, copyItem } = useClipboard()
 const { open: openUrl, opening: openingUrl } = useOpenUrl()
 const copyingId = ref<string | null>(null)
+const copiedId = ref<string | null>(null)
+let copiedTimer: ReturnType<typeof setTimeout> | undefined
+onUnmounted(() => clearTimeout(copiedTimer))
 async function copyRow(item: VaultItemSummary) {
   if (copyingId.value) return
   copyingId.value = item.id
-  try { await copyItem(item.id, primaryValueLabel(item.type)) }
+  try {
+    if (await copyItem(item.id)) {
+      copiedId.value = item.id
+      clearTimeout(copiedTimer)
+      copiedTimer = setTimeout(() => { copiedId.value = null }, 1800)
+    }
+  }
   finally { copyingId.value = null }
 }
 async function openRowUrl(item: VaultItemSummary) {
-  if (item.url) await openUrl(item.url, item.id)
+  const revision = auth.sessionRevision
+  try {
+    const url = item.url || (await vault.get(item.id, false))?.fields?.endpoint
+    if (revision === auth.sessionRevision && url) await openUrl(url, item.id)
+  } catch (cause) { message.error(vaultErrorMessage(cause, '读取链接失败，请重试。')) }
+}
+
+function moreOptions(item: VaultItemSummary) {
+  return [
+    { key: 'pin', label: item.pinned ? '取消置顶' : '置顶凭证' },
+    { key: 'favorite', label: item.favorite ? '取消收藏' : '收藏凭证' },
+    ...(['server', 'ssh'].includes(item.type) && item.host ? [{ key: 'ssh', label: '复制 SSH 连接命令' }] : []),
+    ...(item.type === 'database' ? [{ key: 'connection', label: '复制连接串' }] : []),
+    { key: 'delete', label: '删除凭证' },
+  ]
+}
+async function moreAction(key: string, item: VaultItemSummary) {
+  if (key === 'pin') void togglePin(item)
+  else if (key === 'favorite') void toggle(item)
+  else if (key === 'delete') remove(item)
+  else if (key === 'ssh') {
+    const command = sshCommand(item, navigator.platform.startsWith('Win'))
+    if (command) await copy(command, item.id, 'SSH 连接命令')
+    else message.info('请检查主机和用户名后再复制连接命令。')
+  } else if (key === 'connection') {
+    try {
+      const full = await vault.get(item.id, false)
+      if (!full) return
+      if (full.fields?.connectionString) await copy(full.fields.connectionString, item.id, '连接串')
+      else message.info('此凭证尚未填写连接串。')
+    } catch (cause) { message.error(vaultErrorMessage(cause, '读取连接串失败，请重试。')) }
+  }
+}
+function toggleSelection() {
+  selecting.value = !selecting.value
+  selected.value = []
 }
 
 function remove(item: VaultItemSummary) {
@@ -218,9 +284,9 @@ async function restore(item: VaultItemSummary) {
 
 <template>
   <AppShell>
-    <section class="page-heading">
-      <div><n-text depth="3">保险库</n-text><h1>{{ heading }}</h1></div>
-      <n-tag round :bordered="false">{{ displayedItems.length }} 条凭证</n-tag>
+    <section class="page-heading vault-heading">
+      <div class="heading-title"><h1>{{ heading }}</h1><n-text depth="3">{{ displayedItems.length }} 条凭证</n-text></div>
+      <n-space><n-button quaternary circle size="small" aria-label="刷新凭证列表" :loading="vault.loading" @click="vault.load(true)"><template #icon><n-icon><refresh-outline /></n-icon></template></n-button><n-button v-if="displayedItems.length" size="small" :disabled="batchBusy" @click="toggleSelection">{{ selecting ? '退出多选' : '多选' }}</n-button></n-space>
     </section>
     <n-alert v-if="vault.filter === 'trash'" type="info" class="retention-notice">凭证移入回收站满 30 天后自动永久删除，无法恢复。</n-alert>
 
@@ -230,8 +296,8 @@ async function restore(item: VaultItemSummary) {
       <n-select :value="environment ?? null" :options="ENVIRONMENT_OPTIONS" clearable placeholder="全部环境" @update:value="(value) => setFilter('environment', value)" />
       <n-select :value="expiry" :options="expiryOptions" clearable placeholder="全部有效期" aria-label="有效期筛选" @update:value="(value) => setFilter('expiry', value)" />
     </div>
-    <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text @click="vault.load">重试</n-button></n-alert>
-    <div v-if="displayedItems.length" class="batch-toolbar">
+    <n-alert v-if="vault.error" type="error">{{ vault.error }} <n-button text @click="vault.load(true)">重试</n-button></n-alert>
+    <div v-if="selecting && displayedItems.length" class="batch-toolbar">
       <n-checkbox :checked="pageSelected === pageItems.length" :indeterminate="pageSelected > 0 && pageSelected < pageItems.length" :disabled="batchBusy" @update:checked="selectPage">本页全选</n-checkbox>
       <n-text>已选 {{ selected.length }} 条</n-text>
       <template v-if="selected.length">
@@ -258,17 +324,14 @@ async function restore(item: VaultItemSummary) {
       <n-list v-else bordered class="item-list">
         <n-list-item v-for="item in pageItems" :key="item.id">
           <div class="item-row">
-            <n-checkbox :checked="selected.includes(item.id)" :disabled="batchBusy" :aria-label="`选择${item.title}`" @update:checked="(checked) => selected = checked ? [...selected, item.id] : selected.filter((id) => id !== item.id)" />
+            <n-checkbox v-if="selecting" :checked="selected.includes(item.id)" :disabled="batchBusy" :aria-label="`选择${item.title}`" @update:checked="(checked) => selected = checked ? [...selected, item.id] : selected.filter((id) => id !== item.id)" />
             <n-icon :size="24" aria-hidden="true"><component :is="ITEM_TYPE_ICONS[item.type]" /></n-icon>
             <div class="item-main">
-              <n-button text class="item-title" @click="openEdit(item)">{{ item.title }}</n-button>
+              <div class="item-title-line"><n-button text class="item-title" @click="openEdit(item)">{{ item.title }}</n-button><n-icon v-if="item.pinned" class="item-marker" aria-label="已置顶"><pin /></n-icon><n-icon v-if="item.favorite" class="item-marker" aria-label="已收藏"><star /></n-icon></div>
               <div class="item-sub">
                 <n-button v-if="item.username && vault.filter !== 'trash'" text class="item-account" title="点击复制账号" :aria-label="`复制账号 ${item.username}`" @click="copy(item.username, item.id, '账号')">{{ item.username }}</n-button>
                 <n-text v-else depth="3">{{ subtitle(item) }}</n-text>
-                <n-button v-if="item.url && vault.filter !== 'trash'" text size="tiny" class="item-open-url" :title="`在浏览器中打开 ${item.url}`" :aria-label="`打开 ${item.url}`" :loading="openingUrl === item.id" @click.stop="openRowUrl(item)"><template #icon><n-icon :size="14"><open-outline /></n-icon></template>打开</n-button>
-                <n-button v-if="item.hasSensitiveData && vault.filter !== 'trash'" text size="tiny" class="item-copy-primary" :title="primaryLabel(item.type)" :aria-label="`${primaryLabel(item.type)} ${item.title}`" :loading="copyingId === item.id" @click.stop="copyRow(item)"><template #icon><n-icon :size="14"><copy-outline /></n-icon></template>{{ primaryLabel(item.type) }}</n-button>
-              </div>
-              <div class="item-meta"><n-tag v-if="item.expiresAt" size="small" :type="expiryState(item.expiresAt, now) === 'expired' ? 'error' : ['soon', 'invalid'].includes(expiryState(item.expiresAt, now)) ? 'warning' : 'default'">{{ expiryState(item.expiresAt, now) === 'invalid' ? '日期待修正' : `${expiryState(item.expiresAt, now) === 'expired' ? '已过期' : expiryState(item.expiresAt, now) === 'soon' ? '即将到期' : '到期'}：${item.expiresAt}` }}</n-tag>              <n-tag v-if="item.projectId" size="small">{{ vault.projects.find((p) => p.id === item.projectId)?.name }}</n-tag>
+                <n-tag v-if="item.expiresAt" size="small" :type="expiryState(item.expiresAt, now) === 'expired' ? 'error' : ['soon', 'invalid'].includes(expiryState(item.expiresAt, now)) ? 'warning' : 'default'">{{ expiryState(item.expiresAt, now) === 'invalid' ? '日期待修正' : `${expiryState(item.expiresAt, now) === 'expired' ? '已过期' : expiryState(item.expiresAt, now) === 'soon' ? '即将到期' : '到期'}：${item.expiresAt}` }}</n-tag><n-tag v-if="item.projectId" size="small">{{ vault.projects.find((p) => p.id === item.projectId)?.name }}</n-tag>
               <n-tag v-if="item.environment" size="small" :type="item.environment === 'production' ? 'error' : 'default'">{{ ENVIRONMENT_OPTIONS.find((option) => option.value === item.environment)?.label }}</n-tag>
               <n-tag size="small" :bordered="false">{{ ITEM_TYPE_LABELS[item.type] }}</n-tag>
 </div>
@@ -281,9 +344,9 @@ async function restore(item: VaultItemSummary) {
                 <n-button quaternary circle size="small" aria-label="彻底删除凭证" @click="removePermanently(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
               </template>
               <template v-else>
-                <n-button quaternary circle size="small" :aria-pressed="item.pinned" :title="item.pinned ? '取消置顶' : '置顶凭证'" :aria-label="`${item.pinned ? '取消置顶' : '置顶凭证'} ${item.title}`" @click="togglePin(item)"><template #icon><n-icon><pin v-if="item.pinned" /><pin-outline v-else /></n-icon></template></n-button>
-                <n-button quaternary circle size="small" :aria-pressed="item.favorite" :title="item.favorite ? '取消收藏' : '收藏凭证'" :aria-label="item.favorite ? '取消收藏' : '收藏凭证'" @click="toggle(item)"><template #icon><n-icon><star v-if="item.favorite" /><star-outline v-else /></n-icon></template></n-button>
-                <n-button quaternary circle size="small" aria-label="删除凭证" @click="remove(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
+                <n-button v-if="item.hasUrl" quaternary size="small" :aria-label="`打开 ${item.url || item.title}`" :loading="openingUrl === item.id" @click="openRowUrl(item)"><template #icon><n-icon><open-outline /></n-icon></template>打开</n-button>
+                <n-button v-if="item.primaryKind" secondary size="small" class="item-copy-primary" :aria-label="`${primaryLabel(item.primaryKind)} ${item.title}`" :loading="copyingId === item.id" @click="copyRow(item)"><template #icon><n-icon><checkmark-outline v-if="copiedId === item.id" /><copy-outline v-else /></n-icon></template>{{ copiedId === item.id ? '已复制' : primaryLabel(item.primaryKind) }}</n-button>
+                <n-dropdown trigger="click" :options="moreOptions(item)" :menu-props="() => ({ role: 'menu' })" :node-props="() => ({ role: 'menuitem' })" @select="(key) => moreAction(key, item)"><n-button quaternary circle size="small" aria-haspopup="menu" :aria-label="`更多操作 ${item.title}`"><template #icon><n-icon><ellipsis-horizontal /></n-icon></template></n-button></n-dropdown>
               </template>
             </div>
           </div>
@@ -295,7 +358,7 @@ async function restore(item: VaultItemSummary) {
       </div>
     </n-spin>
 
-    <ItemFormModal v-if="modalShow" :key="editing?.id ?? `new-${newEditorKey}`" :show="modalShow" :item="editing" :draft="duplicateDraft ?? { type: itemType, projectId, environment }" @close="closeEditor" @duplicate="duplicate" />
+    <ItemFormModal v-if="modalShow" :key="newEditorKey" :show="modalShow" :item="editing" :draft="duplicateDraft ?? { type: itemType, projectId, environment }" :can-previous="detailIndex > 0" :can-next="detailIndex >= 0 && detailIndex < detailIds.length - 1" :navigating="navigating" @navigate="navigateDetail" @close="closeEditor" @duplicate="duplicate" />
     <n-modal :show="!!batchChange" preset="card" :title="batchChange === 'project' ? '批量修改项目' : '批量修改环境'" style="width: 460px; max-width: calc(100vw - 40px)" :closable="!batchBusy" :mask-closable="!batchBusy" :close-on-esc="!batchBusy" @update:show="(show) => !show && (batchChange = null)">
       <p>修改所选 {{ selected.length }} 条凭证，原内容会保留在各自历史版本中。</p>
       <n-select v-model:value="batchValue" :disabled="batchBusy" clearable :filterable="batchChange === 'project'" :placeholder="batchChange === 'project' ? '未分配项目' : '未设置环境'" :options="batchChange === 'project' ? vault.projects.map((project) => ({ label: project.name, value: project.id })) : ENVIRONMENT_OPTIONS" />
@@ -308,28 +371,34 @@ async function restore(item: VaultItemSummary) {
 <style scoped>
 .batch-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 32px; margin-bottom: 12px; }
 .batch-toolbar > .n-text { color: var(--app-muted); font-size: 12px; }
-.filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--app-divider); border-radius: 14px; background: var(--app-surface); }
+.vault-heading { margin-bottom: 16px; }
+.heading-title { display: flex; align-items: baseline; gap: 12px; }
+.heading-title h1 { font-size: 24px; margin: 0; }
+.heading-title > .n-text { font-size: 12px; }
+.filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.item-list :deep(.n-list-item) { padding: 13px 16px; }
 .retention-notice { margin-bottom: 20px; }
 .pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
-.item-row { display: flex; align-items: center; gap: 16px; width: 100%; min-width: 0; }
+.item-row { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; }
 .item-row > .n-checkbox, .item-row > .n-icon { flex-shrink: 0; }
-.item-row > .n-icon { box-sizing: content-box; padding: 10px; border: 1px solid var(--app-divider); border-radius: 12px; background: var(--app-input); color: var(--app-muted); }
+.item-row > .n-icon { box-sizing: content-box; padding: 7px; border: 1px solid var(--app-divider); border-radius: 10px; background: var(--app-input); color: var(--app-muted); }
 .item-main { flex: 1; min-width: 0; }
 .item-title { max-width: 100%; height: auto; margin-bottom: 5px; color: var(--app-text); font-weight: 600; font-size: 15px; line-height: 1.5; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.item-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.item-meta .n-tag { min-width: 0; max-width: 100%; }
-.item-meta :deep(.n-tag__content) { display: block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.item-title-line { display: flex; align-items: center; gap: 6px; }
+.item-title-line .item-title { min-width: 0; }
+.item-marker { flex-shrink: 0; color: var(--app-accent); font-size: 12px; }
+.item-sub .n-tag { min-width: 0; max-width: 100%; }
+.item-sub :deep(.n-tag__content) { display: block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 .item-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; color: var(--app-muted); font-size: 12px; overflow-wrap: anywhere; }
 .item-account { min-width: 0; max-width: 100%; height: auto; font-size: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.item-copy-primary, .item-open-url { flex-shrink: 0; font-size: inherit; color: var(--app-secondary); }
+.item-copy-primary { min-width: 108px; color: var(--app-accent); }
 .item-account:hover, .item-account:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
-.item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding-left: 16px; border-left: 1px solid var(--app-divider); }
-.item-actions .n-button[aria-pressed="true"] { color: var(--app-accent); }
+.item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
 @container workspace (max-width: 860px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container workspace (max-width: 560px) {
-  .item-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
+  .item-row { flex-wrap: wrap; }
   .item-row > .n-icon { display: none; }
-  .item-actions { grid-column: 2; justify-content: flex-end; padding-left: 0; border-left: 0; }
+  .item-actions { margin-left: auto; }
 }
 @container workspace (max-width: 360px) { .filters { grid-template-columns: minmax(0, 1fr); padding: 12px; } }
 </style>

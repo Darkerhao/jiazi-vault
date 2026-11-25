@@ -4,6 +4,7 @@ import { useVaultStore } from '../stores/vault'
 import { useAuthStore } from '../stores/auth'
 import { useSettingsStore } from '../stores/settings'
 import { vaultErrorMessage } from '../utils/vault-error'
+import { primaryValueLabel } from '../utils/item-fields'
 
 export function useClipboard() {
   const message = useMessage()
@@ -32,7 +33,7 @@ export function useClipboard() {
   }
 
   /** Copy an item's main value without opening the editor; decryption stays in Rust. */
-  async function copyItem(id: string, label: string): Promise<boolean> {
+  async function copyItem(id: string): Promise<boolean> {
     const revision = auth.sessionRevision
     try {
       const result = await clipboardService.copyItem(id)
@@ -42,7 +43,7 @@ export function useClipboard() {
         return false
       }
       if (result.usedAt !== null) vault.applyUsage(id, result.usedAt)
-      message.success(notice(label))
+      message.success(notice(result.kind ? primaryValueLabel(result.kind) : '内容'))
       return true
     } catch (cause) {
       if (revision === auth.sessionRevision) message.error(vaultErrorMessage(cause, '复制失败，请确认保险库已解锁且凭证内容有效。'))

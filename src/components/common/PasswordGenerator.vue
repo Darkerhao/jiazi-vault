@@ -4,8 +4,12 @@ import { NAlert, NButton, NCard, NInput, NInputNumber, NProgress, NSlider, NSpac
 import { useClipboard } from '../../composables/useClipboard'
 import { generatorService } from '../../services/generator'
 import type { GeneratedPassword, PasswordOptions } from '../../types/desktop'
+import { DEFAULT_PASSWORD_OPTIONS } from '../../types/desktop'
+import { useSettingsStore } from '../../stores/settings'
 
-const options = reactive<PasswordOptions>({ length: 18, uppercase: true, lowercase: true, numbers: true, symbols: true, excludeAmbiguous: true })
+const settings = useSettingsStore()
+const options = reactive<PasswordOptions>({ ...DEFAULT_PASSWORD_OPTIONS, ...settings.preferences?.passwordGenerator })
+let ready = false
 const generated = ref<GeneratedPassword | null>(null)
 const busy = ref(false)
 const error = ref('')
@@ -32,13 +36,21 @@ async function generate() {
       return
     }
     const result = await generatorService.generate({ ...options })
-    if (current === request) generated.value = result
+    if (current === request) {
+      generated.value = result
+      if ((Object.keys(options) as (keyof PasswordOptions)[]).some(key => options[key] !== settings.preferences?.passwordGenerator[key])) await settings.update({ passwordGenerator: { ...options } })
+    }
   } catch {
     if (current === request) error.value = '生成失败，请重试'
   } finally { if (current === request) busy.value = false }
 }
-watch(options, generate)
-onMounted(() => { void generate() })
+watch(options, () => { if (ready) void generate() }, { flush: 'sync' })
+onMounted(async () => {
+  if (!settings.preferences) await settings.load()
+  Object.assign(options, settings.preferences?.passwordGenerator ?? DEFAULT_PASSWORD_OPTIONS)
+  ready = true
+  void generate()
+})
 onUnmounted(() => { request++; generated.value = null })
 </script>
 
@@ -47,16 +59,18 @@ onUnmounted(() => { request++; generated.value = null })
       <div class="generator-layout">
       <section class="generator-preview" aria-label="生成结果">
       <n-text depth="3" class="preview-label">随机生成 · 仅在本机处理</n-text>
-      <n-input :value="generated?.password ?? ''" readonly type="textarea" :autosize="{ minRows: 2 }" placeholder="生成安全密码" class="password-output" />
+      <n-input :value="generated?.password ?? ''" readonly type="textarea" :autosize="{ minRows: 2 }" placeholder="生成安全密码" :input-props="{ 'aria-label': '生成的密码' }" class="password-output" />
       <div class="strength"><n-text depth="3">强度</n-text><n-text strong>{{ generated ? `${generated.strength} · ${generated.entropy.toFixed(1)} bits` : '尚未生成' }}</n-text></div>
       <n-progress type="line" :percentage="Math.min(100, (generated?.entropy ?? 0) / 128 * 100)" :show-indicator="false" />
       <n-text depth="3" class="entropy-note">熵值按当前随机生成规则估算。</n-text>
       </section>
       <section class="generator-options" aria-label="生成规则">
-      <div class="control"><n-text>密码长度</n-text><n-input-number v-model:value="options.length" :min="8" :max="128" :precision="0" aria-label="密码长度" /></div>
+      <div class="control"><n-text>密码长度</n-text><n-input-number v-model:value="options.length" :min="8" :max="128" :precision="0" :input-props="{ 'aria-label': '密码长度' }" /></div>
       <n-slider v-model:value="options.length" :min="8" :max="128" :step="1" aria-label="密码长度滑块" />
       <div class="switches"><div v-for="option in switches" :key="option.key" class="switch-row"><n-text>{{ option.label }}</n-text><n-switch v-model:value="options[option.key]" :aria-label="option.label" /></div></div>
       <n-alert v-if="error" type="warning" class="error">{{ error }}</n-alert>
+      <n-alert v-if="settings.error" type="error">{{ settings.error }}</n-alert>
+      <n-text depth="3" role="status">{{ settings.busy ? '正在保存生成规则…' : '生成规则自动保存，下次继续使用。' }}</n-text>
       </section>
       </div>
       <template #footer>

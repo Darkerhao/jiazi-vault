@@ -39,13 +39,15 @@ export interface VaultItem {
   deletedAt?: number
 }
 
-export type VaultItemSummary = Omit<VaultItem, 'password' | 'fields' | 'notes'> & { hasSensitiveData?: boolean; expiresAt?: string }
+export type PrimaryCopyKind = 'password' | 'apiKey' | 'secret' | 'privateKey' | 'connectionString' | 'content' | 'env'
+export type VaultItemSummary = Omit<VaultItem, 'password' | 'fields' | 'notes'> & { primaryKind: PrimaryCopyKind | null; hasUrl: boolean; expiresAt?: string }
 export type ItemInput = Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt' | 'lastAccessedAt' | 'deletedAt'>
 export interface ItemHistorySummary { id: number; savedAt: number }
 export type CredentialHealthIssue = 'short-password' | 'reused-password' | 'expired' | 'expiring' | 'invalid-expiry'
 export interface CredentialHealthEntry { id: string; issues: CredentialHealthIssue[] }
 export interface AutomaticBackupStatus {
   directory: string | null
+  directoryAvailable: boolean
   lastBackupAt: number | null
   fileExists: boolean
   error: boolean
@@ -61,3 +63,5 @@ export interface BiometricStatus {
 
 export interface ImportPreviewRow { row: number; title: string; type: string; duplicate: boolean; error?: string }
 export interface ImportPreview { token: string; name: string; rows: ImportPreviewRow[]; validCount: number; duplicateCount: number; invalidCount: number }
+export interface ImportColumns { token: string; name: string; columns: string[]; rowCount: number }
+export interface ImportMapping { columns: Partial<Record<'title' | 'username' | 'password' | 'url' | 'type', number>>; defaultType: ItemType }

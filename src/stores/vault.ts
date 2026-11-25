@@ -1,6 +1,5 @@
 import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
-import { useBackupStore } from './backup'
 import { vaultService } from '../services/vault'
 import { projectService } from '../services/project'
 import { createSearchIndex, searchItems } from '../utils/search'
@@ -17,6 +16,8 @@ export const useVaultStore = defineStore('vault', () => {
   const filter = ref<VaultFilter>('all')
   const loading = ref(false)
   let revision = 0
+  let loaded = false, trashLoaded = false
+  let pending: Promise<void> | null = null
   const searchIndex = computed(() => createSearchIndex([...items.value, ...trashed.value], projects.value))
 
   function search(list: VaultItemSummary[], text: string, limit = Infinity) {
@@ -32,6 +33,8 @@ export const useVaultStore = defineStore('vault', () => {
     error.value = ''
     filter.value = 'all'
     loading.value = false
+    loaded = trashLoaded = false
+    pending = null
   }
 
   const filteredItems = computed(() => {
@@ -43,27 +46,48 @@ export const useVaultStore = defineStore('vault', () => {
     return list
   })
 
-  async function load() {
-    void useBackupStore().load()
+  async function load(force = false): Promise<void> {
     const requestRevision = revision
+    if (pending) {
+      await pending
+      if (requestRevision !== revision) return
+      if (force) await load(true)
+      else if (!error.value && filter.value === 'trash' && !trashLoaded) await load()
+      return
+    }
+    if (force) trashLoaded = false
+    const activeNeeded = force || !loaded
+    const trashNeeded = filter.value === 'trash' && (force || !trashLoaded)
+    if (!activeNeeded && !trashNeeded) return
     loading.value = true
     error.value = ''
-    try {
-      const [active, deleted, groups] = await Promise.all([vaultService.listItems(false), vaultService.listItems(true), projectService.list()])
-      if (requestRevision !== revision) return
-      items.value = active
-      trashed.value = deleted
-      projects.value = groups
-    } catch (cause) {
-      if (requestRevision === revision) {
-        items.value = []
-        trashed.value = []
-        projects.value = []
-        error.value = vaultErrorMessage(cause, '加载失败，请重试。')
+    const task = (async () => {
+      try {
+        const [active, groups, deleted] = await Promise.all([
+          activeNeeded ? vaultService.listItems(false) : null,
+          activeNeeded ? projectService.list() : null,
+          trashNeeded ? vaultService.listItems(true) : null,
+        ])
+        if (requestRevision !== revision) return
+        if (active && groups) { items.value = active; projects.value = groups; loaded = true }
+        if (deleted) { trashed.value = deleted; trashLoaded = true }
+      } catch (cause) {
+        if (requestRevision === revision) error.value = vaultErrorMessage(cause, '加载失败，请重试。')
+      } finally {
+        if (requestRevision === revision) { loading.value = false; pending = null }
       }
-    } finally {
-      if (requestRevision === revision) loading.value = false
-    }
+    })()
+    pending = task
+    await task
+  }
+
+  function applySummary(updated: VaultItemSummary) {
+    const previous = items.value.find(item => item.id === updated.id)
+    items.value = [...items.value.filter(item => item.id !== updated.id), updated]
+      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
+    projects.value = projects.value.map(project => ({ ...project,
+      itemCount: project.itemCount + Number(updated.projectId === project.id) - Number(previous?.projectId === project.id),
+    }))
   }
 
   function applyUsage(id: string, lastAccessedAt: number) {
@@ -80,23 +104,35 @@ export const useVaultStore = defineStore('vault', () => {
   }
 
   async function createItem(input: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt'>) {
-    await vaultService.createItem(input)
-    await load()
+    const requestRevision = revision
+    await pending
+    if (requestRevision !== revision) return
+    const updated = await vaultService.createItem(input)
+    if (requestRevision === revision) applySummary(updated)
   }
 
   async function updateItem(item: VaultItem) {
-    await vaultService.updateItem(item)
-    await load()
+    const requestRevision = revision
+    await pending
+    if (requestRevision !== revision) return
+    const updated = await vaultService.updateItem(item)
+    if (requestRevision === revision) applySummary(updated)
   }
 
   async function removeItem(id: string, permanently = false) {
+    const requestRevision = revision
     await vaultService.deleteItem(id, permanently)
-    await load()
+    if (requestRevision !== revision) return
+    trashLoaded = false
+    await load(true)
   }
 
   async function restoreItem(id: string) {
+    const requestRevision = revision
     await vaultService.restoreItem(id)
-    await load()
+    if (requestRevision !== revision) return
+    trashLoaded = false
+    await load(true)
   }
 
   async function toggleFavorite(id: string) {
@@ -104,8 +140,7 @@ export const useVaultStore = defineStore('vault', () => {
     const updated = await vaultService.toggleFavorite(id)
     if (requestRevision !== revision) return
     if (!updated) throw new Error('ITEM_NOT_FOUND')
-    items.value = items.value.map((item) => item.id === id ? updated : item)
-    void useBackupStore().load()
+    applySummary(updated)
   }
 
   async function togglePin(id: string) {
@@ -113,10 +148,7 @@ export const useVaultStore = defineStore('vault', () => {
     const updated = await vaultService.togglePin(id)
     if (requestRevision !== revision) return
     if (!updated) throw new Error('ITEM_NOT_FOUND')
-    items.value = items.value
-      .map((item) => item.id === id ? updated : item)
-      .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt)
-    void useBackupStore().load()
+    applySummary(updated)
   }
 
   return { items, trashed, projects, error, filter, loading, filteredItems, search, clear, load, get, applyUsage, createItem, updateItem, removeItem, restoreItem, toggleFavorite, togglePin }
