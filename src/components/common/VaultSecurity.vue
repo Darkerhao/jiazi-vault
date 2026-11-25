@@ -82,7 +82,6 @@ async function toggleBiometric() {
 </template>
 
 <style scoped>
-.security-card { margin-top: 24px; max-width: 700px; }
 h2 { margin: 0 0 12px; font-size: 16px; }
 .security-form { margin-top: 20px; }
 .password-heading { margin-top: 32px; }

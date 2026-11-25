@@ -220,6 +220,7 @@ async function restore(item: VaultItemSummary) {
   <AppShell>
     <section class="page-heading">
       <div><n-text depth="3">保险库</n-text><h1>{{ heading }}</h1></div>
+      <n-tag round :bordered="false">{{ displayedItems.length }} 条凭证</n-tag>
     </section>
     <n-alert v-if="vault.filter === 'trash'" type="info" class="retention-notice">凭证移入回收站满 30 天后自动永久删除，无法恢复。</n-alert>
 
@@ -280,8 +281,8 @@ async function restore(item: VaultItemSummary) {
                 <n-button quaternary circle size="small" aria-label="彻底删除凭证" @click="removePermanently(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
               </template>
               <template v-else>
-                <n-button :quaternary="!item.pinned" :type="item.pinned ? 'primary' : 'default'" circle size="small" :aria-pressed="item.pinned" :title="item.pinned ? '取消置顶' : '置顶凭证'" :aria-label="`${item.pinned ? '取消置顶' : '置顶凭证'} ${item.title}`" @click="togglePin(item)"><template #icon><n-icon><pin v-if="item.pinned" /><pin-outline v-else /></n-icon></template></n-button>
-                <n-button :quaternary="!item.favorite" :type="item.favorite ? 'primary' : 'default'" circle size="small" :aria-pressed="item.favorite" :title="item.favorite ? '取消收藏' : '收藏凭证'" :aria-label="item.favorite ? '取消收藏' : '收藏凭证'" @click="toggle(item)"><template #icon><n-icon><star v-if="item.favorite" /><star-outline v-else /></n-icon></template></n-button>
+                <n-button quaternary circle size="small" :aria-pressed="item.pinned" :title="item.pinned ? '取消置顶' : '置顶凭证'" :aria-label="`${item.pinned ? '取消置顶' : '置顶凭证'} ${item.title}`" @click="togglePin(item)"><template #icon><n-icon><pin v-if="item.pinned" /><pin-outline v-else /></n-icon></template></n-button>
+                <n-button quaternary circle size="small" :aria-pressed="item.favorite" :title="item.favorite ? '取消收藏' : '收藏凭证'" :aria-label="item.favorite ? '取消收藏' : '收藏凭证'" @click="toggle(item)"><template #icon><n-icon><star v-if="item.favorite" /><star-outline v-else /></n-icon></template></n-button>
                 <n-button quaternary circle size="small" aria-label="删除凭证" @click="remove(item)"><template #icon><n-icon><trash-outline /></n-icon></template></n-button>
               </template>
             </div>
@@ -305,21 +306,30 @@ async function restore(item: VaultItemSummary) {
 </template>
 
 <style scoped>
-.page-heading h1 { margin: 4px 0 24px; font-size: 26px; }
-.batch-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; max-width: 860px; margin-bottom: 16px; }
-.filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 860px; margin-bottom: 20px; }
-.retention-notice { max-width: 860px; margin-bottom: 20px; }
-.item-list { max-width: 860px; }
-.pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; max-width: 860px; margin-top: 16px; }
-.item-row { display: flex; align-items: center; gap: 14px; width: 100%; }
+.batch-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 32px; margin-bottom: 12px; }
+.batch-toolbar > .n-text { color: var(--app-muted); font-size: 12px; }
+.filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--app-divider); border-radius: 14px; background: var(--app-surface); }
+.retention-notice { margin-bottom: 20px; }
+.pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.item-row { display: flex; align-items: center; gap: 16px; width: 100%; min-width: 0; }
+.item-row > .n-checkbox, .item-row > .n-icon { flex-shrink: 0; }
+.item-row > .n-icon { box-sizing: content-box; padding: 10px; border: 1px solid var(--app-divider); border-radius: 12px; background: var(--app-input); color: var(--app-muted); }
 .item-main { flex: 1; min-width: 0; }
-.item-title { max-width: 100%; height: auto; margin-bottom: 4px; font-weight: 600; font-size: 15px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.item-title { max-width: 100%; height: auto; margin-bottom: 5px; color: var(--app-text); font-weight: 600; font-size: 15px; line-height: 1.5; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .item-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.item-meta :deep(.n-tag__content) { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
-.item-sub { display: flex; align-items: center; gap: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.item-meta .n-tag { min-width: 0; max-width: 100%; }
+.item-meta :deep(.n-tag__content) { display: block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.item-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; color: var(--app-muted); font-size: 12px; overflow-wrap: anywhere; }
 .item-account { min-width: 0; max-width: 100%; height: auto; font-size: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.item-copy-primary, .item-open-url { flex-shrink: 0; font-size: inherit; }
+.item-copy-primary, .item-open-url { flex-shrink: 0; font-size: inherit; color: var(--app-secondary); }
 .item-account:hover, .item-account:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
-.item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
-.empty { padding: 80px 0 8px; }
+.item-actions { flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding-left: 16px; border-left: 1px solid var(--app-divider); }
+.item-actions .n-button[aria-pressed="true"] { color: var(--app-accent); }
+@container workspace (max-width: 860px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container workspace (max-width: 560px) {
+  .item-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
+  .item-row > .n-icon { display: none; }
+  .item-actions { grid-column: 2; justify-content: flex-end; padding-left: 0; border-left: 0; }
+}
+@container workspace (max-width: 360px) { .filters { grid-template-columns: minmax(0, 1fr); padding: 12px; } }
 </style>

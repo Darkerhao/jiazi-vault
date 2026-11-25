@@ -1,8 +1,13 @@
+<script lang="ts">
+import { ref } from 'vue'
+const sidebarCollapsed = ref(window.matchMedia('(max-width: 1050px)').matches)
+</script>
+
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { NButton, NIcon, NInput, NLayout, NLayoutHeader, NLayoutSider, NMenu, NText } from 'naive-ui'
-import { ArchiveOutline, FolderOpenOutline, GridOutline, InformationCircleOutline, KeyOutline, LockClosedOutline, SettingsOutline, ShieldCheckmarkOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
+import { ArchiveOutline, FolderOpenOutline, GridOutline, InformationCircleOutline, SearchOutline, LockClosedOutline, SettingsOutline, ShieldCheckmarkOutline, SparklesOutline, StarOutline, TimeOutline, TrashOutline, AddOutline } from '@vicons/ionicons5'
 import { useAuthStore } from '../../stores/auth'
 import { useDesktopStore } from '../../stores/desktop'
 import { useUpdatesStore } from '../../stores/updates'
@@ -19,7 +24,7 @@ const query = computed({
   set: (q: string) => { void router.replace({ query: { ...route.query, q: q || undefined } }) },
 })
 const compact = window.matchMedia('(max-width: 1050px)')
-const collapsed = ref(compact.matches)
+const collapsed = sidebarCollapsed
 const resize = () => { collapsed.value = compact.matches }
 onMounted(() => compact.addEventListener('change', resize))
 onUnmounted(() => compact.removeEventListener('change', resize))
@@ -68,39 +73,56 @@ function newItem() {
 
 <template>
   <n-layout class="app-shell" has-sider>
-    <n-layout-sider v-model:collapsed="collapsed" bordered :width="240" :collapsed-width="64" show-trigger collapse-mode="width" content-style="display: flex; flex-direction: column; height: 100%">
+    <n-layout-sider v-model:collapsed="collapsed" bordered :width="224" :collapsed-width="64" show-trigger collapse-mode="width" content-style="display: flex; flex-direction: column; height: 100%">
       <div class="brand"><img class="brand-mark" src="/brand/icon.svg" alt="" width="32" height="32"><div v-if="!collapsed" class="brand-name"><n-text strong>Keystill</n-text><n-text depth="3" class="brand-caption">密序 · 本地凭证管理</n-text></div></div>
       <n-menu class="sider-menu" :collapsed="collapsed" :collapsed-width="64" :value="selectedMenu" :options="menuOptions" />
       <div class="sider-footer"><n-button quaternary block aria-label="锁定保险库" @click="lock"><template #icon><n-icon><lock-closed-outline /></n-icon></template><span v-if="!collapsed">锁定保险库</span></n-button></div>
     </n-layout-sider>
-    <n-layout>
+    <div class="workspace">
       <n-layout-header bordered class="topbar">
         <n-input v-if="canFilter" v-model:value="query" clearable :placeholder="route.name === 'projects' ? '搜索当前项目…' : '搜索当前凭证…'" aria-label="筛选当前列表" class="search-input">
-          <template #prefix><n-icon><key-outline /></n-icon></template>
+          <template #prefix><n-icon><search-outline /></n-icon></template>
         </n-input>
         <n-button class="global-search" quaternary @click="desktop.request('quick-search')">全局搜索 <span class="shortcut">Ctrl K</span></n-button>
         <n-button type="primary" @click="newItem"><template #icon><n-icon><add-outline /></n-icon></template>新建</n-button>
       </n-layout-header>
-      <div class="page-content"><BackupStatus v-if="route.name !== 'settings' && route.name !== 'about'" /><slot /></div>
-    </n-layout>
+      <main class="workspace-scroll"><div class="page-content"><BackupStatus v-if="route.name !== 'settings' && route.name !== 'about'" /><slot /></div></main>
+    </div>
   </n-layout>
 </template>
 
 <style scoped>
-.app-shell { height: 100vh; }
-.brand { height: 76px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 19px; overflow: hidden; }
+.app-shell { height: 100dvh; }
+.workspace { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--app-background); }
+.workspace-scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+.brand { height: 80px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 19px; overflow: hidden; }
 .brand-mark { display: block; width: 32px; height: 32px; flex-shrink: 0; }
 .brand-name { display: flex; flex-direction: column; white-space: nowrap; line-height: 1.4; }
 .brand-caption { font-size: 10px; letter-spacing: .6px; margin-top: 2px; }
-.sider-menu { flex: 1; min-height: 0; overflow-y: auto; }
+.sider-menu { flex: 1; min-height: 0; overflow-y: auto; padding-top: 8px; }
 .sider-menu :deep(.about-menu-link) { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sider-menu :deep(.update-dot) { display: inline-block; width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: #e65353; }
 .sider-menu :deep(.about-menu-icon) { position: relative; display: flex; }
 .sider-menu :deep(.about-menu-icon .update-dot) { position: absolute; top: -2px; right: -5px; }
-.sider-footer { flex-shrink: 0; padding: 14px 12px; }
-.topbar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 14px; padding: 0 24px; height: 64px; }
-.search-input { max-width: 560px; flex: 1; }
+.sider-footer { flex-shrink: 0; padding: 16px 12px; border-top: 1px solid var(--app-divider); }
+.topbar { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 28px; height: 72px; background: var(--app-surface); }
+.search-input { min-width: 0; flex: 1; }
+.topbar > .n-button { flex-shrink: 0; }
 .global-search { margin-left: auto; }
-.shortcut { margin-left: 8px; font-size: 11px; opacity: .65; }
-.page-content { padding: 28px 32px; max-width: 1200px; }
+.shortcut { margin-left: 10px; padding: 1px 5px; border: 1px solid var(--app-border); border-radius: 4px; font-size: 10px; color: var(--app-muted); }
+.page-content { width: 100%; min-width: 0; padding: 28px; container: workspace / inline-size; }
+@media (max-width: 1050px) {
+  .page-content { padding: 24px; }
+  .topbar { padding: 0 24px; }
+}
+@media (max-width: 720px) {
+  .page-content { padding: 20px 16px; }
+  .topbar { padding: 0 16px; gap: 8px; height: 64px; }
+  .global-search { font-size: 12px; }
+  .shortcut { display: none; }
+}
+@media (max-width: 480px) {
+  .topbar { flex-wrap: wrap; height: auto; padding-block: 12px; }
+  .search-input { flex-basis: 100%; order: 1; }
+}
 </style>

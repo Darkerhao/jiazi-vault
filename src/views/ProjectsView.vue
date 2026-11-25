@@ -87,7 +87,7 @@ function remove(project: Project) {
         </n-list-item>
       </n-list>
     </n-spin>
-    <n-modal :show="show" preset="card" :title="editingId ? '编辑项目' : '新建项目'" style="width: 520px" :closable="!saving" :mask-closable="!saving" :close-on-esc="!saving" @update:show="(value) => !value && close()">
+    <n-modal :show="show" preset="card" :title="editingId ? '编辑项目' : '新建项目'" style="width: 520px; max-width: calc(100vw - 32px)" :closable="!saving" :mask-closable="!saving" :close-on-esc="!saving" @update:show="(value) => !value && close()">
       <n-form :disabled="saving" @submit.prevent="save">
         <n-form-item label="项目名称" required :validation-status="error ? 'error' : undefined" :feedback="error"><n-input v-model:value="form.name" placeholder="项目名称" :maxlength="80" autofocus /></n-form-item>
         <div class="appearance">
@@ -102,14 +102,17 @@ function remove(project: Project) {
 </template>
 
 <style scoped>
-.page-heading, .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.page-heading { margin-bottom: 24px; }
-.page-heading h1 { margin: 4px 0 0; font-size: 26px; }
+.project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
 .project-icon { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; font-size: 24px; flex-shrink: 0; }
 .project-info { flex: 1; min-width: 0; }
-.project-name { font-size: 16px; font-weight: 600; }
+.project-name { max-width: 100%; height: auto; font-size: 16px; font-weight: 600; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .description, .access { display: block; margin-top: 4px; overflow-wrap: anywhere; }
 .access { font-size: 12px; }
 .appearance { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 input[type=color] { width: 100%; height: 34px; padding: 2px; border: 0; background: transparent; }
+@container workspace (max-width: 560px) {
+  .project-row { flex-wrap: wrap; }
+  .project-info { flex-basis: calc(100% - 60px); }
+  .project-row > .n-space { margin-left: auto; }
+}
 </style>

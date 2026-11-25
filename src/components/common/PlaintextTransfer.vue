@@ -96,7 +96,6 @@ async function confirmImport() {
 .preview-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 16px 0; }
 .preview-table th, .preview-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #8884; overflow-wrap: anywhere; }
 .preview-table th:first-child { width: 60px; }
-.transfer-card { max-width: 700px; margin-top: 24px; }
 .transfer-actions { margin-top: 20px; }
 summary { cursor: pointer; }
 code { overflow-wrap: anywhere; }

@@ -44,14 +44,21 @@ onUnmounted(() => { request++; generated.value = null })
 
 <template>
     <n-card class="generator-card" bordered>
+      <div class="generator-layout">
+      <section class="generator-preview" aria-label="生成结果">
+      <n-text depth="3" class="preview-label">随机生成 · 仅在本机处理</n-text>
       <n-input :value="generated?.password ?? ''" readonly type="textarea" :autosize="{ minRows: 2 }" placeholder="生成安全密码" class="password-output" />
       <div class="strength"><n-text depth="3">强度</n-text><n-text strong>{{ generated ? `${generated.strength} · ${generated.entropy.toFixed(1)} bits` : '尚未生成' }}</n-text></div>
       <n-progress type="line" :percentage="Math.min(100, (generated?.entropy ?? 0) / 128 * 100)" :show-indicator="false" />
       <n-text depth="3" class="entropy-note">熵值按当前随机生成规则估算。</n-text>
+      </section>
+      <section class="generator-options" aria-label="生成规则">
       <div class="control"><n-text>密码长度</n-text><n-input-number v-model:value="options.length" :min="8" :max="128" :precision="0" aria-label="密码长度" /></div>
       <n-slider v-model:value="options.length" :min="8" :max="128" :step="1" aria-label="密码长度滑块" />
       <div class="switches"><div v-for="option in switches" :key="option.key" class="switch-row"><n-text>{{ option.label }}</n-text><n-switch v-model:value="options[option.key]" :aria-label="option.label" /></div></div>
       <n-alert v-if="error" type="warning" class="error">{{ error }}</n-alert>
+      </section>
+      </div>
       <template #footer>
         <n-space><n-button type="primary" :loading="busy" @click="generate">重新生成</n-button><n-button :disabled="!generated || busy" @click="copy(generated!.password, undefined, '密码')">复制密码</n-button><slot :password="generated?.password" :busy="busy" /></n-space>
       </template>
@@ -59,12 +66,21 @@ onUnmounted(() => { request++; generated.value = null })
 </template>
 
 <style scoped>
-.generator-card { max-width: 560px; }
+.generator-card { container: generator / inline-size; }
+.generator-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.generator-preview { min-width: 0; padding: 20px; border: 1px solid var(--app-divider, var(--n-border-color)); border-radius: 12px; background: var(--app-input, var(--n-color)); }
+.generator-options { min-width: 0; }
+.preview-label { display: block; margin-bottom: 16px; font-size: 12px; }
 .strength, .control { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; }
 .switches { margin: 20px 0; }
-.switch-row { display: flex; justify-content: space-between; align-items: center; margin: 14px 0; }
+.switch-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--app-divider, var(--n-border-color)); }
+.switch-row .n-switch { flex-shrink: 0; }
 .entropy-note { display: block; margin-top: 8px; font-size: 12px; }
-.control { margin-bottom: 12px; }
-.password-output { font-family: monospace; }
+.control { margin: 0 0 12px; gap: 16px; }
+.control .n-input-number { width: 110px; flex-shrink: 0; }
+.password-output { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 20px; line-height: 1.6; }
 .error { margin-bottom: 16px; }
+@container generator (min-width: 760px) {
+  .generator-layout { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; }
+}
 </style>

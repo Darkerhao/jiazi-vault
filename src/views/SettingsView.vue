@@ -63,8 +63,9 @@ function updateAutoLock(value: number) {
 
 <template>
   <AppShell>
-    <div class="page-heading"><n-text depth="3">偏好设置</n-text><h1>设置</h1></div>
-    <n-card class="settings-card" bordered>
+    <div class="page-heading"><div><n-text depth="3">偏好设置</n-text><h1>设置</h1></div></div>
+    <div class="settings-grid">
+    <n-card title="通用偏好" class="settings-card" bordered>
       <n-alert v-if="settings.error" type="error" class="settings-error">{{ settings.error }} <n-button v-if="!settings.preferences" text @click="settings.load">重试</n-button></n-alert>
       <n-form v-if="settings.preferences" label-placement="left" label-width="180" :disabled="settings.busy">
         <n-form-item label="主题"><n-select :value="settings.preferences.themeMode" :options="themeOptions" @update:value="(value) => settings.update({ themeMode: value })" /></n-form-item>
@@ -98,13 +99,21 @@ function updateAutoLock(value: number) {
       <p>应用内：Ctrl K 搜索 · Ctrl N 新建凭证 · Ctrl Shift N 新建项目 · Ctrl G 生成密码 · Ctrl Shift L 锁定（macOS 使用 ⌘）。</p>
       <n-text depth="3">双击托盘图标可重新打开窗口；使用托盘菜单“退出”结束应用。关闭窗口的行为可在“启动与窗口”中设置。</n-text>
     </n-card>
+    </div>
   </AppShell>
 </template>
 
 <style scoped>
-.page-heading h1 { margin: 4px 0 24px; font-size: 26px; }
-.settings-card { max-width: 700px; }
+.settings-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.settings-grid > :deep(.n-card) { min-width: 0; }
 .settings-error { margin-bottom: 16px; }
-.backup-card { margin-top: 24px; }
 .shortcut-input { margin: 12px 0; }
+@container workspace (min-width: 1080px) {
+  .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-grid > :deep(.security-card) { grid-row: span 2; }
+}
+@container workspace (max-width: 500px) {
+  .settings-card :deep(.n-form-item) { grid-template-areas: "label" "blank" "feedback"; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
+  .settings-card :deep(.n-form-item-label) { width: auto !important; text-align: left; padding: 0 0 8px; }
+}
 </style>
